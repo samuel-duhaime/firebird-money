@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "firebird-money-backend"
+version = "0.1.0"
+description = ""
+authors = ["Samuel Duhaime-Morissette <sduhaimemorissette@gmail.com>"]
+license = "GPL-3.0-only"
+readme = "README.md"
+packages = [{ include = "src" }]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = "0.115.12"
+uvicorn = "0.34.2"
+
+[tool.poetry.scripts]
+start = "src.main:start"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
