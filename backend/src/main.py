@@ -10,5 +10,5 @@ async def root():
 
 
 def start():
-    """Launched with `poetry run start` at root level"""
+    """Launched with `poetry run start`. Ensure this command is executed from the backend root directory."""
     uvicorn.run("src.main:app", host="0.0.0.0", port=8000, reload=True)
