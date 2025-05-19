@@ -38,9 +38,9 @@ jobs:
         working-directory: backend
         run: poetry run ruff check src
 
-      - name: Run backend tests
+      - name: Run backend API tests
         working-directory: backend
-        run: echo "Running backend tests..." && echo "No tests implemented yet."
+        run: poetry run pytest
 
       - name: Start backend server
         working-directory: backend
