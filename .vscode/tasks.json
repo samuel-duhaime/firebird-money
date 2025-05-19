@@ -22,7 +22,7 @@
         "kind": "build",
         "isDefault": true
       },
-      "dependsOn": ["Next Dev", "Backend Dev"]
+      "dependsOn": ["Frontend Dev", "Backend Dev"]
     },
     {
       "label": "Git Checkout Main",
@@ -58,7 +58,7 @@
       }
     },
     {
-      "label": "Next Dev",
+      "label": "Frontend Dev",
       "type": "shell",
       "command": "npm",
       "args": ["run", "dev"],
@@ -73,12 +73,15 @@
     {
       "label": "Backend Dev",
       "type": "shell",
-      "command": "echo",
-      "args": ["There are no backend."],
+      "command": "poetry",
+      "args": ["run", "start"],
+      "options": {
+        "cwd": "${workspaceFolder}/backend"
+      },
       "group": {
         "kind": "build",
         "isDefault": false
       }
-    },
+    }
   ]
 }
