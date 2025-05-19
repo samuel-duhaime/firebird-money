@@ -30,6 +30,10 @@ jobs:
         working-directory: backend
         run: poetry install
 
+      - name: Check Black formatting
+        working-directory: backend
+        run: poetry run black --check src
+
       - name: Run backend linting
         working-directory: backend
         run: |
