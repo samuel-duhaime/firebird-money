@@ -9,13 +9,48 @@ on:
       - main
 
 jobs:
-  build-and-test:
+  backend-build-and-test:
+    name: Backend Build and Test
     runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        run: |
+          python -m pip install --upgrade pip
+          pip install poetry
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: poetry install
+
+      - name: Run backend linting
+        working-directory: backend
+        run: |
+          poetry run pip install ruff
+          poetry run ruff src || true
+
+      - name: Run backend tests
+        working-directory: backend
+        run: echo "Running backend tests..." && echo "No tests implemented yet."
+
+      - name: Start backend server
+        working-directory: backend
+        run: poetry run start &
+
+  frontend-build-and-test:
+    name: Frontend Build and Test
+    needs: backend-build-and-test
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         node-version: [22]
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -25,22 +60,26 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
 
-      - name: Install dependencies
+      - name: Install frontend dependencies
         working-directory: frontend
         run: npm install
 
-      - name: Build project
+      - name: Build frontend project
         working-directory: frontend
         run: npm run build
 
-      - name: Run linting
+      - name: Run frontend linting
         working-directory: frontend
         run: npm run lint
 
-      - name: Run unit tests
+      - name: Run frontend unit tests
         working-directory: frontend
         run: echo "Running unit tests..." && echo "No tests implemented yet."
 
-      - name: Run UI tests
+      - name: Start frontend server
+        working-directory: frontend
+        run: npm start &
+
+      - name: Run frontend UI tests
         working-directory: frontend
         run: echo "Running UI tests..." && echo "No tests implemented yet."
