@@ -89,3 +89,6 @@ poetry.lock
 *.old
 *.orig
 *.rej
+
+# Ruff
+.ruff_cache

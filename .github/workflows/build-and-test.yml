@@ -36,9 +36,7 @@ jobs:
 
       - name: Run backend linting
         working-directory: backend
-        run: |
-          poetry run pip install ruff
-          poetry run ruff src || true
+        run: poetry run ruff check src
 
       - name: Run backend tests
         working-directory: backend
