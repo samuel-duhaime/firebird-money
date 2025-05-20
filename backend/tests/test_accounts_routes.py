@@ -1,9 +1,13 @@
 from fastapi.testclient import TestClient
 from src.main import app
+from src.db import init_db  # Add this import
+
+init_db()  # Ensure tables are created before running tests
 
 client = TestClient(app)
 
 
+# TODO: Add more tests for edge cases and error handling for all the methods
 def test_post_account():
     response = client.post(
         "/accounts/", json={"email": "test@example.com", "google_id": None}
@@ -12,6 +16,17 @@ def test_post_account():
     data = response.json()
     assert data["email"] == "test@example.com"
     assert data["status"] == "pending"
+
+
+def test_post_account_invalid_email():
+    response = client.post(
+        "/accounts/", json={"email": "invalid-email", "google_id": None}
+    )
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert detail[0]["loc"] == ["body", "email"]
+    assert "not a valid email address" in detail[0]["msg"]
+    assert detail[0]["type"] == "value_error"
 
 
 def test_get_account():
@@ -25,6 +40,27 @@ def test_get_account():
     data = response.json()
     assert data["email"] == "getme@example.com"
     assert data["google_id"] == "gid123"
+
+
+def test_get_account_not_found():
+    response = client.get("/accounts/999999")  # Assuming this ID does not exist
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Account not found"}
+
+
+def test_get_account_invalid_id():
+    response = client.get("/accounts/invalid_id")
+    assert response.status_code == 422  # Unprocessable Entity
+    assert (
+        "Input should be a valid integer, unable to parse string as an integer"
+        in response.json()["detail"][0]["msg"]
+    )
+
+
+def test_get_account_no_id():
+    response = client.get("/accounts/")
+    assert response.status_code == 405  # Unprocessable Entity
+    assert response.json()["detail"] == "Method Not Allowed"
 
 
 def test_patch_account():
