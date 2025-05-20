@@ -12,6 +12,20 @@ jobs:
   backend-build-and-test:
     name: Backend Build and Test
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: firebirdpass
+          POSTGRES_DB: firebird_money
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U firebird"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -29,6 +43,16 @@ jobs:
       - name: Install backend dependencies
         working-directory: backend
         run: poetry install
+
+      - name: Copy .env.example to .env
+        working-directory: backend
+        run: cp .env.example .env
+
+      # - name: Wait for PostgreSQL to be ready
+      #   run: |
+      #     until pg_isready -h localhost -p 5432 -U firebird; do
+      #       sleep 1
+      #     done
 
       - name: Check Black formatting
         working-directory: backend
