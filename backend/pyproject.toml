@@ -5,7 +5,7 @@ description = ""
 authors = ["Samuel Duhaime-Morissette <sduhaimemorissette@gmail.com>"]
 license = "GPL-3.0-only"
 readme = "README.md"
-packages = [{ include = "src" }]
+packages = [{ include = "app" }]
 
 [tool.poetry.dependencies]
 python = "^3.12"
@@ -24,7 +24,7 @@ pytest = "8.3.5"
 httpx = "0.28.1"
 
 [tool.poetry.scripts]
-start = "src.main:start"
+start = "app.main:start"
 
 [build-system]
 requires = ["poetry-core"]

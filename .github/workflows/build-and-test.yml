@@ -48,19 +48,13 @@ jobs:
         working-directory: backend
         run: cp .env.example .env
 
-      # - name: Wait for PostgreSQL to be ready
-      #   run: |
-      #     until pg_isready -h localhost -p 5432 -U firebird; do
-      #       sleep 1
-      #     done
-
       - name: Check Black formatting
         working-directory: backend
-        run: poetry run black --check src
+        run: poetry run black --check app
 
       - name: Run backend linting
         working-directory: backend
-        run: poetry run ruff check src
+        run: poetry run ruff check app
 
       - name: Run backend API tests
         working-directory: backend

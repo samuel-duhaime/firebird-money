@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
 from sqlmodel import Session
-from src.db import get_session
+from app.db import get_session
 from .models import (
     Account,
     AccountStatus,
