@@ -43,6 +43,7 @@ def patch_account(
     return account
 
 
+# TODO: Implement a better response for delete
 @accounts_router.delete("/{id}")
 def delete_account(id: int, session: Session = Depends(get_session)):
     account = session.get(Account, id)
