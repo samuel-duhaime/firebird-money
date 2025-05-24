@@ -11,6 +11,7 @@ class AccountStatus(str, Enum):
 
 
 class Account(SQLModel, table=True):
+    __tablename__ = "accounts"
     id: Optional[int] = Field(default=None, primary_key=True)
     google_id: Optional[str] = None
     status: AccountStatus
