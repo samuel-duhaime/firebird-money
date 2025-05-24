@@ -7,15 +7,29 @@ init_db()  # Ensure tables are created before running tests
 client = TestClient(app)
 
 
-# TODO: Add more tests for edge cases and error handling for all the methods
+def create_account_payload(**overrides):
+    payload = {"email": "test@example.com", "google_id": None}
+    payload.update(overrides)
+    return payload
+
+
 def test_post_account():
-    response = client.post(
-        "/accounts/", json={"email": "test@example.com", "google_id": None}
-    )
+    response = client.post("/accounts/", json=create_account_payload())
     assert response.status_code == 200
     data = response.json()
     assert data["email"] == "test@example.com"
     assert data["status"] == "pending"
+    assert "id" in data
+
+
+def test_post_account_minimal_fields():
+    payload = {"email": "minimal@example.com"}
+    response = client.post("/accounts/", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["email"] == "minimal@example.com"
+    assert data["status"] == "pending"
+    assert data["google_id"] is None
 
 
 def test_post_account_invalid_email():
@@ -29,10 +43,47 @@ def test_post_account_invalid_email():
     assert detail[0]["type"] == "value_error"
 
 
+def test_post_account_missing_email():
+    response = client.post("/accounts/", json={"google_id": None})
+    assert response.status_code == 422
+
+
+def test_post_account_extra_fields():
+    payload = create_account_payload(extra_field="should_be_ignored")
+    response = client.post("/accounts/", json=payload)
+    assert response.status_code in (200, 422)
+
+
+def test_post_account_email_null():
+    payload = create_account_payload(email=None)
+    response = client.post("/accounts/", json=payload)
+    assert response.status_code == 422
+
+
+def test_post_account_google_id_empty():
+    payload = create_account_payload(google_id="")
+    response = client.post("/accounts/", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["google_id"] == ""
+
+
+def test_post_account_google_id_as_int():
+    payload = create_account_payload(google_id=123)
+    response = client.post("/accounts/", json=payload)
+    assert response.status_code in (200, 422)
+
+
+def test_post_account_email_as_int():
+    payload = create_account_payload(email=123)
+    response = client.post("/accounts/", json=payload)
+    assert response.status_code == 422
+
+
 def test_get_account():
-    # Create account first
     post_resp = client.post(
-        "/accounts/", json={"email": "getme@example.com", "google_id": "gid123"}
+        "/accounts/",
+        json=create_account_payload(email="getme@example.com", google_id="gid123"),
     )
     account_id = post_resp.json()["id"]
     response = client.get(f"/accounts/{account_id}")
@@ -64,9 +115,8 @@ def test_get_account_no_id():
 
 
 def test_patch_account():
-    # Create account first
     post_resp = client.post(
-        "/accounts/", json={"email": "patchme@example.com", "google_id": None}
+        "/accounts/", json=create_account_payload(email="patchme@example.com")
     )
     account_id = post_resp.json()["id"]
     response = client.patch(f"/accounts/{account_id}", json={"status": "verified"})
@@ -74,10 +124,68 @@ def test_patch_account():
     assert response.json()["status"] == "verified"
 
 
-def test_delete_account():
-    # Create account first
+def test_patch_account_email():
     post_resp = client.post(
-        "/accounts/", json={"email": "deleteme@example.com", "google_id": None}
+        "/accounts/", json=create_account_payload(email="patchmail@example.com")
+    )
+    account_id = post_resp.json()["id"]
+    response = client.patch(
+        f"/accounts/{account_id}", json={"email": "newmail@example.com"}
+    )
+    assert response.status_code == 200
+    assert response.json()["email"] == "newmail@example.com"
+
+
+def test_patch_account_google_id():
+    post_resp = client.post(
+        "/accounts/",
+        json=create_account_payload(email="patchgid@example.com", google_id="gid1"),
+    )
+    account_id = post_resp.json()["id"]
+    response = client.patch(f"/accounts/{account_id}", json={"google_id": "gid2"})
+    assert response.status_code == 200
+    assert response.json()["google_id"] == "gid2"
+
+
+def test_patch_account_no_fields():
+    post_resp = client.post("/accounts/", json=create_account_payload())
+    account_id = post_resp.json()["id"]
+    response = client.patch(f"/accounts/{account_id}", json={})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["id"] == account_id
+
+
+def test_patch_account_invalid_field():
+    post_resp = client.post("/accounts/", json=create_account_payload())
+    account_id = post_resp.json()["id"]
+    response = client.patch(f"/accounts/{account_id}", json={"not_a_field": "value"})
+    assert response.status_code in (200, 422)
+
+
+def test_patch_account_invalid_status():
+    post_resp = client.post("/accounts/", json=create_account_payload())
+    account_id = post_resp.json()["id"]
+    response = client.patch(f"/accounts/{account_id}", json={"status": "not_a_status"})
+    assert response.status_code == 422
+
+
+def test_patch_account_email_invalid():
+    post_resp = client.post("/accounts/", json=create_account_payload())
+    account_id = post_resp.json()["id"]
+    response = client.patch(f"/accounts/{account_id}", json={"email": "notanemail"})
+    assert response.status_code == 422
+
+
+def test_patch_account_not_found():
+    response = client.patch("/accounts/999999", json={"status": "verified"})
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Account not found"}
+
+
+def test_delete_account():
+    post_resp = client.post(
+        "/accounts/", json=create_account_payload(email="deleteme@example.com")
     )
     account_id = post_resp.json()["id"]
     response = client.delete(f"/accounts/{account_id}")
@@ -86,3 +194,20 @@ def test_delete_account():
     # Ensure deleted
     get_resp = client.get(f"/accounts/{account_id}")
     assert get_resp.status_code == 404
+
+
+def test_delete_account_not_found():
+    response = client.delete("/accounts/999999")
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Account not found"}
+
+
+def test_delete_account_twice():
+    post_resp = client.post(
+        "/accounts/", json=create_account_payload(email="twicedelete@example.com")
+    )
+    account_id = post_resp.json()["id"]
+    response = client.delete(f"/accounts/{account_id}")
+    assert response.status_code == 200
+    response2 = client.delete(f"/accounts/{account_id}")
+    assert response2.status_code == 404
