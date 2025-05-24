@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
-from src.main import app
-from src.db import init_db  # Add this import
+from app.main import app
+from app.db import init_db  # Add this import
 
 init_db()  # Ensure tables are created before running tests
 
