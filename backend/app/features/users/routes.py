@@ -36,6 +36,7 @@ def patch_user(id: int, fields: UserPatch, session: Session = Depends(get_sessio
     return user
 
 
+# TODO: Implement a better response for delete
 @users_router.delete("/{id}")
 def delete_user(id: int, session: Session = Depends(get_session)):
     user = session.get(User, id)

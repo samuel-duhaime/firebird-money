@@ -43,4 +43,19 @@ def get_session():
 
 
 def init_db():
+    from sqlalchemy import create_engine, text
+
+    # Create the database if it does not exist
+    db_url_no_db = f"postgresql://{POSTGRESQL_USER}:{POSTGRESQL_PASSWORD}@{POSTGRESQL_HOST}:{POSTGRESQL_PORT}/postgres"
+    tmp_engine = create_engine(db_url_no_db, isolation_level="AUTOCOMMIT")
+    db_name = POSTGRESQL_DB
+    with tmp_engine.connect() as conn:
+        result = conn.execute(
+            text("SELECT 1 FROM pg_database WHERE datname=:name"), {"name": db_name}
+        )
+        exists = result.scalar() is not None
+        if not exists:
+            conn.execute(text(f"CREATE DATABASE {db_name}"))
+
+    # Now create tables
     SQLModel.metadata.create_all(engine)

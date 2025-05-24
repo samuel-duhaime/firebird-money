@@ -50,19 +50,19 @@ jobs:
 
       - name: Check Black formatting
         working-directory: backend
-        run: poetry run black --check app
+        run: poetry run black --check app tests
 
       - name: Run backend linting
         working-directory: backend
-        run: poetry run ruff check app
-
-      - name: Run backend API tests
-        working-directory: backend
-        run: poetry run pytest
+        run: poetry run ruff check app tests
 
       - name: Start backend server
         working-directory: backend
         run: poetry run start &
+
+      - name: Run backend API tests
+        working-directory: backend
+        run: poetry run pytest -v
 
   frontend-build-and-test:
     name: Frontend Build and Test
