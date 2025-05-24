@@ -1,10 +1,12 @@
 from fastapi import FastAPI
 
 from app.features.accounts.routes import accounts_router
+from app.features.users.routes import users_router
 
 app = FastAPI()
 
 app.include_router(accounts_router, prefix="/accounts")
+app.include_router(users_router, prefix="/users")
 
 
 def start():
