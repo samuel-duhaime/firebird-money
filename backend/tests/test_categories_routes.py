@@ -10,7 +10,7 @@ created_category_ids = []
 
 
 def create_category_payload(**overrides):
-    payload = {
+    payload: Category = {
         "account_id": 1,
         "name": "Grocery",
         "type": "expense",
