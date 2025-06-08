@@ -2,12 +2,14 @@ from fastapi import FastAPI
 
 from app.features.accounts.routes import accounts_router
 from app.features.users.routes import users_router
+from app.features.categories.routes import categories_router
 from app.db import init_db
 
 app = FastAPI()
 
 app.include_router(accounts_router, prefix="/accounts")
 app.include_router(users_router, prefix="/users")
+app.include_router(categories_router, prefix="/categories")
 
 
 @app.on_event("startup")
