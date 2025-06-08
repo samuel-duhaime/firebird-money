@@ -22,6 +22,7 @@ class Category(SQLModel, table=True):
         default=None, sa_column=Column(postgresql.ARRAY(Integer), nullable=True)
     )
 
+
 class CategoryCreate(SQLModel):
     account_id: int
     name: str
