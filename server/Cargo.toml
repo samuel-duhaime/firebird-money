@@ -5,6 +5,9 @@ edition = "2021"
 
 [dependencies]
 actix-web = "4.13.0"
+dotenvy = "0.15"
 env_logger = "0.11.8"
+fluent = "0.16"
 log = "0.4.28"
 serde = { version = "1.0.228", features = ["derive"] }
+unic-langid = "0.9"
