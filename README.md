@@ -14,6 +14,15 @@ cargo build
 
 The first `cargo build` (or `cargo run`) downloads dependencies and compiles the server.
 
+## Configuration
+
+Copy the example environment file into place, then edit it if you need to:
+
+```bash
+cd server
+cp .env.example .env
+```
+
 ## How to run
 
 ```bash
