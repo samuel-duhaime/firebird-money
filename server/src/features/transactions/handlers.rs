@@ -1,14 +1,14 @@
-//! HTTP API: sample CSV on `GET /transactions/sample`, export CSV on
-//! `GET /transactions/{transaction_number}`.
-
-use std::io::ErrorKind;
-use std::path::PathBuf;
+//! HTTP API for transactions: sample CSV, plus JSON CRUD backed by Postgres.
 
 use actix_web::http::header::{ContentLanguage, LanguageTag, QualityItem};
 use actix_web::{web, HttpResponse, Responder};
 use log::error;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
+use unic_langid::LanguageIdentifier;
 
+use super::model::{NewTransaction, TransactionFilter, TransactionPatch};
+use super::repository;
 use crate::shared::l10n::L10n;
 
 const SAMPLE_TRANSACTIONS_CSV: &str = include_str!("../../../data/transactions/outputs/transactions_sample.csv");
@@ -20,67 +20,128 @@ async fn transactions_sample() -> impl Responder {
         .body(SAMPLE_TRANSACTIONS_CSV)
 }
 
-/// Transaction number path
+/// Transaction id path (`/transactions/{id}`)
 #[derive(Deserialize)]
-struct TransactionNumberPath {
-    transaction_number: u32,
+struct TransactionIdPath {
+    id: u32,
 }
 
-/// Serves `data/transactions/outputs/transactions_{n}.csv` from disk (relative to crate root).
-async fn transactions_by_number(
-    path: web::Path<TransactionNumberPath>,
+/// JSON body for error responses.
+#[derive(Serialize)]
+struct ErrorBody {
+    error: String,
+}
+
+/// `ContentLanguage` header value matching the active locale (falls back to English).
+fn content_language(locale: &LanguageIdentifier) -> ContentLanguage {
+    let lang_tag = locale.to_string();
+    ContentLanguage(vec![QualityItem::max(
+        LanguageTag::parse(&lang_tag).unwrap_or_else(|_| LanguageTag::parse("en").unwrap()),
+    )])
+}
+
+/// 404 JSON body for an unknown transaction id.
+fn not_found_response(l10n: &L10n, locale: &LanguageIdentifier, id: u32) -> HttpResponse {
+    let error = l10n.format_with_n(locale, "transaction-not-found", id);
+    HttpResponse::NotFound()
+        .insert_header(content_language(locale))
+        .json(ErrorBody { error })
+}
+
+/// 500 JSON body for a database failure.
+fn internal_error_response(l10n: &L10n, locale: &LanguageIdentifier) -> HttpResponse {
+    let error = l10n.format_message(locale, "internal-db-error", None);
+    HttpResponse::InternalServerError()
+        .insert_header(content_language(locale))
+        .json(ErrorBody { error })
+}
+
+/// `POST /transactions` — create a transaction.
+async fn create_transaction(
+    new_transaction: web::Json<NewTransaction>,
+    pool: web::Data<PgPool>,
+    l10n: web::Data<L10n>,
+) -> impl Responder {
+    match repository::create(&pool, &new_transaction).await {
+        Ok(transaction) => HttpResponse::Created()
+            .insert_header(("Location", format!("/transactions/{}", transaction.id)))
+            .json(transaction),
+        Err(e) => {
+            error!("failed to create transaction error={e}");
+            internal_error_response(&l10n, &l10n.locale())
+        }
+    }
+}
+
+/// `GET /transactions` — list transactions, optionally filtered by `date` and/or `merchant`.
+async fn list_transactions(
+    filter: web::Query<TransactionFilter>,
+    pool: web::Data<PgPool>,
+    l10n: web::Data<L10n>,
+) -> impl Responder {
+    match repository::list(&pool, &filter).await {
+        Ok(transactions) => HttpResponse::Ok().json(transactions),
+        Err(e) => {
+            error!("failed to list transactions error={e}");
+            internal_error_response(&l10n, &l10n.locale())
+        }
+    }
+}
+
+/// `GET /transactions/{id}` — fetch a single transaction.
+async fn get_transaction(
+    path: web::Path<TransactionIdPath>,
+    pool: web::Data<PgPool>,
     l10n: web::Data<L10n>,
 ) -> impl Responder {
     let locale = l10n.locale();
-    let lang_tag = locale.to_string();
+    let id = path.id;
 
-    let n = path.transaction_number;
-    let filepath = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("data/transactions/outputs")
-        .join(format!("transactions_{n}.csv"));
-    let path_for_log = filepath.display().to_string();
-
-    // Read the transactions CSV file
-    match web::block(move || std::fs::read_to_string(&filepath)).await {
-        // If the file is found, return the content
-        Ok(Ok(body)) => HttpResponse::Ok()
-            .content_type("text/csv; charset=utf-8")
-            .body(body),
-        // If the file is not found, return a 404 error
-        Ok(Err(e)) if e.kind() == ErrorKind::NotFound => {
-            let body = l10n.format_with_n(&locale, "file-not-found", n);
-            HttpResponse::NotFound()
-                .insert_header(ContentLanguage(vec![QualityItem::max(
-                    LanguageTag::parse(&lang_tag).unwrap_or_else(|_| LanguageTag::parse("en").unwrap()),
-                )]))
-                .content_type("text/plain; charset=utf-8")
-                .body(body)
-        }
-        // If the file is found but there is an error reading it, return a 500 error
-        Ok(Err(e)) => {
-            error!(
-                "failed to read transactions CSV transaction_number={n} path={path_for_log} error={e}"
-            );
-            let body = l10n.format_message(&locale, "internal-read-error", None);
-            HttpResponse::InternalServerError()
-                .insert_header(ContentLanguage(vec![QualityItem::max(
-                    LanguageTag::parse(&lang_tag).unwrap_or_else(|_| LanguageTag::parse("en").unwrap()),
-                )]))
-                .content_type("text/plain; charset=utf-8")
-                .body(body)
-        }
-        // If there is an error reading the file, return a 500 error
+    match repository::get(&pool, i64::from(id)).await {
+        Ok(Some(transaction)) => HttpResponse::Ok().json(transaction),
+        Ok(None) => not_found_response(&l10n, &locale, id),
         Err(e) => {
-            error!(
-                "blocking read task failed transaction_number={n} path={path_for_log} error={e}"
-            );
-            let body = l10n.format_message(&locale, "internal-read-error", None);
-            HttpResponse::InternalServerError()
-                .insert_header(ContentLanguage(vec![QualityItem::max(
-                    LanguageTag::parse(&lang_tag).unwrap_or_else(|_| LanguageTag::parse("en").unwrap()),
-                )]))
-                .content_type("text/plain; charset=utf-8")
-                .body(body)
+            error!("failed to get transaction id={id} error={e}");
+            internal_error_response(&l10n, &locale)
+        }
+    }
+}
+
+/// `PATCH /transactions/{id}` — partially update a transaction; unset fields are left unchanged.
+async fn update_transaction(
+    path: web::Path<TransactionIdPath>,
+    patch: web::Json<TransactionPatch>,
+    pool: web::Data<PgPool>,
+    l10n: web::Data<L10n>,
+) -> impl Responder {
+    let locale = l10n.locale();
+    let id = path.id;
+
+    match repository::update(&pool, i64::from(id), &patch).await {
+        Ok(Some(transaction)) => HttpResponse::Ok().json(transaction),
+        Ok(None) => not_found_response(&l10n, &locale, id),
+        Err(e) => {
+            error!("failed to update transaction id={id} error={e}");
+            internal_error_response(&l10n, &locale)
+        }
+    }
+}
+
+/// `DELETE /transactions/{id}` — delete a transaction.
+async fn delete_transaction(
+    path: web::Path<TransactionIdPath>,
+    pool: web::Data<PgPool>,
+    l10n: web::Data<L10n>,
+) -> impl Responder {
+    let locale = l10n.locale();
+    let id = path.id;
+
+    match repository::delete(&pool, i64::from(id)).await {
+        Ok(true) => HttpResponse::NoContent().finish(),
+        Ok(false) => not_found_response(&l10n, &locale, id),
+        Err(e) => {
+            error!("failed to delete transaction id={id} error={e}");
+            internal_error_response(&l10n, &locale)
         }
     }
 }
@@ -88,8 +149,9 @@ async fn transactions_by_number(
 /// Registers the transactions feature's routes.
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.route("/transactions/sample", web::get().to(transactions_sample))
-        .route(
-            "/transactions/{transaction_number}",
-            web::get().to(transactions_by_number),
-        );
+        .route("/transactions", web::get().to(list_transactions))
+        .route("/transactions", web::post().to(create_transaction))
+        .route("/transactions/{id}", web::get().to(get_transaction))
+        .route("/transactions/{id}", web::patch().to(update_transaction))
+        .route("/transactions/{id}", web::delete().to(delete_transaction));
 }

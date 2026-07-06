@@ -1,7 +1,7 @@
 # User-visible API strings
 
-file-not-found = No file transactions_{ $n }.csv under data/transactions/outputs/
-internal-read-error = Internal server error reading file
+transaction-not-found = No transaction with id { $n }
+internal-db-error = Internal server error
 
 # Budget categories
 category-other = Other
