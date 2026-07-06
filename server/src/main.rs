@@ -1,9 +1,9 @@
 mod features;
-mod l10n;
+mod shared;
 
 use actix_web::{web, App, HttpServer};
 
-use crate::l10n::L10n;
+use crate::shared::l10n::L10n;
 
 /// Main function to start the server
 #[actix_web::main]
@@ -16,11 +16,13 @@ async fn main() -> std::io::Result<()> {
     println!("  and http://{addr}/transactions/{{n}}  (e.g. /transactions/1)");
 
     let l10n = web::Data::new(L10n::new());
+    let pool = web::Data::new(shared::postgres::create_pool().await);
 
     // Actix web server configuration
     HttpServer::new(move || {
         App::new()
             .app_data(l10n.clone())
+            .app_data(pool.clone())
             .configure(features::transactions::configure)
     })
         .bind(addr)?
