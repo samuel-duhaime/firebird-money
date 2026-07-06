@@ -1,4 +1,4 @@
-//! HTTP API for transactions: sample CSV, plus JSON CRUD backed by Postgres.
+//! HTTP API for transactions: JSON CRUD backed by Postgres.
 
 use actix_web::http::header::{ContentLanguage, LanguageTag, QualityItem};
 use actix_web::{web, HttpResponse, Responder};
@@ -10,15 +10,6 @@ use unic_langid::LanguageIdentifier;
 use super::model::{NewTransaction, TransactionFilter, TransactionPatch};
 use super::repository;
 use crate::shared::l10n::L10n;
-
-const SAMPLE_TRANSACTIONS_CSV: &str = include_str!("../../../data/transactions/outputs/transactions_sample.csv");
-
-/// Sample transactions CSV
-async fn transactions_sample() -> impl Responder {
-    HttpResponse::Ok()
-        .content_type("text/csv; charset=utf-8")
-        .body(SAMPLE_TRANSACTIONS_CSV)
-}
 
 /// Transaction id path (`/transactions/{id}`)
 #[derive(Deserialize)]
@@ -148,8 +139,7 @@ async fn delete_transaction(
 
 /// Registers the transactions feature's routes.
 pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.route("/transactions/sample", web::get().to(transactions_sample))
-        .route("/transactions", web::get().to(list_transactions))
+    cfg.route("/transactions", web::get().to(list_transactions))
         .route("/transactions", web::post().to(create_transaction))
         .route("/transactions/{id}", web::get().to(get_transaction))
         .route("/transactions/{id}", web::patch().to(update_transaction))

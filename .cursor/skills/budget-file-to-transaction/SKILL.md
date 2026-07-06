@@ -27,8 +27,6 @@ Columns:
 - Category / Catégorie — use locale labels (see below). If unsure: Other / Autre.
 - Account / Compte — for now, set to `User 1` for all rows unless the source provides it.
 
-Match the shape of `server/data/transactions/outputs/transactions_sample.csv` (header + one data row per transaction).
-
 ## Steps
 
 1. Detect format/delimiter; skip headers, totals, blank rows.

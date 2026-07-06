@@ -28,4 +28,3 @@ target
 # Data files
 data/transactions/inputs/*
 data/transactions/outputs/*
-!data/transactions/outputs/transactions_sample.csv
