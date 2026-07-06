@@ -9,7 +9,7 @@ use actix_web::{web, HttpResponse, Responder};
 use log::error;
 use serde::Deserialize;
 
-use crate::l10n::L10n;
+use crate::shared::l10n::L10n;
 
 const SAMPLE_TRANSACTIONS_CSV: &str = include_str!("../../../data/transactions/outputs/transactions_sample.csv");
 

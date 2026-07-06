@@ -11,8 +11,8 @@ use fluent::{FluentArgs, FluentResource, FluentValue};
 use log::warn;
 use unic_langid::LanguageIdentifier;
 
-const EN_FTL: &str = include_str!("../locales/en.ftl");
-const FR_FTL: &str = include_str!("../locales/fr.ftl");
+const EN_FTL: &str = include_str!("../../locales/en.ftl");
+const FR_FTL: &str = include_str!("../../locales/fr.ftl");
 
 /// Shared localization state: one Fluent bundle per supported locale.
 pub struct L10n {
