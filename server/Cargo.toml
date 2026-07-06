@@ -10,5 +10,5 @@ env_logger = "0.11.8"
 fluent = "0.16"
 log = "0.4.28"
 serde = { version = "1.0.228", features = ["derive"] }
-sqlx = { version = "0.8", features = ["runtime-tokio", "postgres"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "migrate"] }
 unic-langid = "0.9"
