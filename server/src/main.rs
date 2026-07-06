@@ -12,8 +12,7 @@ async fn main() -> std::io::Result<()> {
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 
     let addr = "127.0.0.1:3055";
-    println!("Server listening on http://{addr}/transactions/sample");
-    println!("  and http://{addr}/transactions            (GET, optional ?date=&merchant=)");
+    println!("Server listening on http://{addr}/transactions            (GET list, optional ?date=&merchant=; POST create)");
     println!("  and http://{addr}/transactions/{{id}}        (GET, PATCH, DELETE)");
 
     let l10n = web::Data::new(L10n::new());
