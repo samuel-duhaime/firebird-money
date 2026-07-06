@@ -1,51 +1,45 @@
 ---
 name: budget-file-to-transaction
 description: >-
-  Converts budget exports into transaction CSV for this repo. Do not apply from
-  context alone; only when the user explicitly requests this skill by name
-  (budget-file-to-transaction) or says to use the budget-to-transaction workflow.
+  Converts budget exports into transactions and inserts them into the local
+  database via the server's API. Do not apply from context alone; only when
+  the user explicitly requests this skill by name (budget-file-to-transaction)
+  or says to use the budget-to-transaction workflow.
 ---
 
-# Budget file → Transaction CSV
+# Budget file → Transaction
 
-**Invocation only** — Apply this document when the user explicitly requests this skill, not from context alone.
+**Invocation only** — apply only when explicitly requested by name.
 
 ## Output
 
-**File:** Write the final CSV to `server/data/transactions/outputs/transactions_{n}.csv`, where `{n}` is the next unused positive integer (e.g. no matching files → `transactions_1.csv`; if `transactions_1.csv` exists → `transactions_2.csv`, and so on). List `server/data/transactions/outputs` for existing `transactions_*.csv` names before choosing `n`.
+`POST http://127.0.0.1:3055/transactions` per transaction (server must be running via `cargo run` in `server/`).
 
-UTF-8 CSV. Use headers in the **language the user asked for**:
+```json
+{ "date": "2024-01-15", "merchant": "STARBUCKS", "amount": "12.34", "category_id": 1, "account": "User 1" }
+```
 
-- English: `Date,Merchant,Amount,Category,Account`
-- French: `Date,Marchand,Montant,Catégorie,Compte`
-
-Columns:
-
-- Date — `YYYY-MM-DD` when possible.
-- Merchant / Marchand — merchant/payee (one line, trimmed).
-- Amount / Montant — number (no currency). Default: **expenses positive**; if the source uses the opposite, flip consistently and say once.
-- Category / Catégorie — use locale labels (see below). If unsure: Other / Autre.
-- Account / Compte — for now, set to `User 1` for all rows unless the source provides it.
+- `date` — `YYYY-MM-DD`.
+- `merchant` — payee, one line, trimmed.
+- `amount` — always positive, no currency symbol. Expenses and income (deposits, paycheck, e-transfers) are both positive; direction is shown by category, not sign.
+- `category_id` — always `1` (no `categories` table yet). Still pick a best-guess category label for the preview.
+- `account` — `User 1` unless the source says otherwise.
 
 ## Steps
 
-1. Detect format/delimiter; skip headers, totals, blank rows.
-2. Map source columns → the output columns.
-3. Strip currency/`$`/thousands separators; normalize dates; collapse spaces in Merchant/Marchand.
-4. Write UTF-8 CSV with one header line then one line per transaction; save to `server/data/transactions/outputs/transactions_{n}.csv` as above; mention how many rows skipped if any.
+1. Parse the source: detect format, skip headers/totals/blanks, map columns, normalize dates/amounts/merchant.
+2. Preview every row (date, merchant, amount, category, account) plus skip count; wait for confirmation.
+3. On confirmation, `POST` each row; track successes/failures.
+4. Report created/failed/skipped counts.
 
 ## Example
 
-`01/15/2024,STARBUCKS,-12.34,Restaurant` → CSV row:
+`01/15/2024,STARBUCKS,-12.34,Restaurant` → preview row `2024-01-15 | STARBUCKS | 12.34 | Restaurant | User 1` → on confirmation:
 
-```csv
-Date,Merchant,Amount,Category,Account
-2024-01-15,STARBUCKS,12.34,Restaurant,User 1
+```bash
+curl -X POST http://127.0.0.1:3055/transactions \
+  -H "Content-Type: application/json" \
+  -d '{"date":"2024-01-15","merchant":"STARBUCKS","amount":"12.34","category_id":1,"account":"User 1"}'
 ```
 
-(If negative = debit in source, use absolute value as expense unless user says otherwise.)
 
-## Categories / Catégories
-
-- French: use labels from `server/locales/fr.ftl` (e.g. `Épicerie`, `Restaurant`, `Transport`, `Santé`, …). Fallback: `Autre`.
-- English: use the corresponding English labels from `server/locales/en.ftl`. Fallback: `Other`.
