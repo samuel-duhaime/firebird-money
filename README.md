@@ -5,7 +5,8 @@ Right now this is a small script (and API) to help with **my family budget**. Th
 ## Install
 
 1. **Rust** — Install the stable toolchain with [rustup](https://rustup.rs/) so you have `cargo` on your PATH.
-2. **This repo** — Clone it (or download it), then from the repo root:
+2. **PostgreSQL** — Install it and have a server running locally (e.g. `sudo apt install postgresql`. Create a database for this project (any name, matched to `DATABASE_URL` below).
+3. **This repo** — Clone it (or download it), then from the repo root:
 
 ```bash
 cd server
@@ -16,12 +17,14 @@ The first `cargo build` (or `cargo run`) downloads dependencies and compiles the
 
 ## Configuration
 
-Copy the example environment file into place, then edit it if you need to:
+Copy the example environment file into place, then edit it with your own Postgres credentials:
 
 ```bash
 cd server
 cp .env.example .env
 ```
+
+`DATABASE_URL` must point at a reachable Postgres database, e.g. `postgres://user:password@localhost:5432/budget_robot`. The schema is created automatically: every `cargo run` applies any pending migrations from `server/migrations/` on startup.
 
 ## How to run
 
@@ -30,4 +33,19 @@ cd server
 cargo run
 ```
 
-Open **http://127.0.0.1:3055/transactions** to list transactions from the database (optionally filtered with `?date=` and/or `?merchant=`), or **http://127.0.0.1:3055/transactions/1** (replace `1` with an id) to fetch a single one. `POST /transactions` creates a transaction, `PATCH /transactions/{id}` updates one, and `DELETE /transactions/{id}` removes one.
+The API is JSON, backed by Postgres, under `/transactions`:
+
+- `GET /transactions` — list transactions, optionally filtered with `?date=YYYY-MM-DD` and/or `?merchant=`.
+- `GET /transactions/{id}` — fetch a single transaction.
+- `POST /transactions` — create a transaction (`date`, `merchant`, `amount`, `category_id`, `account`).
+- `PATCH /transactions/{id}` — partially update a transaction (only the fields you send change).
+- `DELETE /transactions/{id}` — delete a transaction.
+
+## Tests
+
+```bash
+cd server
+cargo test
+```
+
+Each test runs against its own throwaway Postgres database (auto-migrated, auto-dropped), so your real data is untouched.
