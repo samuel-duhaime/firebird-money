@@ -5,10 +5,16 @@ edition = "2021"
 
 [dependencies]
 actix-web = "4.13.0"
+chrono = { version = "0.4", features = ["serde"] }
 dotenvy = "0.15"
 env_logger = "0.11.8"
 fluent = "0.16"
 log = "0.4.28"
+rust_decimal = { version = "1", features = ["serde-with-str"] }
 serde = { version = "1.0.228", features = ["derive"] }
-sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "migrate"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "migrate", "chrono", "rust_decimal"] }
 unic-langid = "0.9"
+
+[dev-dependencies]
+actix-http = "3"
+serde_json = "1"
