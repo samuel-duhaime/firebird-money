@@ -33,13 +33,25 @@ cd server
 cargo run
 ```
 
-The API is JSON, backed by Postgres, under `/transactions`:
+## API
+
+The API is JSON, backed by Postgres.
+
+`/transactions`:
 
 - `GET /transactions` — list transactions, optionally filtered with `?date=YYYY-MM-DD` and/or `?merchant=`.
 - `GET /transactions/{id}` — fetch a single transaction.
 - `POST /transactions` — create a transaction (`date`, `merchant`, `amount`, `category_id`, `account`).
 - `PATCH /transactions/{id}` — partially update a transaction (only the fields you send change).
 - `DELETE /transactions/{id}` — delete a transaction.
+
+`/categories`:
+
+- `GET /categories` — list all categories.
+- `GET /categories/{id}` — fetch a single category.
+- `POST /categories` — create a category (`name_en`, `name_fr`, `type`, where `type` is `income`, `expense`, or `transfer`).
+- `PATCH /categories/{id}` — partially update a category (only the fields you send change).
+- `DELETE /categories/{id}` — delete a category.
 
 ## Tests
 
