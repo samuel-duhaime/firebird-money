@@ -45,6 +45,8 @@ The API is JSON, backed by Postgres.
 - `PATCH /transactions/{id}` — partially update a transaction (only the fields you send change).
 - `DELETE /transactions/{id}` — delete a transaction.
 
+Every transaction response includes its joined category: `category_name_en`, `category_name_fr`, and `category_type` alongside `category_id`. `category_id` must reference an existing category (enforced by a foreign key).
+
 `/categories`:
 
 - `GET /categories` — list all categories.

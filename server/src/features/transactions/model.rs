@@ -3,7 +3,7 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
-/// A single row in the `transactions` table.
+/// A single row in the `transactions` table, joined with its category.
 #[derive(Debug, Serialize, FromRow)]
 pub struct Transaction {
     pub id: i64,
@@ -11,6 +11,9 @@ pub struct Transaction {
     pub merchant: String,
     pub amount: Decimal,
     pub category_id: i32,
+    pub category_name_en: String,
+    pub category_name_fr: String,
+    pub category_type: String,
     pub account: String,
     pub created_at: DateTime<Utc>,
 }

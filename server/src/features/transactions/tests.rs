@@ -171,6 +171,39 @@ async fn get_transaction_returns_row(pool: PgPool) {
     let body: serde_json::Value = test::read_body_json(resp).await;
     assert_eq!(body["merchant"], "STARBUCKS");
     assert_eq!(body["amount"], "12.34");
+    assert_eq!(body["category_name_en"], "Other");
+    assert_eq!(body["category_name_fr"], "Autre");
+    assert_eq!(body["category_type"], "expense");
+}
+
+#[sqlx::test]
+async fn get_transaction_reflects_renamed_category(pool: PgPool) {
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(pool))
+            .app_data(web::Data::new(L10n::new()))
+            .configure(configure)
+            .configure(crate::features::categories::configure),
+    )
+    .await;
+    let id = create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
+
+    let patch_req = test::TestRequest::patch()
+        .uri("/categories/1")
+        .set_json(serde_json::json!({ "name_en": "Miscellaneous", "name_fr": "Divers" }))
+        .to_request();
+    let patch_resp = test::call_service(&app, patch_req).await;
+    assert_eq!(patch_resp.status(), 200);
+
+    let get_req = test::TestRequest::get()
+        .uri(&format!("/transactions/{id}"))
+        .to_request();
+    let get_resp = test::call_service(&app, get_req).await;
+
+    assert_eq!(get_resp.status(), 200);
+    let body: serde_json::Value = test::read_body_json(get_resp).await;
+    assert_eq!(body["category_name_en"], "Miscellaneous");
+    assert_eq!(body["category_name_fr"], "Divers");
 }
 
 #[sqlx::test]
@@ -215,6 +248,9 @@ async fn create_transaction_returns_created_row(pool: PgPool) {
     let body: serde_json::Value = test::read_body_json(resp).await;
     assert_eq!(body["merchant"], "STARBUCKS");
     assert_eq!(body["amount"], "12.34");
+    assert_eq!(body["category_name_en"], "Other");
+    assert_eq!(body["category_name_fr"], "Autre");
+    assert_eq!(body["category_type"], "expense");
     assert_eq!(location, format!("/transactions/{}", body["id"].as_i64().unwrap()));
 }
 
@@ -251,7 +287,28 @@ async fn create_transaction_persists_all_fields(pool: PgPool) {
     assert_eq!(body["merchant"], "STARBUCKS");
     assert_eq!(body["amount"], "12.34");
     assert_eq!(body["category_id"], 7);
+    assert_eq!(body["category_name_en"], "Education");
+    assert_eq!(body["category_name_fr"], "Éducation");
+    assert_eq!(body["category_type"], "expense");
     assert_eq!(body["account"], "User 2");
+}
+
+#[sqlx::test]
+async fn create_transaction_rejects_unknown_category_id(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let req = test::TestRequest::post()
+        .uri("/transactions")
+        .set_json(serde_json::json!({
+            "date": "2024-01-15",
+            "merchant": "STARBUCKS",
+            "amount": "12.34",
+            "category_id": 999999,
+            "account": "User 1",
+        }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 500);
 }
 
 #[sqlx::test]
@@ -289,6 +346,38 @@ async fn update_transaction_changes_only_given_fields(pool: PgPool) {
     let body: serde_json::Value = test::read_body_json(resp).await;
     assert_eq!(body["amount"], "20.00");
     assert_eq!(body["merchant"], "STARBUCKS");
+}
+
+#[sqlx::test]
+async fn update_transaction_changes_category(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let id = create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
+
+    let req = test::TestRequest::patch()
+        .uri(&format!("/transactions/{id}"))
+        .set_json(serde_json::json!({ "category_id": 7 }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["category_id"], 7);
+    assert_eq!(body["category_name_en"], "Education");
+    assert_eq!(body["category_type"], "expense");
+}
+
+#[sqlx::test]
+async fn update_transaction_rejects_unknown_category_id(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let id = create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
+
+    let req = test::TestRequest::patch()
+        .uri(&format!("/transactions/{id}"))
+        .set_json(serde_json::json!({ "category_id": 999999 }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 500);
 }
 
 #[sqlx::test]
