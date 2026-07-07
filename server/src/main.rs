@@ -14,6 +14,7 @@ async fn main() -> std::io::Result<()> {
     let addr = "127.0.0.1:3055";
     println!("Server listening on http://{addr}/transactions            (GET list, optional ?date=&merchant=; POST create)");
     println!("  and http://{addr}/transactions/{{id}}        (GET, PATCH, DELETE)");
+    println!("  and http://{addr}/categories               (POST create)");
 
     let l10n = web::Data::new(L10n::new());
     let pool = web::Data::new(shared::postgres::create_pool().await);
@@ -24,6 +25,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(l10n.clone())
             .app_data(pool.clone())
             .configure(features::transactions::configure)
+            .configure(features::categories::configure)
     })
         .bind(addr)?
         .run()
