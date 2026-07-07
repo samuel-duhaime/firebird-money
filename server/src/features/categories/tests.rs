@@ -46,7 +46,21 @@ where
         .to_request();
     let resp = test::call_service(app, req).await;
     let body: serde_json::Value = test::read_body_json(resp).await;
-    body["id"].as_i64().unwrap()
+    body["id"]
+        .as_i64()
+        .unwrap_or_else(|| panic!("expected created category, got {body}"))
+}
+
+/// Fetches all categories through `GET /categories`.
+async fn list_via_api<S, B>(app: &S) -> Vec<serde_json::Value>
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let req = test::TestRequest::get().uri("/categories").to_request();
+    let resp = test::call_service(app, req).await;
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    body.as_array().unwrap().clone()
 }
 
 // --- POST /categories ---
@@ -57,8 +71,8 @@ async fn create_category_returns_created_row(pool: PgPool) {
     let req = test::TestRequest::post()
         .uri("/categories")
         .set_json(serde_json::json!({
-            "name_en": "Groceries",
-            "name_fr": "Épicerie",
+            "name_en": "Test Category",
+            "name_fr": "Catégorie test",
             "type": "expense",
         }))
         .to_request();
@@ -74,8 +88,8 @@ async fn create_category_returns_created_row(pool: PgPool) {
         .to_string();
 
     let body: serde_json::Value = test::read_body_json(resp).await;
-    assert_eq!(body["name_en"], "Groceries");
-    assert_eq!(body["name_fr"], "Épicerie");
+    assert_eq!(body["name_en"], "Test Category");
+    assert_eq!(body["name_fr"], "Catégorie test");
     assert_eq!(body["type"], "expense");
     assert_eq!(location, format!("/categories/{}", body["id"].as_i64().unwrap()));
 }
@@ -85,7 +99,7 @@ async fn create_category_rejects_malformed_body(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
     let req = test::TestRequest::post()
         .uri("/categories")
-        .set_json(serde_json::json!({ "name_en": "Groceries" }))
+        .set_json(serde_json::json!({ "name_en": "Test Category" }))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -111,13 +125,13 @@ async fn create_category_rejects_invalid_type(pool: PgPool) {
 #[sqlx::test]
 async fn create_category_rejects_duplicate_name(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    create_via_api(&app, "Groceries", "Épicerie", "expense").await;
+    create_via_api(&app, "Test Category", "Catégorie test", "expense").await;
 
     let req = test::TestRequest::post()
         .uri("/categories")
         .set_json(serde_json::json!({
-            "name_en": "Groceries",
-            "name_fr": "Épicerie 2",
+            "name_en": "Test Category",
+            "name_fr": "Catégorie test 2",
             "type": "expense",
         }))
         .to_request();
@@ -131,43 +145,41 @@ async fn create_category_rejects_duplicate_name(pool: PgPool) {
 #[sqlx::test]
 async fn list_categories_returns_all_rows(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    create_via_api(&app, "Groceries", "Épicerie", "expense").await;
-    create_via_api(&app, "Salary", "Salaire", "income").await;
+    let before = list_via_api(&app).await.len();
+    create_via_api(&app, "Test Category", "Catégorie test", "expense").await;
+    create_via_api(&app, "Test Income", "Revenu test", "income").await;
 
-    let req = test::TestRequest::get().uri("/categories").to_request();
-    let resp = test::call_service(&app, req).await;
+    let rows = list_via_api(&app).await;
 
-    assert_eq!(resp.status(), 200);
-    let body: serde_json::Value = test::read_body_json(resp).await;
-    assert_eq!(body.as_array().unwrap().len(), 2);
+    assert_eq!(rows.len(), before + 2);
 }
 
 #[sqlx::test]
-async fn list_categories_returns_empty_array_when_none_exist(pool: PgPool) {
+async fn list_categories_includes_seeded_categories(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
 
-    let req = test::TestRequest::get().uri("/categories").to_request();
-    let resp = test::call_service(&app, req).await;
+    let rows = list_via_api(&app).await;
 
-    assert_eq!(resp.status(), 200);
-    let body: serde_json::Value = test::read_body_json(resp).await;
-    assert_eq!(body.as_array().unwrap().len(), 0);
+    assert!(rows
+        .iter()
+        .any(|r| r["name_en"] == "Groceries" && r["type"] == "expense"));
+    assert!(rows
+        .iter()
+        .any(|r| r["name_en"] == "Salary" && r["type"] == "income"));
 }
 
 #[sqlx::test]
 async fn list_categories_orders_by_id(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    let first_id = create_via_api(&app, "Groceries", "Épicerie", "expense").await;
-    let second_id = create_via_api(&app, "Salary", "Salaire", "income").await;
+    let first_id = create_via_api(&app, "Test Category", "Catégorie test", "expense").await;
+    let second_id = create_via_api(&app, "Test Income", "Revenu test", "income").await;
 
-    let req = test::TestRequest::get().uri("/categories").to_request();
-    let resp = test::call_service(&app, req).await;
-
-    assert_eq!(resp.status(), 200);
-    let body: serde_json::Value = test::read_body_json(resp).await;
-    let rows = body.as_array().unwrap();
+    let rows = list_via_api(&app).await;
     let ids: Vec<i64> = rows.iter().map(|r| r["id"].as_i64().unwrap()).collect();
-    assert_eq!(ids, vec![first_id, second_id]);
+    let first_pos = ids.iter().position(|&id| id == first_id).unwrap();
+    let second_pos = ids.iter().position(|&id| id == second_id).unwrap();
+
+    assert!(first_pos < second_pos);
 }
 
 // --- GET /categories/{id} ---
@@ -175,7 +187,7 @@ async fn list_categories_orders_by_id(pool: PgPool) {
 #[sqlx::test]
 async fn get_category_returns_row(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    let id = create_via_api(&app, "Groceries", "Épicerie", "expense").await;
+    let id = create_via_api(&app, "Test Category", "Catégorie test", "expense").await;
 
     let req = test::TestRequest::get()
         .uri(&format!("/categories/{id}"))
@@ -184,7 +196,7 @@ async fn get_category_returns_row(pool: PgPool) {
 
     assert_eq!(resp.status(), 200);
     let body: serde_json::Value = test::read_body_json(resp).await;
-    assert_eq!(body["name_en"], "Groceries");
+    assert_eq!(body["name_en"], "Test Category");
     assert_eq!(body["type"], "expense");
 }
 
@@ -206,18 +218,18 @@ async fn get_category_not_found(pool: PgPool) {
 #[sqlx::test]
 async fn update_category_changes_only_given_fields(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    let id = create_via_api(&app, "Groceries", "Épicerie", "expense").await;
+    let id = create_via_api(&app, "Test Category", "Catégorie test", "expense").await;
 
     let req = test::TestRequest::patch()
         .uri(&format!("/categories/{id}"))
-        .set_json(serde_json::json!({ "name_en": "Groceries & Household" }))
+        .set_json(serde_json::json!({ "name_en": "Test Category & Household" }))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
     assert_eq!(resp.status(), 200);
     let body: serde_json::Value = test::read_body_json(resp).await;
-    assert_eq!(body["name_en"], "Groceries & Household");
-    assert_eq!(body["name_fr"], "Épicerie");
+    assert_eq!(body["name_en"], "Test Category & Household");
+    assert_eq!(body["name_fr"], "Catégorie test");
     assert_eq!(body["type"], "expense");
 }
 
@@ -236,7 +248,7 @@ async fn update_category_not_found(pool: PgPool) {
 #[sqlx::test]
 async fn update_category_with_empty_body_leaves_row_unchanged(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    let id = create_via_api(&app, "Groceries", "Épicerie", "expense").await;
+    let id = create_via_api(&app, "Test Category", "Catégorie test", "expense").await;
 
     let req = test::TestRequest::patch()
         .uri(&format!("/categories/{id}"))
@@ -246,15 +258,15 @@ async fn update_category_with_empty_body_leaves_row_unchanged(pool: PgPool) {
 
     assert_eq!(resp.status(), 200);
     let body: serde_json::Value = test::read_body_json(resp).await;
-    assert_eq!(body["name_en"], "Groceries");
-    assert_eq!(body["name_fr"], "Épicerie");
+    assert_eq!(body["name_en"], "Test Category");
+    assert_eq!(body["name_fr"], "Catégorie test");
     assert_eq!(body["type"], "expense");
 }
 
 #[sqlx::test]
 async fn update_category_rejects_malformed_body(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    let id = create_via_api(&app, "Groceries", "Épicerie", "expense").await;
+    let id = create_via_api(&app, "Test Category", "Catégorie test", "expense").await;
 
     let req = test::TestRequest::patch()
         .uri(&format!("/categories/{id}"))
@@ -270,7 +282,7 @@ async fn update_category_rejects_malformed_body(pool: PgPool) {
 #[sqlx::test]
 async fn delete_category_removes_row(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    let id = create_via_api(&app, "Groceries", "Épicerie", "expense").await;
+    let id = create_via_api(&app, "Test Category", "Catégorie test", "expense").await;
 
     let delete_req = test::TestRequest::delete()
         .uri(&format!("/categories/{id}"))
@@ -299,7 +311,7 @@ async fn delete_category_not_found(pool: PgPool) {
 #[sqlx::test]
 async fn delete_category_twice_returns_not_found_second_time(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    let id = create_via_api(&app, "Groceries", "Épicerie", "expense").await;
+    let id = create_via_api(&app, "Test Category", "Catégorie test", "expense").await;
 
     let first_req = test::TestRequest::delete()
         .uri(&format!("/categories/{id}"))
