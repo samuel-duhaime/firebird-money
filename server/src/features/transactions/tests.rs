@@ -308,7 +308,9 @@ async fn create_transaction_rejects_unknown_category_id(pool: PgPool) {
         .to_request();
     let resp = test::call_service(&app, req).await;
 
-    assert_eq!(resp.status(), 500);
+    assert_eq!(resp.status(), 400);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert!(body["error"].is_string());
 }
 
 #[sqlx::test]
@@ -377,7 +379,9 @@ async fn update_transaction_rejects_unknown_category_id(pool: PgPool) {
         .to_request();
     let resp = test::call_service(&app, req).await;
 
-    assert_eq!(resp.status(), 500);
+    assert_eq!(resp.status(), 400);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert!(body["error"].is_string());
 }
 
 #[sqlx::test]
