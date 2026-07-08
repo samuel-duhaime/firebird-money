@@ -119,7 +119,7 @@ async fn create_category_rejects_invalid_type(pool: PgPool) {
         .to_request();
     let resp = test::call_service(&app, req).await;
 
-    assert_eq!(resp.status(), 500);
+    assert_eq!(resp.status(), 400);
 }
 
 #[sqlx::test]
@@ -137,7 +137,7 @@ async fn create_category_rejects_duplicate_name(pool: PgPool) {
         .to_request();
     let resp = test::call_service(&app, req).await;
 
-    assert_eq!(resp.status(), 500);
+    assert_eq!(resp.status(), 409);
 }
 
 // --- GET /categories ---
@@ -324,4 +324,39 @@ async fn delete_category_twice_returns_not_found_second_time(pool: PgPool) {
         .to_request();
     let second_resp = test::call_service(&app, second_req).await;
     assert_eq!(second_resp.status(), 404);
+}
+
+#[sqlx::test]
+async fn delete_category_rejects_when_referenced_by_transaction(pool: PgPool) {
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(pool))
+            .app_data(web::Data::new(L10n::new()))
+            .configure(configure)
+            .configure(crate::features::transactions::configure),
+    )
+    .await;
+    let category_id = create_via_api(&app, "Test Category", "Catégorie test", "expense").await;
+
+    let txn_req = test::TestRequest::post()
+        .uri("/transactions")
+        .set_json(serde_json::json!({
+            "date": "2024-01-15",
+            "merchant": "STARBUCKS",
+            "amount": "12.34",
+            "category_id": category_id,
+            "account": "User 1",
+        }))
+        .to_request();
+    let txn_resp = test::call_service(&app, txn_req).await;
+    assert_eq!(txn_resp.status(), 201);
+
+    let delete_req = test::TestRequest::delete()
+        .uri(&format!("/categories/{category_id}"))
+        .to_request();
+    let delete_resp = test::call_service(&app, delete_req).await;
+
+    assert_eq!(delete_resp.status(), 409);
+    let body: serde_json::Value = test::read_body_json(delete_resp).await;
+    assert!(body["error"].is_string());
 }
