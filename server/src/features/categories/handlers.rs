@@ -31,12 +31,18 @@ async fn create_category(
         Ok(category) => HttpResponse::Created()
             .insert_header(("Location", format!("/categories/{}", category.id)))
             .json(category),
-        Err(e) if is_unique_violation(&e) => {
-            error_response(&l10n, &locale, StatusCode::CONFLICT, "category-duplicate-name")
-        }
-        Err(e) if is_check_violation(&e) => {
-            error_response(&l10n, &locale, StatusCode::BAD_REQUEST, "category-invalid-type")
-        }
+        Err(e) if is_unique_violation(&e) => error_response(
+            &l10n,
+            &locale,
+            StatusCode::CONFLICT,
+            "category-duplicate-name",
+        ),
+        Err(e) if is_check_violation(&e) => error_response(
+            &l10n,
+            &locale,
+            StatusCode::BAD_REQUEST,
+            "category-invalid-type",
+        ),
         Err(e) => {
             error!("failed to create category error={e}");
             internal_error_response(&l10n, &locale)
@@ -87,12 +93,18 @@ async fn update_category(
     match repository::update(&pool, id as i32, &patch).await {
         Ok(Some(category)) => HttpResponse::Ok().json(category),
         Ok(None) => not_found_response(&l10n, &locale, "category-not-found", id),
-        Err(e) if is_unique_violation(&e) => {
-            error_response(&l10n, &locale, StatusCode::CONFLICT, "category-duplicate-name")
-        }
-        Err(e) if is_check_violation(&e) => {
-            error_response(&l10n, &locale, StatusCode::BAD_REQUEST, "category-invalid-type")
-        }
+        Err(e) if is_unique_violation(&e) => error_response(
+            &l10n,
+            &locale,
+            StatusCode::CONFLICT,
+            "category-duplicate-name",
+        ),
+        Err(e) if is_check_violation(&e) => error_response(
+            &l10n,
+            &locale,
+            StatusCode::BAD_REQUEST,
+            "category-invalid-type",
+        ),
         Err(e) => {
             error!("failed to update category id={id} error={e}");
             internal_error_response(&l10n, &locale)

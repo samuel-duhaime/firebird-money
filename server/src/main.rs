@@ -28,7 +28,7 @@ async fn main() -> std::io::Result<()> {
             .configure(features::transactions::configure)
             .configure(features::categories::configure)
     })
-        .bind(addr)?
-        .run()
-        .await
+    .bind(addr)?
+    .run()
+    .await
 }

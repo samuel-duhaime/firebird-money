@@ -32,18 +32,12 @@ impl L10n {
 
         // `new_concurrent` so `L10n` can live in `web::Data` across Actix worker threads.
         let mut en = FluentBundle::new_concurrent(vec![lid("en")]);
-        en.add_resource(en_res)
-            .expect("add en resource");
+        en.add_resource(en_res).expect("add en resource");
 
         let mut fr = FluentBundle::new_concurrent(vec![lid("fr")]);
-        fr.add_resource(fr_res)
-            .expect("add fr resource");
+        fr.add_resource(fr_res).expect("add fr resource");
 
-        Self {
-            locale,
-            en,
-            fr,
-        }
+        Self { locale, en, fr }
     }
 
     /// Locale from `DEFAULT_LANGUAGE` (`.env`); see module docs.
@@ -83,12 +77,7 @@ impl L10n {
     }
 
     /// Helper for a single string variable (e.g. transaction number in 404 text).
-    pub fn format_with_n(
-        &self,
-        locale: &LanguageIdentifier,
-        id: &str,
-        n: u32,
-    ) -> String {
+    pub fn format_with_n(&self, locale: &LanguageIdentifier, id: &str, n: u32) -> String {
         let mut args = FluentArgs::new();
         args.set("n", FluentValue::from(i64::from(n)));
         self.format_message(locale, id, Some(args))

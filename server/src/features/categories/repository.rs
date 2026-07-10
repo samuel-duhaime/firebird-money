@@ -20,17 +20,21 @@ pub async fn create(pool: &PgPool, new_category: &NewCategory) -> Result<Categor
 
 /// Lists all categories, ordered by id.
 pub async fn list(pool: &PgPool) -> Result<Vec<Category>, sqlx::Error> {
-    sqlx::query_as::<_, Category>(&format!("SELECT {SELECT_COLUMNS} FROM categories ORDER BY id"))
-        .fetch_all(pool)
-        .await
+    sqlx::query_as::<_, Category>(&format!(
+        "SELECT {SELECT_COLUMNS} FROM categories ORDER BY id"
+    ))
+    .fetch_all(pool)
+    .await
 }
 
 /// Fetches a single category by id, or `None` if it doesn't exist.
 pub async fn get(pool: &PgPool, id: i32) -> Result<Option<Category>, sqlx::Error> {
-    sqlx::query_as::<_, Category>(&format!("SELECT {SELECT_COLUMNS} FROM categories WHERE id = $1"))
-        .bind(id)
-        .fetch_optional(pool)
-        .await
+    sqlx::query_as::<_, Category>(&format!(
+        "SELECT {SELECT_COLUMNS} FROM categories WHERE id = $1"
+    ))
+    .bind(id)
+    .fetch_optional(pool)
+    .await
 }
 
 /// Applies a partial update (only `Some` fields change) and returns the updated row, or `None` if

@@ -10,7 +10,10 @@ const SELECT_COLUMNS: &str = "
 const FROM_JOIN: &str = "FROM transactions t JOIN categories c ON c.id = t.category_id";
 
 /// Inserts a new transaction and returns the created row, joined with its category.
-pub async fn create(pool: &PgPool, new_transaction: &NewTransaction) -> Result<Transaction, sqlx::Error> {
+pub async fn create(
+    pool: &PgPool,
+    new_transaction: &NewTransaction,
+) -> Result<Transaction, sqlx::Error> {
     sqlx::query_as::<_, Transaction>(&format!(
         "WITH inserted AS (
             INSERT INTO transactions (date, merchant, amount, category_id, account)
@@ -31,7 +34,10 @@ pub async fn create(pool: &PgPool, new_transaction: &NewTransaction) -> Result<T
 
 /// Lists transactions, optionally narrowed by an exact date match and/or a
 /// case-insensitive merchant substring match. Most recent first.
-pub async fn list(pool: &PgPool, filter: &TransactionFilter) -> Result<Vec<Transaction>, sqlx::Error> {
+pub async fn list(
+    pool: &PgPool,
+    filter: &TransactionFilter,
+) -> Result<Vec<Transaction>, sqlx::Error> {
     sqlx::query_as::<_, Transaction>(&format!(
         "SELECT {SELECT_COLUMNS} {FROM_JOIN}
          WHERE ($1::date IS NULL OR t.date = $1)

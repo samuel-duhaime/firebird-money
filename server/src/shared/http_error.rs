@@ -61,21 +61,29 @@ pub fn not_found_response(
 
 /// 500 JSON body for an unrecognized database failure.
 pub fn internal_error_response(l10n: &L10n, locale: &LanguageIdentifier) -> HttpResponse {
-    error_response(l10n, locale, StatusCode::INTERNAL_SERVER_ERROR, "internal-db-error")
+    error_response(
+        l10n,
+        locale,
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "internal-db-error",
+    )
 }
 
 /// `true` if `err` is a unique constraint violation (SQLSTATE 23505), e.g. a duplicate name.
 pub fn is_unique_violation(err: &sqlx::Error) -> bool {
-    err.as_database_error().is_some_and(|e| e.is_unique_violation())
+    err.as_database_error()
+        .is_some_and(|e| e.is_unique_violation())
 }
 
 /// `true` if `err` is a check constraint violation (SQLSTATE 23514), e.g. an invalid `type` value.
 pub fn is_check_violation(err: &sqlx::Error) -> bool {
-    err.as_database_error().is_some_and(|e| e.is_check_violation())
+    err.as_database_error()
+        .is_some_and(|e| e.is_check_violation())
 }
 
 /// `true` if `err` is a foreign key violation (SQLSTATE 23503), e.g. an unknown `category_id`, or
 /// deleting a row that's still referenced.
 pub fn is_foreign_key_violation(err: &sqlx::Error) -> bool {
-    err.as_database_error().is_some_and(|e| e.is_foreign_key_violation())
+    err.as_database_error()
+        .is_some_and(|e| e.is_foreign_key_violation())
 }
