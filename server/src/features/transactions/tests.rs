@@ -251,7 +251,10 @@ async fn create_transaction_returns_created_row(pool: PgPool) {
     assert_eq!(body["category_name_en"], "Other");
     assert_eq!(body["category_name_fr"], "Autre");
     assert_eq!(body["category_type"], "expense");
-    assert_eq!(location, format!("/transactions/{}", body["id"].as_i64().unwrap()));
+    assert_eq!(
+        location,
+        format!("/transactions/{}", body["id"].as_i64().unwrap())
+    );
 }
 
 #[sqlx::test]

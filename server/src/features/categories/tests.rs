@@ -91,7 +91,10 @@ async fn create_category_returns_created_row(pool: PgPool) {
     assert_eq!(body["name_en"], "Test Category");
     assert_eq!(body["name_fr"], "Catégorie test");
     assert_eq!(body["type"], "expense");
-    assert_eq!(location, format!("/categories/{}", body["id"].as_i64().unwrap()));
+    assert_eq!(
+        location,
+        format!("/categories/{}", body["id"].as_i64().unwrap())
+    );
 }
 
 #[sqlx::test]
