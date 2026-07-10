@@ -1,6 +1,14 @@
-# Budget Robot
+# FireBird Money
 
-Right now this is a small script (and API) to help with **my family budget**. The goal is to make that workflow **as easy as possible**.
+**Family finance, made simple.** FireBird Money puts your whole financial life in one place, and lets AI handle the busywork - **open source**, from day one.
+
+## Table of Contents
+
+- [Install](#install)
+- [Configuration](#configuration)
+- [How to run](#how-to-run)
+- [API](#api)
+- [Tests](#tests)
 
 ## Install
 
@@ -24,7 +32,7 @@ cd server
 cp .env.example .env
 ```
 
-`DATABASE_URL` must point at a reachable Postgres database, e.g. `postgres://user:password@localhost:5432/budget_robot`. The schema is created automatically: every `cargo run` applies any pending migrations from `server/migrations/` on startup.
+`DATABASE_URL` must point at a reachable Postgres database, e.g. `postgres://user:password@localhost:5432/firebird-money`. The schema is created automatically: every `cargo run` applies any pending migrations from `server/migrations/` on startup.
 
 ## How to run
 
