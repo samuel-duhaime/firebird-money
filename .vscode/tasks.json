@@ -1,0 +1,89 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Run Client and Server",
+      "dependsOn": [
+        "Run Server",
+        "Run Client"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "Run Server",
+      "type": "shell",
+      "command": "cargo",
+      "args": ["watch", "-x", "run"],
+      "options": {
+        "cwd": "${workspaceFolder}/server"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "Run Client",
+      "type": "shell",
+      "command": "echo 'TODO: no client app yet - replace with the real start command once client/ exists'",
+      "options": {
+        "cwd": "${workspaceFolder}/client"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "Format",
+      "dependsOn": ["Format Server", "Format Client"],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "Format Server",
+      "type": "shell",
+      "command": "cargo",
+      "args": ["fmt"],
+      "options": {
+        "cwd": "${workspaceFolder}/server"
+      },
+      "group": "build"
+    },
+    {
+      "label": "Format Client",
+      "type": "shell",
+      "command": "echo 'TODO: no client app yet - replace with the real format command once client/ exists'",
+      "options": {
+        "cwd": "${workspaceFolder}/client"
+      },
+      "group": "build"
+    },
+    {
+      "label": "Update Main",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "Git Checkout Main",
+        "Git Pull Main"
+      ],
+      "group": "build"
+    },
+    {
+      "label": "Git Checkout Main",
+      "type": "shell",
+      "command": "git checkout main",
+      "group": "build"
+    },
+    {
+      "label": "Git Pull Main",
+      "type": "shell",
+      "command": "git pull origin main",
+      "group": "build"
+    }
+  ]
+}

@@ -14,7 +14,8 @@
 
 1. **Rust** — Install the stable toolchain with [rustup](https://rustup.rs/) so you have `cargo` on your PATH.
 2. **PostgreSQL** — Install it and have a server running locally (e.g. `sudo apt install postgresql`. Create a database for this project (any name, matched to `DATABASE_URL` below).
-3. **This repo** — Clone it (or download it), then from the repo root:
+3. **cargo-watch** (used by the VS Code "Run Server" task for auto-reload on save) — `cargo install cargo-watch`.
+4. **This repo** — Clone it (or download it), then from the repo root:
 
 ```bash
 cd server
@@ -38,8 +39,10 @@ cp .env.example .env
 
 ```bash
 cd server
-cargo run
+cargo watch -x run # Or `cargo run` for a single run without auto-reload.
 ```
+
+Or use the VS Code "Run Server" task for auto-reload on save.
 
 ## API
 
