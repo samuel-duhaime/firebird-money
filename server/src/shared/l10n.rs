@@ -69,7 +69,7 @@ impl L10n {
             return id.to_string();
         };
         let mut errors = vec![];
-        let out = bundle.format_pattern(&pattern, args.as_ref(), &mut errors);
+        let out = bundle.format_pattern(pattern, args.as_ref(), &mut errors);
         if !errors.is_empty() {
             log::warn!("fluent format errors for {id}: {errors:?}");
         }
