@@ -1,0 +1,76 @@
+# CI for the whole repo. Only the Rust server (server/) has code and tests today; each
+# job sets its own working-directory so a "client" job can be added later without
+# touching the server jobs below.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  fmt:
+    name: cargo fmt
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      # --check fails the job instead of rewriting files; formatting the repo is a local dev step.
+      - run: cargo fmt --all --check
+
+  clippy:
+    name: cargo clippy
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      # Caches ~/.cargo and target/ keyed on Cargo.lock, so repeat runs skip most recompilation.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: server
+      # -D warnings turns every clippy lint into a hard failure; otherwise warnings are silently ignored.
+      - run: cargo clippy --all-targets --all-features -- -D warnings
+
+  test:
+    name: cargo test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    # `#[sqlx::test]` (used throughout server/src) needs a live Postgres to connect to: it
+    # spins up a throwaway, migrated database per test case and drops it afterwards.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # Admin connection sqlx::test uses to create/drop each test's throwaway database.
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+      DEFAULT_LANGUAGE: en
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: server
+      - run: cargo test --all-features
