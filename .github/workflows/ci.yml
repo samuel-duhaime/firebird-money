@@ -8,6 +8,10 @@ on:
     branches: [main]
   pull_request:
 
+# Restrict the default GITHUB_TOKEN to read-only; none of these jobs need to write to the repo.
+permissions:
+  contents: read
+
 jobs:
   fmt:
     name: cargo fmt
