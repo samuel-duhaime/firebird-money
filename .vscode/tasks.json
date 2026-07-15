@@ -28,7 +28,8 @@
     {
       "label": "Run Client",
       "type": "shell",
-      "command": "echo 'TODO: no client app yet - replace with the real start command once client/ exists'",
+      "command": "npm",
+      "args": ["run", "dev"],
       "options": {
         "cwd": "${workspaceFolder}/client"
       },
@@ -58,7 +59,8 @@
     {
       "label": "Format Client",
       "type": "shell",
-      "command": "echo 'TODO: no client app yet - replace with the real format command once client/ exists'",
+      "command": "npm",
+      "args": ["run", "format"],
       "options": {
         "cwd": "${workspaceFolder}/client"
       },
