@@ -1,6 +1,7 @@
 mod features;
 mod shared;
 
+use actix_cors::Cors;
 use actix_web::{web, App, HttpServer};
 
 use crate::shared::l10n::L10n;
@@ -22,7 +23,14 @@ async fn main() -> std::io::Result<()> {
 
     // Actix web server configuration
     HttpServer::new(move || {
+        // Dev-only: allows the Vite client (a different origin) to call this API.
+        let cors = Cors::default()
+            .allowed_origin("http://localhost:5173")
+            .allow_any_method()
+            .allow_any_header();
+
         App::new()
+            .wrap(cors)
             .app_data(l10n.clone())
             .app_data(pool.clone())
             .configure(features::transactions::configure)
