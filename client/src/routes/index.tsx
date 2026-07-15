@@ -1,11 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useCategories } from '../features/categories/use-categories';
 
-export const Route = createFileRoute('/')({
-  component: Dashboard,
-});
-
-function Dashboard() {
+const Dashboard = () => {
   const { data: categories, isPending, isError } = useCategories();
 
   return (
@@ -16,4 +12,8 @@ function Dashboard() {
       {categories && <p>{categories.length} categories loaded from the API.</p>}
     </>
   );
-}
+};
+
+export const Route = createFileRoute('/')({
+  component: Dashboard,
+});
