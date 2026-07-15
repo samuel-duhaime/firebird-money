@@ -1,9 +1,9 @@
 const API_BASE_URL = import.meta.env.SERVER_API_BASE_URL as string;
 
-export async function apiFetch<T>(
+export const apiFetch = async <T>(
   path: string,
   init?: RequestInit,
-): Promise<T> {
+): Promise<T> => {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: { 'Content-Type': 'application/json' },
     ...init,
@@ -16,4 +16,4 @@ export async function apiFetch<T>(
   }
 
   return response.json() as Promise<T>;
-}
+};
