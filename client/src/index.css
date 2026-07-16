@@ -1,7 +1,58 @@
+@import '@fontsource/nunito/400.css';
+@import '@fontsource/nunito/700.css';
+@import '@fontsource/quicksand/400.css';
+@import '@fontsource/quicksand/700.css';
+
+:root {
+  /* Color */
+  --color-primary: #ff692d; /* Main actions */
+  --color-white: #ffffff; /* Heading text */
+  --color-black: #000000; /* High-contrast text/icons on light surfaces */
+  --color-lightest: #a4a4a6; /* Secondary Text */
+  --color-light: #7d7d80; /* Non-decorative border */
+  --color-medium: #4a4a4d; /* Decorative border */
+  --color-dark: #313133; /* Alternate background */
+  --color-background: #131314; /* Background */
+  --color-success: #3ba27a; /* Positive amounts, success states */
+  --color-error: #e5484d; /* Negative amounts, error states */
+
+  /* Spacing */
+  --spacing-xs: 8px; /* Tight gaps between closely related elements, e.g. icon and label */
+  --spacing-s: 16px; /* Default gap between related elements, e.g. form fields */
+  --spacing-m: 24px; /* Padding inside components/cards */
+  --spacing-l: 32px; /* Gaps between distinct components */
+  --spacing-xl: 48px; /* Spacing between sections */
+  --spacing-xxl: 80px; /* Spacing between major page sections */
+}
+
 * {
   box-sizing: border-box;
 }
 
+/* Text styles */
 body {
   margin: 0;
+  background: var(--color-background);
+  color: var(--color-white);
+  font: 400 18px/1.5 'Quicksand', sans-serif;
+}
+
+h1 {
+  font: 700 44px/normal 'Nunito', sans-serif;
+}
+
+h2 {
+  font: 700 36px/normal 'Nunito', sans-serif;
+}
+
+h3 {
+  font: 700 28px/normal 'Nunito', sans-serif;
+}
+
+h4 {
+  font: 700 22px/normal 'Nunito', sans-serif;
+}
+
+.text-small {
+  font: 400 15px/1.5 'Quicksand', sans-serif;
 }
