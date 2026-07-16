@@ -1,0 +1,8 @@
+.app-layout {
+  display: flex;
+}
+
+.app-main {
+  flex: 1;
+  padding: var(--spacing-l);
+}
