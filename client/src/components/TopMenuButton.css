@@ -1,0 +1,28 @@
+.top-menu-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-s);
+  border: none;
+  border-radius: var(--spacing-s);
+  background: var(--color-dark);
+  color: var(--color-white);
+  font: 700 22px/normal 'Quicksand', sans-serif;
+  cursor: pointer;
+  transition: filter 0.15s ease;
+}
+
+.top-menu-button:hover,
+.top-menu-button:focus-visible {
+  filter: brightness(1.2);
+}
+
+.top-menu-button:focus-visible {
+  outline: 2px solid var(--color-white);
+  outline-offset: 2px;
+}
+
+.top-menu-button--primary {
+  background: var(--color-primary);
+  color: var(--color-black);
+}
