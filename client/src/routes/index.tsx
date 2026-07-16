@@ -6,7 +6,6 @@ const Dashboard = () => {
 
   return (
     <>
-      <h1>Dashboard</h1>
       {isPending && <p>Loading categories…</p>}
       {isError && <p>Failed to load categories.</p>}
       {categories && <p>{categories.length} categories loaded from the API.</p>}
@@ -16,4 +15,5 @@ const Dashboard = () => {
 
 export const Route = createFileRoute('/')({
   component: Dashboard,
+  staticData: { topMenuTitle: 'Dashboard' },
 });
