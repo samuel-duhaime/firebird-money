@@ -9,6 +9,7 @@
 - [How to run](#how-to-run)
 - [API](#api)
 - [Tests](#tests)
+- [License](#license)
 
 ## Install
 
@@ -74,3 +75,7 @@ cargo test
 ```
 
 Each test runs against its own throwaway Postgres database (auto-migrated, auto-dropped), so your real data is untouched.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
