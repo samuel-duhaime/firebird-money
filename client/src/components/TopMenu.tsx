@@ -20,7 +20,7 @@ export const TopMenu = () => {
   return (
     <header className="top-menu">
       <div className="top-menu-logo">
-        <img src="/icon-1024x1024.png" alt="FireBird Money Icon" className="top-menu-logo-icon" />
+        <img src="/icon-1024x1024.png" alt="" className="top-menu-logo-icon" />
         <p className="top-menu-logo-text">
           <span className="top-menu-logo-accent">Fire</span>
           bird
