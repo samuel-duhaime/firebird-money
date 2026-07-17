@@ -3,7 +3,7 @@ import {
   faMagnifyingGlass,
   faCalendarDays,
   faFilter,
-  faRuler,
+  faFileImport,
   faDownload,
   faPlus,
 } from '@fortawesome/free-solid-svg-icons';
@@ -14,8 +14,8 @@ const TransactionsTopMenuActions = () => (
     <TopMenuButton icon={faMagnifyingGlass} label="Search" />
     <TopMenuButton icon={faCalendarDays} label="Date" />
     <TopMenuButton icon={faFilter} label="Filters" />
-    <TopMenuButton icon={faRuler} label="Rules" />
-    <TopMenuButton icon={faDownload} label="Download" />
+    <TopMenuButton icon={faFileImport} label="Import" />
+    <TopMenuButton icon={faDownload} label="Export" />
     <TopMenuButton icon={faPlus} label="Add" variant="primary" />
   </>
 );
