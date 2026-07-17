@@ -1,7 +1,5 @@
 import type { ComponentType } from 'react';
 import { useMatches } from '@tanstack/react-router';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPhoenixFramework } from '@fortawesome/free-brands-svg-icons';
 import './TopMenu.css';
 
 declare module '@tanstack/react-router' {
@@ -22,7 +20,7 @@ export const TopMenu = () => {
   return (
     <header className="top-menu">
       <div className="top-menu-logo">
-        <FontAwesomeIcon icon={faPhoenixFramework} className="top-menu-logo-icon" />
+        <img src="/icon-1024x1024.png" alt="FireBird Money Icon" className="top-menu-logo-icon" />
         <p className="top-menu-logo-text">
           <span className="top-menu-logo-accent">Fire</span>
           bird

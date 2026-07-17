@@ -8,7 +8,7 @@
 
 .top-menu-logo {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: var(--spacing-s);
   width: 220px;
   flex-shrink: 0;
@@ -17,8 +17,8 @@
 }
 
 .top-menu-logo-icon {
-  width: 20px;
-  color: var(--color-primary);
+  width: 24px;
+  height: 24px;
 }
 
 .top-menu-logo-text {
