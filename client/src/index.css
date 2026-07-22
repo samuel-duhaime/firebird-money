@@ -30,8 +30,14 @@
 }
 
 /* Text styles */
+html,
 body {
+  height: 100%;
   margin: 0;
+  overflow: hidden;
+}
+
+body {
   background: var(--color-background);
   color: var(--color-white);
   font: 400 18px/1.5 'Quicksand', sans-serif;

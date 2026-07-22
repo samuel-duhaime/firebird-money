@@ -1,0 +1,64 @@
+.transactions-card {
+  border-radius: var(--spacing-s);
+  overflow: hidden;
+  background: var(--color-dark);
+}
+
+.transactions-status {
+  margin: 0;
+  padding: var(--spacing-s);
+}
+
+.transactions-rows {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.transactions-date-header {
+  display: flex;
+  justify-content: space-between;
+  padding: var(--spacing-xs) var(--spacing-s);
+  background: color-mix(in srgb, var(--color-medium) 40%, var(--color-dark));
+  color: var(--color-lightest);
+  font-size: 15px;
+}
+
+.transactions-row {
+  display: grid;
+  grid-template-columns: 2fr 1.5fr 1.5fr 110px 16px;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-s);
+  transition: filter 0.15s ease;
+}
+
+.transactions-row:hover {
+  filter: brightness(1.2);
+}
+
+.transactions-row-cell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transactions-row-account {
+  color: var(--color-lightest);
+}
+
+.transactions-row-amount {
+  font-weight: 700;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.transactions-row-amount--credit {
+  color: var(--color-success);
+}
+
+.transactions-row-chevron {
+  color: var(--color-light);
+}
