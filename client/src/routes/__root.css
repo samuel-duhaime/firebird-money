@@ -1,15 +1,38 @@
 .app-layout {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100vh;
 }
 
 .app-body {
   display: flex;
   flex: 1;
+  min-height: 0;
 }
 
 .app-main {
   flex: 1;
-  padding: var(--spacing-l);
+  min-width: 0;
+  padding: var(--spacing-l) var(--spacing-l) var(--spacing-l) 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-medium) transparent;
+}
+
+.app-main::-webkit-scrollbar {
+  width: 10px;
+}
+
+.app-main::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.app-main::-webkit-scrollbar-thumb {
+  background-color: var(--color-medium);
+  border-radius: var(--spacing-s);
+  border: 2px solid var(--color-background);
+}
+
+.app-main::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-light);
 }

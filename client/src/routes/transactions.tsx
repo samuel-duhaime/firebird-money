@@ -8,6 +8,7 @@ import {
   faPlus,
 } from '@fortawesome/free-solid-svg-icons';
 import { TopMenuButton } from '../components/TopMenuButton';
+import { TransactionsList } from '../features/transactions/TransactionsList';
 
 const TransactionsTopMenuActions = () => (
   <>
@@ -15,12 +16,12 @@ const TransactionsTopMenuActions = () => (
     <TopMenuButton icon={faCalendarDays} label="Date" />
     <TopMenuButton icon={faFilter} label="Filters" />
     <TopMenuButton icon={faFileImport} label="Import" />
-    <TopMenuButton icon={faDownload} label="Export" />
+    <TopMenuButton icon={faDownload} label="Download" />
     <TopMenuButton icon={faPlus} label="Add" variant="primary" />
   </>
 );
 
-const Transactions = () => null;
+const Transactions = () => <TransactionsList />;
 
 export const Route = createFileRoute('/transactions')({
   component: Transactions,
