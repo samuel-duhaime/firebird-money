@@ -124,6 +124,129 @@ async fn list_transactions_filters_by_date_and_merchant_combined(pool: PgPool) {
 }
 
 #[sqlx::test]
+async fn list_transactions_filters_by_search_matches_merchant(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
+    create_via_api(&app, "2024-01-16", "IGA SUPERMARKT", "56.78").await;
+
+    let req = test::TestRequest::get()
+        .uri("/transactions?search=starb")
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    let rows = body.as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["merchant"], "STARBUCKS");
+}
+
+#[sqlx::test]
+async fn list_transactions_filters_by_search_matches_category_name(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await; // category_id 1 = Other/Autre
+
+    let req = test::TestRequest::post()
+        .uri("/transactions")
+        .set_json(serde_json::json!({
+            "date": "2024-01-16",
+            "merchant": "SCHOOL SUPPLIES",
+            "amount": "40.00",
+            "category_id": 7,
+            "account": "User 1",
+        }))
+        .to_request();
+    test::call_service(&app, req).await;
+
+    let req = test::TestRequest::get()
+        .uri("/transactions?search=educ")
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    let rows = body.as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["merchant"], "SCHOOL SUPPLIES");
+    assert_eq!(rows[0]["category_name_en"], "Education");
+}
+
+#[sqlx::test]
+async fn list_transactions_filters_by_search_matches_french_category_name(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let req = test::TestRequest::post()
+        .uri("/transactions")
+        .set_json(serde_json::json!({
+            "date": "2024-01-16",
+            "merchant": "SCHOOL SUPPLIES",
+            "amount": "40.00",
+            "category_id": 7,
+            "account": "User 1",
+        }))
+        .to_request();
+    test::call_service(&app, req).await;
+
+    let req = test::TestRequest::get()
+        .uri("/transactions?search=%C3%A9duc")
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    let rows = body.as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["category_name_fr"], "Éducation");
+}
+
+#[sqlx::test]
+async fn list_transactions_filters_by_search_matches_amount(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
+    create_via_api(&app, "2024-01-16", "IGA", "56.78").await;
+
+    let req = test::TestRequest::get()
+        .uri("/transactions?search=12.34")
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    let rows = body.as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["merchant"], "STARBUCKS");
+}
+
+#[sqlx::test]
+async fn list_transactions_filters_by_search_is_case_insensitive(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
+
+    let req = test::TestRequest::get()
+        .uri("/transactions?search=STARbucks")
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body.as_array().unwrap().len(), 1);
+}
+
+#[sqlx::test]
+async fn list_transactions_filters_by_search_returns_empty_when_no_matches(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
+
+    let req = test::TestRequest::get()
+        .uri("/transactions?search=nonexistent")
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body.as_array().unwrap().len(), 0);
+}
+
+#[sqlx::test]
 async fn list_transactions_returns_empty_array_when_no_matches(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
     create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;

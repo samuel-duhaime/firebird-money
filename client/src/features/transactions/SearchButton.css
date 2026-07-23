@@ -1,0 +1,113 @@
+.search-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.search-button-clear-applied {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--color-lightest);
+  font: 700 15px/normal 'Quicksand', sans-serif;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.search-button-clear-applied:hover,
+.search-button-clear-applied:focus-visible {
+  color: var(--color-white);
+}
+
+.search-button-trigger {
+  position: relative;
+  display: inline-flex;
+}
+
+.search-button-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  border: 2px solid var(--color-background);
+}
+
+.search-popover {
+  position: fixed;
+  z-index: 1000;
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-s);
+  background: var(--color-dark);
+  border: 1px solid var(--color-medium);
+  border-radius: var(--spacing-xs);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.search-popover-title {
+  margin: 0;
+}
+
+.search-popover-input {
+  padding: var(--spacing-xs) var(--spacing-s);
+  border: 1px solid var(--color-light);
+  border-radius: var(--spacing-xs);
+  background: var(--color-background);
+  color: var(--color-white);
+  font: 400 16px/1.5 'Quicksand', sans-serif;
+}
+
+.search-popover-input:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.search-popover-help {
+  margin: 0;
+  color: var(--color-lightest);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.search-popover-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-xs);
+  margin-top: var(--spacing-xs);
+}
+
+.search-popover-button {
+  padding: var(--spacing-xs) var(--spacing-s);
+  border: none;
+  border-radius: var(--spacing-xs);
+  background: var(--color-medium);
+  color: var(--color-white);
+  font: 700 15px/normal 'Quicksand', sans-serif;
+  cursor: pointer;
+  transition: filter 0.15s ease;
+}
+
+.search-popover-button:hover:not(:disabled),
+.search-popover-button:focus-visible:not(:disabled) {
+  filter: brightness(1.2);
+}
+
+.search-popover-button:focus-visible {
+  outline: 2px solid var(--color-white);
+  outline-offset: 2px;
+}
+
+.search-popover-button--primary {
+  background: var(--color-primary);
+}
+
+.search-popover-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}

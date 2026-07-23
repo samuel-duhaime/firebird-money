@@ -1,4 +1,5 @@
 import { Fragment } from 'react';
+import { getRouteApi } from '@tanstack/react-router';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faChevronRight } from '@fortawesome/free-solid-svg-icons';
 import { useTransactions } from './use-transactions';
@@ -44,8 +45,11 @@ const TransactionRow = ({ transaction }: { transaction: Transaction }) => {
   );
 };
 
+const routeApi = getRouteApi('/transactions');
+
 export const TransactionsList = () => {
-  const { data: transactions, isPending, isError } = useTransactions();
+  const { search } = routeApi.useSearch();
+  const { data: transactions, isPending, isError } = useTransactions(search);
 
   return (
     <div className="transactions-card">
