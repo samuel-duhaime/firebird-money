@@ -33,6 +33,8 @@ pub struct NewTransaction {
 pub struct TransactionFilter {
     pub date: Option<NaiveDate>,
     pub merchant: Option<String>,
+    /// Case-insensitive substring match against merchant, category name, or amount.
+    pub search: Option<String>,
 }
 
 /// Body for `PATCH /transactions/{id}`. `None` fields are left unchanged.

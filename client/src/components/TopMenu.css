@@ -33,6 +33,7 @@
 
 .top-menu-title {
   margin: 0;
+  margin-right: var(--spacing-m);
   font-size: 24px;
 }
 
@@ -41,4 +42,21 @@
   align-items: center;
   gap: var(--spacing-s);
   margin-left: auto;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-medium) transparent;
+}
+
+.top-menu-actions::-webkit-scrollbar {
+  height: 6px;
+}
+
+.top-menu-actions::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.top-menu-actions::-webkit-scrollbar-thumb {
+  background-color: var(--color-medium);
+  border-radius: var(--spacing-s);
 }

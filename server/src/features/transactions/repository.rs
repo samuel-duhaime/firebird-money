@@ -32,8 +32,9 @@ pub async fn create(
     .await
 }
 
-/// Lists transactions, optionally narrowed by an exact date match and/or a
-/// case-insensitive merchant substring match. Most recent first.
+/// Lists transactions, optionally narrowed by an exact date match, a case-insensitive merchant
+/// substring match, and/or a free-text search across merchant, category name, and amount. Most
+/// recent first.
 pub async fn list(
     pool: &PgPool,
     filter: &TransactionFilter,
@@ -42,10 +43,17 @@ pub async fn list(
         "SELECT {SELECT_COLUMNS} {FROM_JOIN}
          WHERE ($1::date IS NULL OR t.date = $1)
            AND ($2::text IS NULL OR t.merchant ILIKE '%' || $2 || '%')
+           AND ($3::text IS NULL OR (
+                 t.merchant ILIKE '%' || $3 || '%'
+              OR c.name_en ILIKE '%' || $3 || '%'
+              OR c.name_fr ILIKE '%' || $3 || '%'
+              OR t.amount::text ILIKE '%' || $3 || '%'
+           ))
          ORDER BY t.date DESC, t.id DESC"
     ))
     .bind(filter.date)
     .bind(&filter.merchant)
+    .bind(&filter.search)
     .fetch_all(pool)
     .await
 }
