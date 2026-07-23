@@ -36,3 +36,8 @@
 .app-main::-webkit-scrollbar-thumb:hover {
   background-color: var(--color-light);
 }
+
+/* Sonner Toaster Message */
+[data-sonner-toast][data-type='error'] [data-icon] {
+  color: var(--color-error);
+}
