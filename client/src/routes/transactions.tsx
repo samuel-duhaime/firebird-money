@@ -9,15 +9,16 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import { TopMenuButton } from '../components/TopMenuButton';
 import { TransactionsList } from '../features/transactions/TransactionsList';
+import { notImplementedToast } from '../lib/toast';
 
 const TransactionsTopMenuActions = () => (
   <>
-    <TopMenuButton icon={faMagnifyingGlass} label="Search" />
-    <TopMenuButton icon={faCalendarDays} label="Date" />
-    <TopMenuButton icon={faFilter} label="Filters" />
-    <TopMenuButton icon={faFileImport} label="Import" />
-    <TopMenuButton icon={faDownload} label="Download" />
-    <TopMenuButton icon={faPlus} label="Add" variant="primary" />
+    <TopMenuButton icon={faMagnifyingGlass} label="Search" onClick={notImplementedToast} />
+    <TopMenuButton icon={faCalendarDays} label="Date" onClick={notImplementedToast} />
+    <TopMenuButton icon={faFilter} label="Filters" onClick={notImplementedToast} />
+    <TopMenuButton icon={faFileImport} label="Import" onClick={notImplementedToast} />
+    <TopMenuButton icon={faDownload} label="Download" onClick={notImplementedToast} />
+    <TopMenuButton icon={faPlus} label="Add" variant="primary" onClick={notImplementedToast} />
   </>
 );
 
