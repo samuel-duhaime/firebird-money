@@ -4,10 +4,10 @@
   gap: var(--spacing-xs);
   padding: var(--spacing-xs) var(--spacing-s);
   border: none;
-  border-radius: var(--spacing-s);
+  border-radius: var(--spacing-xs);
   background: var(--color-dark);
   color: var(--color-white);
-  font: 700 22px/normal 'Quicksand', sans-serif;
+  font: 700 15px/normal 'Quicksand', sans-serif;
   cursor: pointer;
   transition: filter 0.15s ease;
 }
