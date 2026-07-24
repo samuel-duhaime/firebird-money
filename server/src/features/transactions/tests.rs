@@ -278,6 +278,94 @@ async fn list_transactions_orders_by_date_desc(pool: PgPool) {
     assert_eq!(dates, vec!["2024-01-17", "2024-01-16", "2024-01-15"]);
 }
 
+#[sqlx::test]
+async fn list_transactions_orders_by_date_explicit(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
+    create_via_api(&app, "2024-01-17", "SHELL", "40.00").await;
+    create_via_api(&app, "2024-01-16", "IGA", "56.78").await;
+
+    let req = test::TestRequest::get()
+        .uri("/transactions?order=date")
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    let rows = body.as_array().unwrap();
+    let dates: Vec<&str> = rows.iter().map(|r| r["date"].as_str().unwrap()).collect();
+    assert_eq!(dates, vec!["2024-01-17", "2024-01-16", "2024-01-15"]);
+}
+
+#[sqlx::test]
+async fn list_transactions_orders_by_inverse_date(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
+    create_via_api(&app, "2024-01-17", "SHELL", "40.00").await;
+    create_via_api(&app, "2024-01-16", "IGA", "56.78").await;
+
+    let req = test::TestRequest::get()
+        .uri("/transactions?order=inverse_date")
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    let rows = body.as_array().unwrap();
+    let dates: Vec<&str> = rows.iter().map(|r| r["date"].as_str().unwrap()).collect();
+    assert_eq!(dates, vec!["2024-01-15", "2024-01-16", "2024-01-17"]);
+}
+
+#[sqlx::test]
+async fn list_transactions_orders_by_amount_desc(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
+    create_via_api(&app, "2024-01-17", "SHELL", "40.00").await;
+    create_via_api(&app, "2024-01-16", "IGA", "56.78").await;
+
+    let req = test::TestRequest::get()
+        .uri("/transactions?order=amount")
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    let rows = body.as_array().unwrap();
+    let amounts: Vec<&str> = rows.iter().map(|r| r["amount"].as_str().unwrap()).collect();
+    assert_eq!(amounts, vec!["56.78", "40.00", "12.34"]);
+}
+
+#[sqlx::test]
+async fn list_transactions_orders_by_inverse_amount(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
+    create_via_api(&app, "2024-01-17", "SHELL", "40.00").await;
+    create_via_api(&app, "2024-01-16", "IGA", "56.78").await;
+
+    let req = test::TestRequest::get()
+        .uri("/transactions?order=inverse_amount")
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    let rows = body.as_array().unwrap();
+    let amounts: Vec<&str> = rows.iter().map(|r| r["amount"].as_str().unwrap()).collect();
+    assert_eq!(amounts, vec!["12.34", "40.00", "56.78"]);
+}
+
+#[sqlx::test]
+async fn list_transactions_rejects_invalid_order(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+
+    let req = test::TestRequest::get()
+        .uri("/transactions?order=nonsense")
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 400);
+}
+
 // --- GET /transactions/{id} ---
 
 #[sqlx::test]

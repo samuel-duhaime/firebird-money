@@ -1,6 +1,6 @@
 use sqlx::PgPool;
 
-use super::model::{NewTransaction, Transaction, TransactionFilter, TransactionPatch};
+use super::model::{NewTransaction, SortOrder, Transaction, TransactionFilter, TransactionPatch};
 
 const SELECT_COLUMNS: &str = "
     t.id, t.date, t.merchant, t.amount, t.category_id,
@@ -33,12 +33,20 @@ pub async fn create(
 }
 
 /// Lists transactions, optionally narrowed by an exact date match, a case-insensitive merchant
-/// substring match, and/or a free-text search across merchant, category name, and amount. Most
-/// recent first.
+/// substring match, and/or a free-text search across merchant, category name, and amount. Sorted
+/// per `filter.order` (most recent first by default).
 pub async fn list(
     pool: &PgPool,
     filter: &TransactionFilter,
 ) -> Result<Vec<Transaction>, sqlx::Error> {
+    // `id DESC` is a stable tie-breaker for rows sharing a date/amount; never built from user input.
+    let order_by = match filter.order {
+        None | Some(SortOrder::Date) => "t.date DESC, t.id DESC",
+        Some(SortOrder::InverseDate) => "t.date ASC, t.id DESC",
+        Some(SortOrder::Amount) => "t.amount DESC, t.id DESC",
+        Some(SortOrder::InverseAmount) => "t.amount ASC, t.id DESC",
+    };
+
     sqlx::query_as::<_, Transaction>(&format!(
         "SELECT {SELECT_COLUMNS} {FROM_JOIN}
          WHERE ($1::date IS NULL OR t.date = $1)
@@ -49,7 +57,7 @@ pub async fn list(
               OR c.name_fr ILIKE '%' || $3 || '%'
               OR t.amount::text ILIKE '%' || $3 || '%'
            ))
-         ORDER BY t.date DESC, t.id DESC"
+         ORDER BY {order_by}"
     ))
     .bind(filter.date)
     .bind(&filter.merchant)

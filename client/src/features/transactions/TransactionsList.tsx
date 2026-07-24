@@ -8,7 +8,7 @@ import { formatAmount, formatDateHeading } from './format';
 import type { Transaction } from './types';
 import './TransactionsList.css';
 
-/** Groups transactions by date, assuming they already arrive sorted by date (most recent first). */
+/** Groups transactions by date, assuming they already arrive sorted with same-date rows adjacent. */
 const groupByDate = (transactions: Transaction[]): { date: string; transactions: Transaction[] }[] => {
   const groups: { date: string; transactions: Transaction[] }[] = [];
   for (const transaction of transactions) {
@@ -48,8 +48,8 @@ const TransactionRow = ({ transaction }: { transaction: Transaction }) => {
 const routeApi = getRouteApi('/transactions');
 
 export const TransactionsList = () => {
-  const { search } = routeApi.useSearch();
-  const { data: transactions, isPending, isError } = useTransactions(search);
+  const { search, order } = routeApi.useSearch();
+  const { data: transactions, isPending, isError } = useTransactions(search, order);
 
   return (
     <div className="transactions-card">
@@ -59,8 +59,8 @@ export const TransactionsList = () => {
       {transactions && transactions.length === 0 && <p className="transactions-status">No transactions yet.</p>}
       {transactions && transactions.length > 0 && (
         <ul className="transactions-rows">
-          {groupByDate(transactions).map((group) => (
-            <Fragment key={group.date}>
+          {groupByDate(transactions).map((group, index) => (
+            <Fragment key={`${group.date}-${index}`}>
               <li className="transactions-date-header">
                 <span>{formatDateHeading(group.date)}</span>
                 <span>{formatAmount(dailyTotal(group.transactions))}</span>

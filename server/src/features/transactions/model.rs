@@ -35,6 +35,22 @@ pub struct TransactionFilter {
     pub merchant: Option<String>,
     /// Case-insensitive substring match against merchant, category name, or amount.
     pub search: Option<String>,
+    /// Sort order. Defaults to `Date` (most recent first) when absent.
+    pub order: Option<SortOrder>,
+}
+
+/// Sort order for `GET /transactions`.
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SortOrder {
+    /// Most recent date first (default).
+    Date,
+    /// Oldest date first.
+    InverseDate,
+    /// Highest amount first.
+    Amount,
+    /// Lowest amount first.
+    InverseAmount,
 }
 
 /// Body for `PATCH /transactions/{id}`. `None` fields are left unchanged.

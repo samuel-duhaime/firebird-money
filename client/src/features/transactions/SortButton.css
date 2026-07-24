@@ -1,0 +1,45 @@
+.sort-button-trigger {
+  position: relative;
+}
+
+.sort-button-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  border: 2px solid var(--color-dark);
+}
+
+.sort-popover {
+  width: 220px;
+  padding: var(--spacing-xs);
+  gap: 2px;
+}
+
+.sort-popover-option {
+  display: block;
+  width: 100%;
+  padding: var(--spacing-xs) var(--spacing-s);
+  border: none;
+  border-radius: var(--spacing-xs);
+  background: none;
+  color: var(--color-white);
+  font: 400 15px/1.5 'Quicksand', sans-serif;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.sort-popover-option:hover,
+.sort-popover-option:focus-visible {
+  background: var(--color-medium);
+}
+
+.sort-popover-option--selected,
+.sort-popover-option--selected:hover,
+.sort-popover-option--selected:focus-visible {
+  background: color-mix(in srgb, var(--color-primary) 30%, var(--color-dark));
+}

@@ -15,6 +15,7 @@
   list-style: none;
   margin: 0;
   padding: 0;
+  overflow-x: auto;
 }
 
 .transactions-date-header {
@@ -24,14 +25,16 @@
   background: color-mix(in srgb, var(--color-medium) 40%, var(--color-dark));
   color: var(--color-lightest);
   font-size: 15px;
+  min-width: 520px;
 }
 
 .transactions-row {
   display: grid;
-  grid-template-columns: 2fr 1.5fr 1.5fr 110px 16px;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1.5fr) minmax(0, 1.5fr) 110px 16px;
   align-items: center;
   gap: var(--spacing-s);
   padding: var(--spacing-s);
+  min-width: 520px;
   transition: filter 0.15s ease;
 }
 
