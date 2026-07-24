@@ -421,6 +421,136 @@ async fn list_transactions_rejects_invalid_order(pool: PgPool) {
     assert_eq!(resp.status(), 400);
 }
 
+// --- GET /transactions/download ---
+
+#[sqlx::test]
+async fn download_transactions_csv_contains_header_and_rows(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
+    create_via_api(&app, "2024-01-16", "IGA", "56.78").await;
+
+    let req = test::TestRequest::get()
+        .uri("/transactions/download?format=csv")
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    assert_eq!(
+        resp.headers().get("content-type").unwrap(),
+        "text/csv; charset=utf-8"
+    );
+    assert_eq!(
+        resp.headers().get("content-disposition").unwrap(),
+        "attachment; filename=\"transactions.csv\""
+    );
+    let body = test::read_body(resp).await;
+    let csv = String::from_utf8(body.to_vec()).unwrap();
+    let mut lines = csv.lines();
+    assert_eq!(lines.next().unwrap(), "Date,Merchant,Category,Amount");
+    assert_eq!(lines.next().unwrap(), "2024-01-16,IGA,Other,56.78");
+    assert_eq!(lines.next().unwrap(), "2024-01-15,STARBUCKS,Other,12.34");
+}
+
+#[sqlx::test]
+async fn download_transactions_filename_reflects_search_and_order(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
+
+    let req = test::TestRequest::get()
+        .uri("/transactions/download?format=csv&search=Coffee%20Shop!&order=amount")
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    assert_eq!(
+        resp.headers().get("content-disposition").unwrap(),
+        "attachment; filename=\"transactions_coffee-shop_highest-amount.csv\""
+    );
+}
+
+#[sqlx::test]
+async fn download_transactions_xlsx_returns_xlsx_content_type(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
+
+    let req = test::TestRequest::get()
+        .uri("/transactions/download?format=xlsx")
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    assert_eq!(
+        resp.headers().get("content-type").unwrap(),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    let body = test::read_body(resp).await;
+    // .xlsx files are zip archives, which always start with the "PK" magic bytes.
+    assert_eq!(&body[0..2], b"PK");
+}
+
+#[sqlx::test]
+async fn download_transactions_respects_search_filter(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
+    create_via_api(&app, "2024-01-16", "IGA", "56.78").await;
+
+    let req = test::TestRequest::get()
+        .uri("/transactions/download?format=csv&search=starb")
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    let body = test::read_body(resp).await;
+    let csv = String::from_utf8(body.to_vec()).unwrap();
+    let mut lines = csv.lines();
+    assert_eq!(lines.next().unwrap(), "Date,Merchant,Category,Amount");
+    assert_eq!(lines.next().unwrap(), "2024-01-15,STARBUCKS,Other,12.34");
+    assert!(lines.next().is_none());
+}
+
+#[sqlx::test]
+async fn download_transactions_respects_order(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
+    create_via_api(&app, "2024-01-16", "IGA", "56.78").await;
+
+    let req = test::TestRequest::get()
+        .uri("/transactions/download?format=csv&order=inverse_date")
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    let body = test::read_body(resp).await;
+    let csv = String::from_utf8(body.to_vec()).unwrap();
+    let mut lines = csv.lines().skip(1);
+    assert_eq!(lines.next().unwrap(), "2024-01-15,STARBUCKS,Other,12.34");
+    assert_eq!(lines.next().unwrap(), "2024-01-16,IGA,Other,56.78");
+}
+
+#[sqlx::test]
+async fn download_transactions_rejects_missing_format(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+
+    let req = test::TestRequest::get()
+        .uri("/transactions/download")
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 400);
+}
+
+#[sqlx::test]
+async fn download_transactions_rejects_invalid_format(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+
+    let req = test::TestRequest::get()
+        .uri("/transactions/download?format=pdf")
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 400);
+}
+
 // --- GET /transactions/{id} ---
 
 #[sqlx::test]

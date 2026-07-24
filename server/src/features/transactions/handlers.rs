@@ -6,6 +6,7 @@ use log::error;
 use serde::Deserialize;
 use sqlx::PgPool;
 
+use super::download;
 use super::model::{NewTransaction, TransactionFilter, TransactionPatch};
 use super::repository;
 use crate::shared::http_error::{
@@ -17,6 +18,21 @@ use crate::shared::l10n::L10n;
 #[derive(Deserialize)]
 struct TransactionIdPath {
     id: u32,
+}
+
+/// File format for `GET /transactions/download`.
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum DownloadFormat {
+    Csv,
+    Xlsx,
+}
+
+/// Query params for `GET /transactions/download`, parsed independently from `TransactionFilter`
+/// since both are read from the same query string.
+#[derive(Deserialize)]
+struct DownloadFormatQuery {
+    format: DownloadFormat,
 }
 
 /// `POST /transactions` — create a transaction.
@@ -58,6 +74,63 @@ async fn list_transactions(
             error!("failed to list transactions error={e}");
             internal_error_response(&l10n, &l10n.locale())
         }
+    }
+}
+
+/// `GET /transactions/download` — download the same (filtered/sorted) transactions as
+/// `GET /transactions`, rendered as a CSV or Excel file. Accepts the same `date`, `merchant`,
+/// `search`, and `order` query params, plus `format` (`csv` or `xlsx`).
+async fn download_transactions(
+    filter: web::Query<TransactionFilter>,
+    format: web::Query<DownloadFormatQuery>,
+    pool: web::Data<PgPool>,
+    l10n: web::Data<L10n>,
+) -> impl Responder {
+    let locale = l10n.locale();
+
+    let transactions = match repository::list(&pool, &filter).await {
+        Ok(transactions) => transactions,
+        Err(e) => {
+            error!("failed to list transactions for download error={e}");
+            return internal_error_response(&l10n, &locale);
+        }
+    };
+
+    match format.format {
+        DownloadFormat::Csv => match download::to_csv(&transactions) {
+            Ok(bytes) => {
+                let filename = download::filename(&filter, "csv");
+                HttpResponse::Ok()
+                    .content_type("text/csv; charset=utf-8")
+                    .insert_header((
+                        "Content-Disposition",
+                        format!("attachment; filename=\"{filename}\""),
+                    ))
+                    .body(bytes)
+            }
+            Err(e) => {
+                error!("failed to render transactions as csv error={e}");
+                internal_error_response(&l10n, &locale)
+            }
+        },
+        DownloadFormat::Xlsx => match download::to_xlsx(&transactions) {
+            Ok(bytes) => {
+                let filename = download::filename(&filter, "xlsx");
+                HttpResponse::Ok()
+                    .content_type(
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    )
+                    .insert_header((
+                        "Content-Disposition",
+                        format!("attachment; filename=\"{filename}\""),
+                    ))
+                    .body(bytes)
+            }
+            Err(e) => {
+                error!("failed to render transactions as xlsx error={e}");
+                internal_error_response(&l10n, &locale)
+            }
+        },
     }
 }
 
@@ -130,6 +203,10 @@ async fn delete_transaction(
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.route("/transactions", web::get().to(list_transactions))
         .route("/transactions", web::post().to(create_transaction))
+        .route(
+            "/transactions/download",
+            web::get().to(download_transactions),
+        )
         .route("/transactions/{id}", web::get().to(get_transaction))
         .route("/transactions/{id}", web::patch().to(update_transaction))
         .route("/transactions/{id}", web::delete().to(delete_transaction));

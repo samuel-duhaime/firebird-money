@@ -24,10 +24,13 @@ async fn main() -> std::io::Result<()> {
     // Actix web server configuration
     HttpServer::new(move || {
         // Dev-only: allows the Vite client (a different origin) to call this API.
+        // `Content-Disposition` must be explicitly exposed, or the browser's `fetch()` can't read
+        // the filename off download responses (it's not on the CORS response-header safelist).
         let cors = Cors::default()
             .allowed_origin("http://localhost:5173")
             .allow_any_method()
-            .allow_any_header();
+            .allow_any_header()
+            .expose_headers(["Content-Disposition"]);
 
         App::new()
             .wrap(cors)
