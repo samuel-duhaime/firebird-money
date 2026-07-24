@@ -13,7 +13,9 @@ const FROM_JOIN: &str = "FROM transactions t JOIN categories c ON c.id = t.categ
 /// ESCAPE E'\\'`, rather than having `%`/`_` act as wildcards. Backslashes must be escaped first,
 /// or the backslashes introduced for `%`/`_` would themselves get re-escaped.
 fn escape_like(term: &str) -> String {
-    term.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
+    term.replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
 }
 
 /// Inserts a new transaction and returns the created row, joined with its category.
