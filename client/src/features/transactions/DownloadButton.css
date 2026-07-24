@@ -1,0 +1,29 @@
+.download-button-trigger {
+  position: relative;
+  display: inline-flex;
+}
+
+.download-popover {
+  width: 220px;
+  padding: var(--spacing-xs);
+  gap: 2px;
+}
+
+.download-popover-option {
+  display: block;
+  width: 100%;
+  padding: var(--spacing-xs) var(--spacing-s);
+  border: none;
+  border-radius: var(--spacing-xs);
+  background: none;
+  color: var(--color-white);
+  font: 400 15px/1.5 Quicksand, sans-serif;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.download-popover-option:hover,
+.download-popover-option:focus-visible {
+  background: var(--color-medium);
+}

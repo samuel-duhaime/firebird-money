@@ -1,3 +1,4 @@
+mod download;
 mod handlers;
 mod model;
 mod repository;
