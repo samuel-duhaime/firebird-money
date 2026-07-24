@@ -9,6 +9,13 @@ const SELECT_COLUMNS: &str = "
 
 const FROM_JOIN: &str = "FROM transactions t JOIN categories c ON c.id = t.category_id";
 
+/// Escapes `\`, `%`, and `_` so a search term is matched as a literal substring by `ILIKE ...
+/// ESCAPE E'\\'`, rather than having `%`/`_` act as wildcards. Backslashes must be escaped first,
+/// or the backslashes introduced for `%`/`_` would themselves get re-escaped.
+fn escape_like(term: &str) -> String {
+    term.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
+}
+
 /// Inserts a new transaction and returns the created row, joined with its category.
 pub async fn create(
     pool: &PgPool,
@@ -47,21 +54,23 @@ pub async fn list(
         Some(SortOrder::InverseAmount) => "t.amount ASC, t.id DESC",
     };
 
+    let escaped_search = filter.search.as_deref().map(escape_like);
+
     sqlx::query_as::<_, Transaction>(&format!(
         "SELECT {SELECT_COLUMNS} {FROM_JOIN}
          WHERE ($1::date IS NULL OR t.date = $1)
            AND ($2::text IS NULL OR t.merchant ILIKE '%' || $2 || '%')
            AND ($3::text IS NULL OR (
-                 t.merchant ILIKE '%' || $3 || '%'
-              OR c.name_en ILIKE '%' || $3 || '%'
-              OR c.name_fr ILIKE '%' || $3 || '%'
-              OR t.amount::text ILIKE '%' || $3 || '%'
+                 t.merchant ILIKE '%' || $3 || '%' ESCAPE E'\\\\'
+              OR c.name_en ILIKE '%' || $3 || '%' ESCAPE E'\\\\'
+              OR c.name_fr ILIKE '%' || $3 || '%' ESCAPE E'\\\\'
+              OR t.amount::text ILIKE '%' || $3 || '%' ESCAPE E'\\\\'
            ))
          ORDER BY {order_by}"
     ))
     .bind(filter.date)
     .bind(&filter.merchant)
-    .bind(&filter.search)
+    .bind(&escaped_search)
     .fetch_all(pool)
     .await
 }

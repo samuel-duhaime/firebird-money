@@ -23,7 +23,7 @@
 
 .top-menu-logo-text {
   margin: 0;
-  font: 700 24px/normal 'Nunito', sans-serif;
+  font: 700 24px/normal Nunito, sans-serif;
   color: var(--color-white);
 }
 
@@ -66,7 +66,7 @@
   background: none;
   padding: 0;
   color: var(--color-lightest);
-  font: 700 15px/normal 'Quicksand', sans-serif;
+  font: 700 15px/normal Quicksand, sans-serif;
   cursor: pointer;
   transition: color 0.15s ease;
 }

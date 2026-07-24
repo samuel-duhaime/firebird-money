@@ -24,16 +24,19 @@ export const SearchButton = () => {
   };
 
   const isDraftEmpty = draft.trim() === '';
+  const hasNothingToClear = isDraftEmpty && !search;
 
   const handleApply = () => {
-    if (isDraftEmpty) return;
-    applySearch(draft.trim());
+    if (hasNothingToClear) return;
+    applySearch(isDraftEmpty ? undefined : draft.trim());
     setIsOpen(false);
   };
 
   const handleClearDraft = () => {
-    if (isDraftEmpty) return;
+    if (hasNothingToClear) return;
     setDraft('');
+    applySearch(undefined);
+    setIsOpen(false);
   };
 
   const handleCancel = () => {
@@ -78,7 +81,7 @@ export const SearchButton = () => {
               <button
                 type="button"
                 className="search-popover-button"
-                disabled={isDraftEmpty}
+                disabled={hasNothingToClear}
                 onClick={handleClearDraft}
               >
                 Clear
@@ -89,7 +92,7 @@ export const SearchButton = () => {
               <button
                 type="button"
                 className="search-popover-button search-popover-button--primary"
-                disabled={isDraftEmpty}
+                disabled={hasNothingToClear}
                 onClick={handleApply}
               >
                 Apply

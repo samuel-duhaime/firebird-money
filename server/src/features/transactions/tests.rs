@@ -232,6 +232,61 @@ async fn list_transactions_filters_by_search_is_case_insensitive(pool: PgPool) {
 }
 
 #[sqlx::test]
+async fn list_transactions_filters_by_search_treats_percent_literally(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    create_via_api(&app, "2024-01-15", "50% OFF STORE", "12.34").await;
+    create_via_api(&app, "2024-01-16", "50X OFF STORE", "56.78").await;
+
+    // "50% OFF" URL-encoded: %25 is a literal '%', %20 is a space.
+    let req = test::TestRequest::get()
+        .uri("/transactions?search=50%25%20OFF")
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    let rows = body.as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["merchant"], "50% OFF STORE");
+}
+
+#[sqlx::test]
+async fn list_transactions_filters_by_search_treats_underscore_literally(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    create_via_api(&app, "2024-01-15", "ITEM_CODE 123", "12.34").await;
+    create_via_api(&app, "2024-01-16", "ITEMXCODE 123", "56.78").await;
+
+    let req = test::TestRequest::get()
+        .uri("/transactions?search=ITEM_CODE")
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    let rows = body.as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["merchant"], "ITEM_CODE 123");
+}
+
+#[sqlx::test]
+async fn list_transactions_filters_by_search_treats_backslash_literally(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    create_via_api(&app, "2024-01-15", r"PATH\TO STORE", "12.34").await;
+
+    // "PATH\TO" URL-encoded: %5C is a literal backslash.
+    let req = test::TestRequest::get()
+        .uri("/transactions?search=PATH%5CTO")
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    let rows = body.as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["merchant"], r"PATH\TO STORE");
+}
+
+#[sqlx::test]
 async fn list_transactions_filters_by_search_returns_empty_when_no_matches(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
     create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;

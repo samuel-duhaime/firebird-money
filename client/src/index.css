@@ -40,25 +40,25 @@ body {
 body {
   background: var(--color-background);
   color: var(--color-white);
-  font: 400 18px/1.5 'Quicksand', sans-serif;
+  font: 400 18px/1.5 Quicksand, sans-serif;
 }
 
 h1 {
-  font: 700 44px/normal 'Nunito', sans-serif;
+  font: 700 44px/normal Nunito, sans-serif;
 }
 
 h2 {
-  font: 700 36px/normal 'Nunito', sans-serif;
+  font: 700 36px/normal Nunito, sans-serif;
 }
 
 h3 {
-  font: 700 28px/normal 'Nunito', sans-serif;
+  font: 700 28px/normal Nunito, sans-serif;
 }
 
 h4 {
-  font: 700 22px/normal 'Nunito', sans-serif;
+  font: 700 22px/normal Nunito, sans-serif;
 }
 
 .text-small {
-  font: 400 15px/1.5 'Quicksand', sans-serif;
+  font: 400 15px/1.5 Quicksand, sans-serif;
 }
