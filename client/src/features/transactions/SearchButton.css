@@ -30,7 +30,7 @@
   border-radius: var(--spacing-xs);
   background: var(--color-background);
   color: var(--color-white);
-  font: 400 16px/1.5 'Quicksand', sans-serif;
+  font: 400 16px/1.5 Quicksand, sans-serif;
 }
 
 .search-popover-input:focus-visible {
@@ -58,7 +58,7 @@
   border-radius: var(--spacing-xs);
   background: var(--color-medium);
   color: var(--color-white);
-  font: 700 15px/normal 'Quicksand', sans-serif;
+  font: 700 15px/normal Quicksand, sans-serif;
   cursor: pointer;
   transition: filter 0.15s ease;
 }

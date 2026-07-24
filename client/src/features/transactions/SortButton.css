@@ -27,7 +27,7 @@
   border-radius: var(--spacing-xs);
   background: none;
   color: var(--color-white);
-  font: 400 15px/1.5 'Quicksand', sans-serif;
+  font: 400 15px/1.5 Quicksand, sans-serif;
   text-align: left;
   cursor: pointer;
   transition: background-color 0.15s ease;
