@@ -45,7 +45,8 @@ async fn create_transaction(
 }
 
 /// `GET /transactions` — list transactions, optionally filtered by `date`, `merchant`, and/or a
-/// free-text `search` matched against merchant, category, and amount.
+/// free-text `search` matched against merchant, category, and amount. Accepts `order` (`date`,
+/// `inverse_date`, `amount`, `inverse_amount`) to control sort order.
 async fn list_transactions(
     filter: web::Query<TransactionFilter>,
     pool: web::Data<PgPool>,

@@ -1,3 +1,5 @@
+export type SortOrder = 'date' | 'inverse_date' | 'amount' | 'inverse_amount';
+
 export interface Transaction {
   id: number;
   date: string;

@@ -60,3 +60,18 @@
   background-color: var(--color-medium);
   border-radius: var(--spacing-s);
 }
+
+.top-menu-clear-all {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--color-lightest);
+  font: 700 15px/normal 'Quicksand', sans-serif;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.top-menu-clear-all:hover,
+.top-menu-clear-all:focus-visible {
+  color: var(--color-white);
+}

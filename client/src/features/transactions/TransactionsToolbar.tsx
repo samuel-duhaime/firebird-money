@@ -1,6 +1,7 @@
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faChevronDown, faSquareCheck, faTableColumns } from '@fortawesome/free-solid-svg-icons';
 import { notImplementedToast } from '../../lib/toast';
+import { SortButton } from './SortButton';
 import './TransactionsToolbar.css';
 
 export const TransactionsToolbar = () => (
@@ -15,10 +16,7 @@ export const TransactionsToolbar = () => (
         <span>Edit multiple</span>
       </button>
       <span className="transactions-toolbar-divider" />
-      <button type="button" className="transactions-toolbar-button" onClick={notImplementedToast}>
-        <span>Sort</span>
-        <FontAwesomeIcon icon={faChevronDown} />
-      </button>
+      <SortButton />
       <button type="button" className="transactions-toolbar-button" onClick={notImplementedToast}>
         <FontAwesomeIcon icon={faTableColumns} />
         <span>Columns</span>
