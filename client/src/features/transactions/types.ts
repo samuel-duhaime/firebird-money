@@ -10,5 +10,20 @@ export interface Transaction {
   category_name_fr: string;
   category_type: 'income' | 'expense' | 'transfer';
   account: string;
+  reviewed: boolean;
   created_at: string;
+}
+
+export type ImportJobStatus = 'pending' | 'running' | 'succeeded' | 'failed';
+
+export interface ImportJob {
+  id: string;
+  status: ImportJobStatus;
+  file_name: string;
+  created_count: number | null;
+  failed_count: number | null;
+  skipped_count: number | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
 }

@@ -2,13 +2,13 @@ import { createFileRoute, getRouteApi } from '@tanstack/react-router';
 import {
   faCalendarDays,
   faFilter,
-  faFileImport,
   faPlus,
 } from '@fortawesome/free-solid-svg-icons';
 import { TopMenuButton } from '../components/TopMenuButton';
 import { TransactionsList } from '../features/transactions/TransactionsList';
 import { SearchButton } from '../features/transactions/SearchButton';
 import { DownloadButton } from '../features/transactions/DownloadButton';
+import { ImportButton } from '../features/transactions/ImportButton';
 import { notImplementedToast } from '../lib/toast';
 import type { SortOrder } from '../features/transactions/types';
 import '../components/TopMenu.css';
@@ -55,11 +55,7 @@ const TransactionsTopMenuActions = () => (
       label="Filters"
       onClick={notImplementedToast}
     />
-    <TopMenuButton
-      icon={faFileImport}
-      label="Import"
-      onClick={notImplementedToast}
-    />
+    <ImportButton />
     <DownloadButton />
     <TopMenuButton
       icon={faPlus}
