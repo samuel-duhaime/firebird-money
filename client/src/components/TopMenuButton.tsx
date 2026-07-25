@@ -8,6 +8,7 @@ type TopMenuButtonProps = {
   icon: IconDefinition;
   label: string;
   variant?: 'default' | 'primary';
+  spin?: boolean;
   onClick?: () => void;
   'aria-haspopup'?: AriaAttributes['aria-haspopup'];
   'aria-expanded'?: boolean;
@@ -19,6 +20,7 @@ export const TopMenuButton = forwardRef<HTMLButtonElement, TopMenuButtonProps>(
       icon,
       label,
       variant = 'default',
+      spin = false,
       onClick,
       'aria-haspopup': ariaHasPopup,
       'aria-expanded': ariaExpanded,
@@ -37,7 +39,7 @@ export const TopMenuButton = forwardRef<HTMLButtonElement, TopMenuButtonProps>(
       aria-haspopup={ariaHasPopup}
       aria-expanded={ariaExpanded}
     >
-      <FontAwesomeIcon icon={icon} />
+      <FontAwesomeIcon icon={icon} spin={spin} />
       <span>{label}</span>
     </button>
   ),

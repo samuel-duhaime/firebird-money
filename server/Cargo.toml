@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 actix-cors = "0.7.1"
+actix-multipart = "0.7"
 actix-web = "4.13.0"
 chrono = { version = "0.4", features = ["serde"] }
 csv = "1"
@@ -16,7 +17,9 @@ rust_decimal = { version = "1", features = ["serde-with-str"] }
 rust_xlsxwriter = { version = "0.96", features = ["rust_decimal", "chrono"] }
 serde = { version = "1.0.228", features = ["derive"] }
 sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "migrate", "chrono", "rust_decimal"] }
+tokio = { version = "1", features = ["process"] }
 unic-langid = "0.9"
+uuid = { version = "1", features = ["v4", "serde"] }
 
 [dev-dependencies]
 actix-http = "3"

@@ -5,7 +5,7 @@ use super::model::{NewTransaction, SortOrder, Transaction, TransactionFilter, Tr
 const SELECT_COLUMNS: &str = "
     t.id, t.date, t.merchant, t.amount, t.category_id,
     c.name_en AS category_name_en, c.name_fr AS category_name_fr, c.type AS category_type,
-    t.account, t.created_at";
+    t.account, t.reviewed, t.created_at";
 
 const FROM_JOIN: &str = "FROM transactions t JOIN categories c ON c.id = t.category_id";
 
@@ -25,8 +25,8 @@ pub async fn create(
 ) -> Result<Transaction, sqlx::Error> {
     sqlx::query_as::<_, Transaction>(&format!(
         "WITH inserted AS (
-            INSERT INTO transactions (date, merchant, amount, category_id, account)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO transactions (date, merchant, amount, category_id, account, reviewed)
+            VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING *
          )
          SELECT {SELECT_COLUMNS}
@@ -37,6 +37,7 @@ pub async fn create(
     .bind(new_transaction.amount)
     .bind(new_transaction.category_id)
     .bind(&new_transaction.account)
+    .bind(new_transaction.reviewed.unwrap_or(true))
     .fetch_one(pool)
     .await
 }

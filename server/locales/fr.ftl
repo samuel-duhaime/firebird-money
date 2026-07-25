@@ -5,4 +5,7 @@ category-not-found = Aucune catégorie avec l’id { $n }
 category-duplicate-name = Une catégorie avec ce nom existe déjà
 category-invalid-type = type doit être income, expense ou transfer
 category-in-use = La catégorie { $n } est toujours utilisée par des transactions existantes
+import-job-not-found = Aucune tâche d’importation avec cet identifiant
+import-file-required = Un fichier à importer est requis
+import-file-too-large = Le fichier téléversé est trop volumineux (10 Mo maximum)
 internal-db-error = Erreur interne du serveur

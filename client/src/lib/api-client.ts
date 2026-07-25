@@ -18,6 +18,22 @@ export const apiFetch = async <T>(
   return response.json() as Promise<T>;
 };
 
+export const apiFetchUpload = async <T>(
+  path: string,
+  formData: FormData,
+): Promise<T> => {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error(`POST ${path} failed: ${response.status}`);
+  }
+
+  return response.json() as Promise<T>;
+};
+
 /** Extracts the `filename` param from a `Content-Disposition: attachment; filename="..."` header. */
 const parseFilename = (contentDisposition: string | null): string | undefined =>
   contentDisposition?.match(/filename="([^"]+)"/)?.[1];

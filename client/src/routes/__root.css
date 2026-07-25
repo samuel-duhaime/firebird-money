@@ -41,3 +41,7 @@
 [data-sonner-toast][data-type='error'] [data-icon] {
   color: var(--color-error);
 }
+
+[data-sonner-toast][data-type='success'] [data-icon] {
+  color: var(--color-success);
+}

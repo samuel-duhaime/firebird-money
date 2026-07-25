@@ -10,6 +10,7 @@ use actix_web::{test, web, App};
 use sqlx::PgPool;
 
 use super::handlers::configure;
+use super::jobs::JobStore;
 use crate::shared::l10n::L10n;
 
 fn app_with(
@@ -23,9 +24,28 @@ fn app_with(
         InitError = (),
     >,
 > {
+    app_with_jobs(pool, web::Data::new(JobStore::default()))
+}
+
+/// Like `app_with`, but takes an externally-owned `JobStore` so a test can seed a job directly
+/// (via `JobStore::create`) without going through `POST /transactions/import`, which would spawn
+/// a real `claude` subprocess.
+fn app_with_jobs(
+    pool: PgPool,
+    job_store: web::Data<JobStore>,
+) -> App<
+    impl actix_web::dev::ServiceFactory<
+        actix_web::dev::ServiceRequest,
+        Config = (),
+        Response = actix_web::dev::ServiceResponse,
+        Error = actix_web::Error,
+        InitError = (),
+    >,
+> {
     App::new()
         .app_data(web::Data::new(pool))
         .app_data(web::Data::new(L10n::new()))
+        .app_data(job_store)
         .configure(configure)
 }
 
@@ -747,6 +767,47 @@ async fn create_transaction_persists_all_fields(pool: PgPool) {
 }
 
 #[sqlx::test]
+async fn create_transaction_defaults_reviewed_to_true(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let req = test::TestRequest::post()
+        .uri("/transactions")
+        .set_json(serde_json::json!({
+            "date": "2024-01-15",
+            "merchant": "STARBUCKS",
+            "amount": "12.34",
+            "category_id": 1,
+            "account": "User 1",
+        }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 201);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["reviewed"], true);
+}
+
+#[sqlx::test]
+async fn create_transaction_respects_explicit_reviewed_false(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let req = test::TestRequest::post()
+        .uri("/transactions")
+        .set_json(serde_json::json!({
+            "date": "2024-01-15",
+            "merchant": "STARBUCKS",
+            "amount": "12.34",
+            "category_id": 1,
+            "account": "User 1",
+            "reviewed": false,
+        }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 201);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["reviewed"], false);
+}
+
+#[sqlx::test]
 async fn create_transaction_rejects_unknown_category_id(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
     let req = test::TestRequest::post()
@@ -899,6 +960,74 @@ async fn delete_transaction_removes_row(pool: PgPool) {
         .to_request();
     let get_resp = test::call_service(&app, get_req).await;
     assert_eq!(get_resp.status(), 404);
+}
+
+// --- /transactions/import/jobs/{id} ---
+//
+// These test the HTTP wiring for the in-memory JobStore directly (seeding a job via
+// `JobStore::create`), never through `POST /transactions/import` — that endpoint spawns a real
+// `claude` subprocess, which has no place in an automated test suite.
+
+#[sqlx::test]
+async fn get_import_job_returns_404_for_unknown_id(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+
+    let req = test::TestRequest::get()
+        .uri(&format!(
+            "/transactions/import/jobs/{}",
+            uuid::Uuid::new_v4()
+        ))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 404);
+}
+
+#[sqlx::test]
+async fn get_import_job_returns_a_freshly_created_job_as_pending(pool: PgPool) {
+    let job_store = web::Data::new(JobStore::default());
+    let job = job_store.create("statement.csv".to_string());
+    let app = test::init_service(app_with_jobs(pool, job_store)).await;
+
+    let req = test::TestRequest::get()
+        .uri(&format!("/transactions/import/jobs/{}", job.id))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["status"], "pending");
+    assert_eq!(body["file_name"], "statement.csv");
+}
+
+#[sqlx::test]
+async fn report_import_job_updates_status_and_get_reflects_it(pool: PgPool) {
+    let job_store = web::Data::new(JobStore::default());
+    let job = job_store.create("statement.csv".to_string());
+    let app = test::init_service(app_with_jobs(pool, job_store)).await;
+
+    let patch_req = test::TestRequest::patch()
+        .uri(&format!("/transactions/import/jobs/{}", job.id))
+        .set_json(serde_json::json!({
+            "status": "succeeded",
+            "created_count": 3,
+            "failed_count": 0,
+            "skipped_count": 1,
+        }))
+        .to_request();
+    let patch_resp = test::call_service(&app, patch_req).await;
+    assert_eq!(patch_resp.status(), 204);
+
+    let get_req = test::TestRequest::get()
+        .uri(&format!("/transactions/import/jobs/{}", job.id))
+        .to_request();
+    let get_resp = test::call_service(&app, get_req).await;
+
+    assert_eq!(get_resp.status(), 200);
+    let body: serde_json::Value = test::read_body_json(get_resp).await;
+    assert_eq!(body["status"], "succeeded");
+    assert_eq!(body["created_count"], 3);
+    assert_eq!(body["skipped_count"], 1);
 }
 
 #[sqlx::test]

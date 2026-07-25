@@ -4,6 +4,7 @@ mod shared;
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer};
 
+use crate::features::transactions::JobStore;
 use crate::shared::l10n::L10n;
 
 /// Main function to start the server
@@ -20,6 +21,7 @@ async fn main() -> std::io::Result<()> {
 
     let l10n = web::Data::new(L10n::new());
     let pool = web::Data::new(shared::postgres::create_pool().await);
+    let import_jobs = web::Data::new(JobStore::default());
 
     // Actix web server configuration
     HttpServer::new(move || {
@@ -36,6 +38,7 @@ async fn main() -> std::io::Result<()> {
             .wrap(cors)
             .app_data(l10n.clone())
             .app_data(pool.clone())
+            .app_data(import_jobs.clone())
             .configure(features::transactions::configure)
             .configure(features::categories::configure)
     })

@@ -1,16 +1,22 @@
-//! HTTP API for transactions: JSON CRUD backed by Postgres.
+//! HTTP API for transactions: JSON CRUD backed by Postgres, plus the async budget-file import.
 
+use actix_multipart::form::tempfile::TempFile;
+use actix_multipart::form::MultipartForm;
 use actix_web::http::StatusCode;
 use actix_web::{web, HttpResponse, Responder};
 use log::error;
 use serde::Deserialize;
 use sqlx::PgPool;
+use uuid::Uuid;
 
 use super::download;
-use super::model::{NewTransaction, TransactionFilter, TransactionPatch};
+use super::import;
+use super::jobs::JobStore;
+use super::model::{ImportJobReport, NewTransaction, TransactionFilter, TransactionPatch};
 use super::repository;
 use crate::shared::http_error::{
-    error_response_with_n, internal_error_response, is_foreign_key_violation, not_found_response,
+    error_response, error_response_with_n, internal_error_response, is_foreign_key_violation,
+    not_found_response,
 };
 use crate::shared::l10n::L10n;
 
@@ -18,6 +24,19 @@ use crate::shared::l10n::L10n;
 #[derive(Deserialize)]
 struct TransactionIdPath {
     id: u32,
+}
+
+/// Import job id path (`/transactions/import/jobs/{id}`)
+#[derive(Deserialize)]
+struct ImportJobIdPath {
+    id: Uuid,
+}
+
+/// Multipart body for `POST /transactions/import`: a single file field, capped at 10 MB.
+#[derive(MultipartForm)]
+struct ImportUploadForm {
+    #[multipart(limit = "10MB")]
+    file: TempFile,
 }
 
 /// File format for `GET /transactions/download`.
@@ -134,6 +153,90 @@ async fn download_transactions(
     }
 }
 
+/// `POST /transactions/import` — accepts a single budget-export file, stages it to disk, and
+/// spawns an unattended `claude` subprocess (running the `budget-file-to-transaction` skill) to
+/// parse and import it in the background. Returns immediately with the job id; poll
+/// `GET /transactions/import/jobs/{id}` for status.
+async fn import_transactions(
+    MultipartForm(form): MultipartForm<ImportUploadForm>,
+    job_store: web::Data<JobStore>,
+    l10n: web::Data<L10n>,
+) -> impl Responder {
+    let locale = l10n.locale();
+
+    let original_name = form.file.file_name.clone().unwrap_or_default();
+    if form.file.size == 0 || original_name.trim().is_empty() {
+        return error_response(
+            &l10n,
+            &locale,
+            StatusCode::BAD_REQUEST,
+            "import-file-required",
+        );
+    }
+
+    let job = job_store.create(import::sanitize_filename(&original_name));
+    let dest_dir = import::upload_dir(job.id);
+    let dest_path = dest_dir.join(import::sanitize_filename(&original_name));
+
+    if let Err(e) = tokio::fs::create_dir_all(&dest_dir).await {
+        error!(
+            "failed to create import upload dir job_id={} error={e}",
+            job.id
+        );
+        return internal_error_response(&l10n, &locale);
+    }
+    if let Err(e) = tokio::fs::copy(form.file.file.path(), &dest_path).await {
+        error!("failed to stage import upload job_id={} error={e}", job.id);
+        return internal_error_response(&l10n, &locale);
+    }
+
+    let job_store_for_task = job_store.clone();
+    let job_id = job.id;
+    tokio::spawn(async move {
+        import::run_import(&job_store_for_task, job_id, dest_path).await;
+    });
+
+    HttpResponse::Accepted()
+        .insert_header(("Location", format!("/transactions/import/jobs/{}", job.id)))
+        .json(job)
+}
+
+/// `GET /transactions/import/jobs/{id}` — poll the status of an import job.
+async fn get_import_job(
+    path: web::Path<ImportJobIdPath>,
+    job_store: web::Data<JobStore>,
+    l10n: web::Data<L10n>,
+) -> impl Responder {
+    match job_store.get(path.id) {
+        Some(job) => HttpResponse::Ok().json(job),
+        None => error_response(
+            &l10n,
+            &l10n.locale(),
+            StatusCode::NOT_FOUND,
+            "import-job-not-found",
+        ),
+    }
+}
+
+/// `PATCH /transactions/import/jobs/{id}` — how the unattended import subprocess reports its own
+/// final result back to the server (see the skill's "Unattended mode" section). Not intended to
+/// be called from the client.
+async fn report_import_job(
+    path: web::Path<ImportJobIdPath>,
+    report: web::Json<ImportJobReport>,
+    job_store: web::Data<JobStore>,
+) -> impl Responder {
+    job_store.complete(
+        path.id,
+        report.status,
+        report.created_count,
+        report.failed_count,
+        report.skipped_count,
+        report.error_message.clone(),
+    );
+    HttpResponse::NoContent().finish()
+}
+
 /// `GET /transactions/{id}` — fetch a single transaction.
 async fn get_transaction(
     path: web::Path<TransactionIdPath>,
@@ -206,6 +309,15 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .route(
             "/transactions/download",
             web::get().to(download_transactions),
+        )
+        .route("/transactions/import", web::post().to(import_transactions))
+        .route(
+            "/transactions/import/jobs/{id}",
+            web::get().to(get_import_job),
+        )
+        .route(
+            "/transactions/import/jobs/{id}",
+            web::patch().to(report_import_job),
         )
         .route("/transactions/{id}", web::get().to(get_transaction))
         .route("/transactions/{id}", web::patch().to(update_transaction))
