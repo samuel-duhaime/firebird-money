@@ -50,6 +50,17 @@ fn slugify(text: &str) -> String {
         .collect()
 }
 
+/// Prefixes `value` with a `'` if it starts with `=`, `+`, `-`, or `@`, which spreadsheet apps
+/// (Excel, Google Sheets) treat as the start of a formula. Without this, a user-controlled field
+/// like merchant or category name (e.g. `=SUM(A1:A2)`) would execute as a formula when the CSV is
+/// opened, rather than being displayed as plain text (CSV/formula injection).
+fn escape_formula(value: &str) -> String {
+    match value.chars().next() {
+        Some('=' | '+' | '-' | '@') => format!("'{value}"),
+        _ => value.to_string(),
+    }
+}
+
 /// Renders transactions as CSV bytes, with a header row.
 pub fn to_csv(transactions: &[Transaction]) -> Result<Vec<u8>, csv::Error> {
     let mut writer = csv::Writer::from_writer(Vec::new());
@@ -58,8 +69,8 @@ pub fn to_csv(transactions: &[Transaction]) -> Result<Vec<u8>, csv::Error> {
     for transaction in transactions {
         writer.write_record([
             transaction.date.to_string(),
-            transaction.merchant.clone(),
-            transaction.category_name_en.clone(),
+            escape_formula(&transaction.merchant),
+            escape_formula(&transaction.category_name_en),
             transaction.amount.to_string(),
         ])?;
     }

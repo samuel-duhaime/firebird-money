@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { getRouteApi } from '@tanstack/react-router';
 import { faDownload } from '@fortawesome/free-solid-svg-icons';
@@ -19,7 +20,25 @@ const DOWNLOAD_OPTIONS: { value: DownloadFormat; label: string }[] = [
 export const DownloadButton = () => {
   const { search, order } = routeApi.useSearch();
   const { isOpen, setIsOpen, position, triggerRef, popoverRef } =
-    useAnchoredPopover();
+    useAnchoredPopover<HTMLButtonElement>();
+  const firstOptionRef = useRef<HTMLButtonElement>(null);
+  const wasOpenRef = useRef(false);
+
+  // Return focus to the trigger once the popover actually closes (selection, outside click, or
+  // Escape), but not on first mount.
+  useEffect(() => {
+    if (isOpen) {
+      wasOpenRef.current = true;
+    } else if (wasOpenRef.current) {
+      wasOpenRef.current = false;
+      triggerRef.current?.focus();
+    }
+  }, [isOpen, triggerRef]);
+
+  // Move focus into the popover once it's mounted and positioned.
+  useEffect(() => {
+    if (isOpen && position) firstOptionRef.current?.focus();
+  }, [isOpen, position]);
 
   const handleSelect = async (format: DownloadFormat) => {
     setIsOpen(false);
@@ -31,10 +50,13 @@ export const DownloadButton = () => {
   };
 
   return (
-    <div className="download-button-trigger" ref={triggerRef}>
+    <div className="download-button-trigger">
       <TopMenuButton
+        ref={triggerRef}
         icon={faDownload}
         label="Download"
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
         onClick={() => setIsOpen((open) => !open)}
       />
       {isOpen &&
@@ -45,9 +67,10 @@ export const DownloadButton = () => {
             ref={popoverRef}
             style={{ top: position.top, left: position.left }}
           >
-            {DOWNLOAD_OPTIONS.map((option) => (
+            {DOWNLOAD_OPTIONS.map((option, index) => (
               <button
                 key={option.value}
+                ref={index === 0 ? firstOptionRef : undefined}
                 type="button"
                 className="download-popover-option"
                 onClick={() => handleSelect(option.value)}

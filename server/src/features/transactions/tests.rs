@@ -452,6 +452,60 @@ async fn download_transactions_csv_contains_header_and_rows(pool: PgPool) {
 }
 
 #[sqlx::test]
+async fn download_transactions_csv_escapes_formula_like_merchant(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    create_via_api(&app, "2024-01-15", "=SUM(A1:A2)", "12.34").await;
+    create_via_api(&app, "2024-01-16", "+1234567890", "20.00").await;
+    create_via_api(&app, "2024-01-17", "-2+3", "30.00").await;
+    create_via_api(&app, "2024-01-18", "@SUM(A1)", "40.00").await;
+
+    let req = test::TestRequest::get()
+        .uri("/transactions/download?format=csv&order=inverse_date")
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    let body = test::read_body(resp).await;
+    let csv = String::from_utf8(body.to_vec()).unwrap();
+    let rows: Vec<&str> = csv.lines().skip(1).collect();
+    assert_eq!(rows[0], "2024-01-15,'=SUM(A1:A2),Other,12.34");
+    assert_eq!(rows[1], "2024-01-16,'+1234567890,Other,20.00");
+    assert_eq!(rows[2], "2024-01-17,'-2+3,Other,30.00");
+    assert_eq!(rows[3], "2024-01-18,'@SUM(A1),Other,40.00");
+}
+
+#[sqlx::test]
+async fn download_transactions_csv_escapes_formula_like_category(pool: PgPool) {
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(pool))
+            .app_data(web::Data::new(L10n::new()))
+            .configure(configure)
+            .configure(crate::features::categories::configure),
+    )
+    .await;
+    let patch_req = test::TestRequest::patch()
+        .uri("/categories/1")
+        .set_json(serde_json::json!({ "name_en": "=cmd", "name_fr": "Autre" }))
+        .to_request();
+    test::call_service(&app, patch_req).await;
+    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
+
+    let req = test::TestRequest::get()
+        .uri("/transactions/download?format=csv")
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    let body = test::read_body(resp).await;
+    let csv = String::from_utf8(body.to_vec()).unwrap();
+    assert_eq!(
+        csv.lines().nth(1).unwrap(),
+        "2024-01-15,STARBUCKS,'=cmd,12.34"
+    );
+}
+
+#[sqlx::test]
 async fn download_transactions_filename_reflects_search_and_order(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
     create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
