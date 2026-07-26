@@ -14,6 +14,7 @@
   --color-dark: #313133; /* Alternate background */
   --color-background: #131314; /* Background */
   --color-success: #3ba27a; /* Positive amounts, success states */
+  --color-warning: #e5a13b; /* Partial-success/caution states */
   --color-error: #e5484d; /* Negative amounts, error states */
 
   /* Spacing */

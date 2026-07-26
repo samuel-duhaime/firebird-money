@@ -16,3 +16,17 @@ export const importSucceededToast = (createdCount: number) =>
   toast.success(
     `Imported ${createdCount} transaction${createdCount === 1 ? '' : 's'}.`,
   );
+
+export const importPartialToast = (
+  createdCount: number,
+  failedCount: number,
+  skippedCount: number,
+) => {
+  const issues = [
+    failedCount > 0 ? `${failedCount} failed` : null,
+    skippedCount > 0 ? `${skippedCount} skipped` : null,
+  ].filter(Boolean);
+  toast.warning(
+    `Imported ${createdCount} transaction${createdCount === 1 ? '' : 's'} (${issues.join(', ')}).`,
+  );
+};

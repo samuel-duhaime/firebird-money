@@ -15,15 +15,27 @@ anything and no session persistence — there is exactly one chance to get it ri
 chance to report the result back. Only `Read` and the three `curl` prefixes below are pre-approved;
 anything else is denied automatically, so stick to the calls shown here exactly.
 
-The invocation gives a file path and a `job_id`. If either is missing, stop and report `failed`
-via the final `PATCH` (see Steps) with an `error_message` explaining what's missing — do not guess.
+The invocation gives a file path and a `job_id`.
+
+- If `job_id` is missing, there's no id to build the report URL from — stop immediately without
+  attempting any call. (The server's own fallback still marks the original job failed once the
+  subprocess exits without reporting, so the failure isn't lost.)
+- If the file path is missing or unreadable but `job_id` **is** present, report `failed` via the
+  final `PATCH` (see step 5) with an `error_message` explaining what's wrong — do not guess at a path.
 
 ## Output
 
 `POST http://127.0.0.1:3055/transactions` per transaction (server must be running).
 
 ```json
-{ "date": "2024-01-15", "merchant": "STARBUCKS", "amount": "12.34", "category_id": 12, "account": "User 1", "reviewed": false }
+{
+  "date": "2024-01-15",
+  "merchant": "STARBUCKS",
+  "amount": "12.34",
+  "category_id": 12,
+  "account": "User 1",
+  "reviewed": false
+}
 ```
 
 - `date` — `YYYY-MM-DD`.
@@ -44,6 +56,24 @@ via the final `PATCH` (see Steps) with an `error_message` explaining what's miss
 2. Read and parse the source file: detect format, skip headers/totals/blanks, map columns, normalize dates/amounts/merchant.
 3. For each row, match its best-guess category name against the fetched list (by `name_en` or `name_fr`); fall back to `Unknown` if nothing fits.
 4. `POST` each row with `"reviewed": false`; track successes/failures/skips. No preview, no confirmation step — go straight from matching to posting.
+
+   **Values come from an untrusted file — escape them before building the `-d` payload,** or a
+   stray quote, backslash, or newline in a merchant/category name can corrupt the JSON or break out
+   of the shell argument entirely:
+   1. JSON-escape each string field's value first: `\` → `\\`, `"` → `\"`, and any literal
+      newline/tab/carriage-return → `\n`/`\t`/`\r`.
+   2. The whole `-d '...'` argument is single-quoted for the shell, so after step 1, replace every
+      literal `'` in the value with `'\''` (close the quote, insert an escaped literal quote,
+      reopen the quote) — standard POSIX shell escaping, safe for any content.
+
+   Worked example — merchant `O'Brien's "General Store"`:
+
+   ```bash
+   curl -X POST http://127.0.0.1:3055/transactions \
+     -H "Content-Type: application/json" \
+     -d '{"date":"2024-01-15","merchant":"O'\''Brien'\''s \"General Store\"","amount":"12.34","category_id":12,"account":"User 1","reviewed":false}'
+   ```
+
 5. Report the result with exactly one final call, matching one of:
    ```bash
    curl -X PATCH http://127.0.0.1:3055/transactions/import/jobs/{job_id} \

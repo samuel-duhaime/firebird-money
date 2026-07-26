@@ -6,6 +6,7 @@ use actix_web::{web, App, HttpServer};
 
 use crate::features::transactions::JobStore;
 use crate::shared::l10n::L10n;
+use crate::shared::SERVER_ADDR;
 
 /// Main function to start the server
 #[actix_web::main]
@@ -13,7 +14,7 @@ async fn main() -> std::io::Result<()> {
     dotenvy::dotenv().ok();
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 
-    let addr = "127.0.0.1:3055";
+    let addr = SERVER_ADDR;
     println!("Server listening on http://{addr}/transactions            (GET list, optional ?date=&merchant=; POST create)");
     println!("  and http://{addr}/transactions/{{id}}        (GET, PATCH, DELETE)");
     println!("  and http://{addr}/categories               (GET list; POST create)");

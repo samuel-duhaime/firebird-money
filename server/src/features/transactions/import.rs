@@ -12,9 +12,7 @@ use uuid::Uuid;
 
 use super::jobs::JobStore;
 use super::model::ImportJobStatus;
-
-/// Local address the server binds to (see `main.rs`) and that the subprocess calls back into.
-const SERVER_ADDR: &str = "127.0.0.1:3055";
+use crate::shared::SERVER_ADDR;
 
 /// How much of the subprocess's combined stdout/stderr to keep as `error_message` when it fails
 /// (or exits without reporting a result), so a runaway process can't bloat the database row.
@@ -87,6 +85,28 @@ fn build_command(job_id: Uuid, file_path: &Path) -> Command {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     command
+}
+
+/// `true` if an uploaded file is worth staging: non-empty content and a non-blank filename.
+pub fn is_valid_upload(original_name: &str, file_size: u64) -> bool {
+    file_size > 0 && !original_name.trim().is_empty()
+}
+
+/// Stages an already-validated upload into `upload_dir(job_id)` under its sanitized filename,
+/// creating the directory as needed. Kept free of `JobStore`/`tokio::spawn` so it's testable on
+/// its own.
+pub async fn stage_upload(
+    job_id: Uuid,
+    original_name: &str,
+    temp_file_path: &Path,
+) -> std::io::Result<PathBuf> {
+    let dest_dir = upload_dir(job_id);
+    let dest_path = dest_dir.join(sanitize_filename(original_name));
+
+    tokio::fs::create_dir_all(&dest_dir).await?;
+    tokio::fs::copy(temp_file_path, &dest_path).await?;
+
+    Ok(dest_path)
 }
 
 /// Truncates `text` to the last `MAX_ERROR_MESSAGE_LEN` characters, so a runaway subprocess can't
@@ -164,6 +184,53 @@ mod tests {
     fn sanitize_filename_falls_back_for_empty_or_dot_only_input() {
         assert_eq!(sanitize_filename(""), "upload");
         assert_eq!(sanitize_filename(".."), "upload");
+    }
+
+    #[test]
+    fn is_valid_upload_rejects_an_empty_file() {
+        assert!(!is_valid_upload("statement.csv", 0));
+    }
+
+    #[test]
+    fn is_valid_upload_rejects_a_blank_filename() {
+        assert!(!is_valid_upload("   ", 128));
+    }
+
+    #[test]
+    fn is_valid_upload_accepts_a_real_file() {
+        assert!(is_valid_upload("statement.csv", 128));
+    }
+
+    #[tokio::test]
+    async fn stage_upload_creates_the_job_dir_and_copies_the_file() {
+        let job_id = Uuid::new_v4();
+        let src = std::env::temp_dir().join(format!("stage-upload-test-{job_id}.csv"));
+        tokio::fs::write(&src, b"date,merchant,amount\n")
+            .await
+            .unwrap();
+
+        let dest = stage_upload(job_id, "statement.csv", &src).await.unwrap();
+
+        assert_eq!(dest, upload_dir(job_id).join("statement.csv"));
+        assert_eq!(
+            tokio::fs::read(&dest).await.unwrap(),
+            b"date,merchant,amount\n"
+        );
+
+        let _ = tokio::fs::remove_file(&src).await;
+        let _ = tokio::fs::remove_dir_all(upload_dir(job_id)).await;
+    }
+
+    #[tokio::test]
+    async fn stage_upload_fails_when_the_source_file_is_missing() {
+        let job_id = Uuid::new_v4();
+        let missing_src = std::env::temp_dir().join(format!("does-not-exist-{job_id}.csv"));
+
+        assert!(stage_upload(job_id, "statement.csv", &missing_src)
+            .await
+            .is_err());
+
+        let _ = tokio::fs::remove_dir_all(upload_dir(job_id)).await;
     }
 
     #[test]
