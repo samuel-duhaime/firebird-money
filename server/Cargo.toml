@@ -24,3 +24,4 @@ uuid = { version = "1", features = ["v4", "serde"] }
 [dev-dependencies]
 actix-http = "3"
 serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt"] }

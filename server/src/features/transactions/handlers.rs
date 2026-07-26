@@ -1,9 +1,11 @@
 //! HTTP API for transactions: JSON CRUD backed by Postgres, plus the async budget-file import.
 
 use actix_multipart::form::tempfile::TempFile;
-use actix_multipart::form::MultipartForm;
+use actix_multipart::form::{MultipartForm, MultipartFormConfig};
+use actix_multipart::MultipartError;
+use actix_web::error::{InternalError, PayloadError};
 use actix_web::http::StatusCode;
-use actix_web::{web, HttpResponse, Responder};
+use actix_web::{web, HttpRequest, HttpResponse, Responder};
 use log::error;
 use serde::Deserialize;
 use sqlx::PgPool;
@@ -153,6 +155,28 @@ async fn download_transactions(
     }
 }
 
+/// Converts a multipart parsing/extraction failure — in practice almost always the 10 MB field
+/// size limit on `ImportUploadForm` being exceeded — into the same localized JSON error shape the
+/// rest of this API uses, instead of actix-multipart's plain-text default.
+fn import_upload_error_handler(err: MultipartError, req: &HttpRequest) -> actix_web::Error {
+    let response = match req.app_data::<web::Data<L10n>>() {
+        Some(l10n) => {
+            let locale = l10n.locale();
+            let message_id = match &err {
+                // The field-level `#[multipart(limit = "10MB")]` surfaces as a payload overflow,
+                // not `MultipartError::Field` — confirmed against a real oversized upload.
+                MultipartError::Payload(PayloadError::Overflow) | MultipartError::Field { .. } => {
+                    "import-file-too-large"
+                }
+                _ => "import-file-required",
+            };
+            error_response(l10n, &locale, StatusCode::BAD_REQUEST, message_id)
+        }
+        None => HttpResponse::BadRequest().finish(),
+    };
+    InternalError::from_response(err, response).into()
+}
+
 /// `POST /transactions/import` — accepts a single budget-export file, stages it to disk, and
 /// spawns an unattended `claude` subprocess (running the `budget-file-to-transaction` skill) to
 /// parse and import it in the background. Returns immediately with the job id; poll
@@ -165,7 +189,7 @@ async fn import_transactions(
     let locale = l10n.locale();
 
     let original_name = form.file.file_name.clone().unwrap_or_default();
-    if form.file.size == 0 || original_name.trim().is_empty() {
+    if !import::is_valid_upload(&original_name, form.file.size as u64) {
         return error_response(
             &l10n,
             &locale,
@@ -175,20 +199,14 @@ async fn import_transactions(
     }
 
     let job = job_store.create(import::sanitize_filename(&original_name));
-    let dest_dir = import::upload_dir(job.id);
-    let dest_path = dest_dir.join(import::sanitize_filename(&original_name));
-
-    if let Err(e) = tokio::fs::create_dir_all(&dest_dir).await {
-        error!(
-            "failed to create import upload dir job_id={} error={e}",
-            job.id
-        );
-        return internal_error_response(&l10n, &locale);
-    }
-    if let Err(e) = tokio::fs::copy(form.file.file.path(), &dest_path).await {
-        error!("failed to stage import upload job_id={} error={e}", job.id);
-        return internal_error_response(&l10n, &locale);
-    }
+    let dest_path = match import::stage_upload(job.id, &original_name, form.file.file.path()).await
+    {
+        Ok(dest_path) => dest_path,
+        Err(e) => {
+            error!("failed to stage import upload job_id={} error={e}", job.id);
+            return internal_error_response(&l10n, &locale);
+        }
+    };
 
     let job_store_for_task = job_store.clone();
     let job_id = job.id;
@@ -304,7 +322,8 @@ async fn delete_transaction(
 
 /// Registers the transactions feature's routes.
 pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.route("/transactions", web::get().to(list_transactions))
+    cfg.app_data(MultipartFormConfig::default().error_handler(import_upload_error_handler))
+        .route("/transactions", web::get().to(list_transactions))
         .route("/transactions", web::post().to(create_transaction))
         .route(
             "/transactions/download",

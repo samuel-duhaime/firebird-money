@@ -962,6 +962,38 @@ async fn delete_transaction_removes_row(pool: PgPool) {
     assert_eq!(get_resp.status(), 404);
 }
 
+// --- POST /transactions/import ---
+//
+// Only the size-limit rejection is tested here: it's rejected during multipart extraction, before
+// `import_transactions` ever runs, so — unlike a real successful upload — it never spawns a
+// `claude` subprocess.
+
+#[sqlx::test]
+async fn import_transactions_rejects_a_file_over_the_size_limit(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+
+    let oversized = vec![b'a'; 11 * 1024 * 1024]; // over the 10 MB field limit
+    let (body, headers) = actix_multipart::test::create_form_data_payload_and_headers(
+        "file",
+        Some("statement.csv".to_string()),
+        None,
+        web::Bytes::from(oversized),
+    );
+
+    let mut req = test::TestRequest::post().uri("/transactions/import");
+    for (name, value) in headers.iter() {
+        req = req.insert_header((name.clone(), value.clone()));
+    }
+    let resp = test::call_service(&app, req.set_payload(body).to_request()).await;
+
+    assert_eq!(resp.status(), 400);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    // Pins down the specific message, not just "some JSON error" — the field-level size limit
+    // surfaces as `MultipartError::Payload(PayloadError::Overflow)`, easy to mis-map to the wrong
+    // Fluent key (as a first pass here did) since it isn't `MultipartError::Field`.
+    assert!(body["error"].as_str().unwrap().contains("too large"));
+}
+
 // --- /transactions/import/jobs/{id} ---
 //
 // These test the HTTP wiring for the in-memory JobStore directly (seeding a job via
