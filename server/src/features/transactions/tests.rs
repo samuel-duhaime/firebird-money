@@ -144,6 +144,62 @@ async fn list_transactions_filters_by_date_and_merchant_combined(pool: PgPool) {
 }
 
 #[sqlx::test]
+async fn list_transactions_filters_by_date_range(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    create_via_api(&app, "2024-01-14", "STARBUCKS", "12.34").await;
+    create_via_api(&app, "2024-01-15", "IGA", "56.78").await;
+    create_via_api(&app, "2024-01-16", "METRO", "20.00").await;
+    create_via_api(&app, "2024-01-17", "COSTCO", "99.99").await;
+
+    let req = test::TestRequest::get()
+        .uri("/transactions?start_date=2024-01-15&end_date=2024-01-16")
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    let rows = body.as_array().unwrap();
+    let dates: Vec<&str> = rows.iter().map(|r| r["date"].as_str().unwrap()).collect();
+    assert_eq!(dates, vec!["2024-01-16", "2024-01-15"]);
+}
+
+#[sqlx::test]
+async fn list_transactions_filters_by_start_date_only(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
+    create_via_api(&app, "2024-01-16", "IGA", "56.78").await;
+
+    let req = test::TestRequest::get()
+        .uri("/transactions?start_date=2024-01-16")
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    let rows = body.as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["merchant"], "IGA");
+}
+
+#[sqlx::test]
+async fn list_transactions_filters_by_end_date_only(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
+    create_via_api(&app, "2024-01-16", "IGA", "56.78").await;
+
+    let req = test::TestRequest::get()
+        .uri("/transactions?end_date=2024-01-15")
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    let rows = body.as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["merchant"], "STARBUCKS");
+}
+
+#[sqlx::test]
 async fn list_transactions_filters_by_search_matches_merchant(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
     create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
@@ -540,6 +596,41 @@ async fn download_transactions_filename_reflects_search_and_order(pool: PgPool) 
         resp.headers().get("content-disposition").unwrap(),
         "attachment; filename=\"transactions_coffee-shop_highest-amount.csv\""
     );
+}
+
+#[sqlx::test]
+async fn download_transactions_filename_reflects_date_range(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
+
+    let req = test::TestRequest::get()
+        .uri("/transactions/download?format=csv&start_date=2024-01-01&end_date=2024-01-31")
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    assert_eq!(
+        resp.headers().get("content-disposition").unwrap(),
+        "attachment; filename=\"transactions_2024-01-01_to_2024-01-31.csv\""
+    );
+}
+
+#[sqlx::test]
+async fn download_transactions_respects_date_range_filter(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
+    create_via_api(&app, "2024-02-15", "IGA", "56.78").await;
+
+    let req = test::TestRequest::get()
+        .uri("/transactions/download?format=csv&start_date=2024-01-01&end_date=2024-01-31")
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    let body = test::read_body(resp).await;
+    let csv = String::from_utf8(body.to_vec()).unwrap();
+    assert!(csv.contains("STARBUCKS"));
+    assert!(!csv.contains("IGA"));
 }
 
 #[sqlx::test]

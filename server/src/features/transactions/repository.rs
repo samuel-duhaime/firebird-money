@@ -42,9 +42,9 @@ pub async fn create(
     .await
 }
 
-/// Lists transactions, optionally narrowed by an exact date match, a case-insensitive merchant
-/// substring match, and/or a free-text search across merchant, category name, and amount. Sorted
-/// per `filter.order` (most recent first by default).
+/// Lists transactions, optionally narrowed by an exact date match, a `start_date`/`end_date`
+/// range, a case-insensitive merchant substring match, and/or a free-text search across merchant,
+/// category name, and amount. Sorted per `filter.order` (most recent first by default).
 pub async fn list(
     pool: &PgPool,
     filter: &TransactionFilter,
@@ -69,11 +69,15 @@ pub async fn list(
               OR c.name_fr ILIKE '%' || $3 || '%' ESCAPE E'\\\\'
               OR t.amount::text ILIKE '%' || $3 || '%' ESCAPE E'\\\\'
            ))
+           AND ($4::date IS NULL OR t.date >= $4)
+           AND ($5::date IS NULL OR t.date <= $5)
          ORDER BY {order_by}"
     ))
     .bind(filter.date)
     .bind(&filter.merchant)
     .bind(&escaped_search)
+    .bind(filter.start_date)
+    .bind(filter.end_date)
     .fetch_all(pool)
     .await
 }

@@ -14,6 +14,12 @@ pub fn filename(filter: &TransactionFilter, extension: &str) -> String {
     if let Some(date) = filter.date {
         parts.push(date.to_string());
     }
+    match (filter.start_date, filter.end_date) {
+        (Some(start), Some(end)) => parts.push(format!("{start}_to_{end}")),
+        (Some(start), None) => parts.push(format!("from_{start}")),
+        (None, Some(end)) => parts.push(format!("until_{end}")),
+        (None, None) => {}
+    }
     if let Some(merchant) = &filter.merchant {
         parts.push(slugify(merchant));
     }

@@ -76,6 +76,10 @@ pub struct TransactionFilter {
     pub merchant: Option<String>,
     /// Case-insensitive substring match against merchant, category name, or amount.
     pub search: Option<String>,
+    /// Inclusive lower bound on `date`.
+    pub start_date: Option<NaiveDate>,
+    /// Inclusive upper bound on `date`.
+    pub end_date: Option<NaiveDate>,
     /// Sort order. Defaults to `Date` (most recent first) when absent.
     pub order: Option<SortOrder>,
 }

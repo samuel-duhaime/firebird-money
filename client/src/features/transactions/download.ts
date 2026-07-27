@@ -9,10 +9,14 @@ export const downloadTransactions = async (
   format: DownloadFormat,
   search?: string,
   order?: SortOrder,
+  startDate?: string,
+  endDate?: string,
 ) => {
   const params = new URLSearchParams({ format });
   if (search) params.set('search', search);
   if (order) params.set('order', order);
+  if (startDate) params.set('start_date', startDate);
+  if (endDate) params.set('end_date', endDate);
 
   const { blob, filename } = await apiFetchFile(
     `/transactions/download?${params.toString()}`,

@@ -9,7 +9,9 @@ import type { Transaction } from './types';
 import './TransactionsList.css';
 
 /** Groups transactions by date, assuming they already arrive sorted with same-date rows adjacent. */
-const groupByDate = (transactions: Transaction[]): { date: string; transactions: Transaction[] }[] => {
+const groupByDate = (
+  transactions: Transaction[],
+): { date: string; transactions: Transaction[] }[] => {
   const groups: { date: string; transactions: Transaction[] }[] = [];
   for (const transaction of transactions) {
     const currentGroup = groups.at(-1);
@@ -33,14 +35,29 @@ const TransactionRow = ({ transaction }: { transaction: Transaction }) => {
 
   return (
     <li className="transactions-row">
-      <div className="transactions-row-cell transactions-row-merchant">{transaction.merchant}</div>
-      <div className="transactions-row-cell transactions-row-category">{transaction.category_name_en}</div>
-      <div className="transactions-row-cell transactions-row-account">{transaction.account}</div>
-      <div className={isCredit ? 'transactions-row-amount transactions-row-amount--credit' : 'transactions-row-amount'}>
+      <div className="transactions-row-cell transactions-row-merchant">
+        {transaction.merchant}
+      </div>
+      <div className="transactions-row-cell transactions-row-category">
+        {transaction.category_name_en}
+      </div>
+      <div className="transactions-row-cell transactions-row-account">
+        {transaction.account}
+      </div>
+      <div
+        className={
+          isCredit
+            ? 'transactions-row-amount transactions-row-amount--credit'
+            : 'transactions-row-amount'
+        }
+      >
         {isCredit ? '+' : ''}
         {formatAmount(Number(transaction.amount))}
       </div>
-      <FontAwesomeIcon icon={faChevronRight} className="transactions-row-chevron" />
+      <FontAwesomeIcon
+        icon={faChevronRight}
+        className="transactions-row-chevron"
+      />
     </li>
   );
 };
@@ -48,15 +65,25 @@ const TransactionRow = ({ transaction }: { transaction: Transaction }) => {
 const routeApi = getRouteApi('/transactions');
 
 export const TransactionsList = () => {
-  const { search, order } = routeApi.useSearch();
-  const { data: transactions, isPending, isError } = useTransactions(search, order);
+  const { search, order, start_date, end_date } = routeApi.useSearch();
+  const {
+    data: transactions,
+    isPending,
+    isError,
+  } = useTransactions(search, order, start_date, end_date);
 
   return (
     <div className="transactions-card">
       <TransactionsToolbar />
-      {isPending && <p className="transactions-status">Loading transactions…</p>}
-      {isError && <p className="transactions-status">Failed to load transactions.</p>}
-      {transactions && transactions.length === 0 && <p className="transactions-status">No transactions yet.</p>}
+      {isPending && (
+        <p className="transactions-status">Loading transactions…</p>
+      )}
+      {isError && (
+        <p className="transactions-status">Failed to load transactions.</p>
+      )}
+      {transactions && transactions.length === 0 && (
+        <p className="transactions-status">No transactions yet.</p>
+      )}
       {transactions && transactions.length > 0 && (
         <ul className="transactions-rows">
           {groupByDate(transactions).map((group, index) => (
@@ -66,7 +93,10 @@ export const TransactionsList = () => {
                 <span>{formatAmount(dailyTotal(group.transactions))}</span>
               </li>
               {group.transactions.map((transaction) => (
-                <TransactionRow key={transaction.id} transaction={transaction} />
+                <TransactionRow
+                  key={transaction.id}
+                  transaction={transaction}
+                />
               ))}
             </Fragment>
           ))}

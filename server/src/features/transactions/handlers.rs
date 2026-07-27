@@ -81,9 +81,10 @@ async fn create_transaction(
     }
 }
 
-/// `GET /transactions` — list transactions, optionally filtered by `date`, `merchant`, and/or a
-/// free-text `search` matched against merchant, category, and amount. Accepts `order` (`date`,
-/// `inverse_date`, `amount`, `inverse_amount`) to control sort order.
+/// `GET /transactions` — list transactions, optionally filtered by `date`, a `start_date`/
+/// `end_date` range, `merchant`, and/or a free-text `search` matched against merchant, category,
+/// and amount. Accepts `order` (`date`, `inverse_date`, `amount`, `inverse_amount`) to control
+/// sort order.
 async fn list_transactions(
     filter: web::Query<TransactionFilter>,
     pool: web::Data<PgPool>,
@@ -99,8 +100,8 @@ async fn list_transactions(
 }
 
 /// `GET /transactions/download` — download the same (filtered/sorted) transactions as
-/// `GET /transactions`, rendered as a CSV or Excel file. Accepts the same `date`, `merchant`,
-/// `search`, and `order` query params, plus `format` (`csv` or `xlsx`).
+/// `GET /transactions`, rendered as a CSV or Excel file. Accepts the same `date`, `start_date`,
+/// `end_date`, `merchant`, `search`, and `order` query params, plus `format` (`csv` or `xlsx`).
 async fn download_transactions(
     filter: web::Query<TransactionFilter>,
     format: web::Query<DownloadFormatQuery>,
