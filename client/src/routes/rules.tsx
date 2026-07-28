@@ -4,5 +4,5 @@ const Rules = () => null;
 
 export const Route = createFileRoute('/rules')({
   component: Rules,
-  staticData: { topMenuTitle: 'Rules' },
+  staticData: { topMenuTitle: 'nav.rules' },
 });

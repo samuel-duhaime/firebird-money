@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { getRouteApi } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
 import { faMagnifyingGlass } from '@fortawesome/free-solid-svg-icons';
 import { TopMenuButton } from '../../components/TopMenuButton';
 import { useAnchoredPopover } from '../../lib/use-anchored-popover';
@@ -10,6 +11,7 @@ import './SearchButton.css';
 const routeApi = getRouteApi('/transactions');
 
 export const SearchButton = () => {
+  const { t } = useTranslation();
   const { search } = routeApi.useSearch();
   const navigate = routeApi.useNavigate();
   const { isOpen, setIsOpen, position, triggerRef, popoverRef } = useAnchoredPopover();
@@ -52,7 +54,7 @@ export const SearchButton = () => {
     <div className="search-button-trigger" ref={triggerRef}>
       <TopMenuButton
         icon={faMagnifyingGlass}
-        label={search ? `"${search}"` : 'Search'}
+        label={search ? `"${search}"` : t('transactions.search.trigger')}
         onClick={() => setIsOpen((open) => !open)}
       />
       {search && <span className="search-button-badge" />}
@@ -64,19 +66,17 @@ export const SearchButton = () => {
             ref={popoverRef}
             style={{ top: position.top, left: position.left }}
           >
-            <h4 className="search-popover-title">Search</h4>
+            <h4 className="search-popover-title">{t('transactions.search.title')}</h4>
             <input
               type="text"
               className="search-popover-input"
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={handleInputKeyDown}
-              placeholder="Enter a search term..."
+              placeholder={t('transactions.search.placeholder')}
               autoFocus
             />
-            <p className="search-popover-help">
-              We&apos;ll match your search term to merchant names, categories, and amounts.
-            </p>
+            <p className="search-popover-help">{t('transactions.search.help')}</p>
             <div className="search-popover-actions">
               <button
                 type="button"
@@ -84,10 +84,10 @@ export const SearchButton = () => {
                 disabled={hasNothingToClear}
                 onClick={handleClearDraft}
               >
-                Clear
+                {t('transactions.search.clear')}
               </button>
               <button type="button" className="search-popover-button" onClick={handleCancel}>
-                Cancel
+                {t('transactions.search.cancel')}
               </button>
               <button
                 type="button"
@@ -95,7 +95,7 @@ export const SearchButton = () => {
                 disabled={hasNothingToClear}
                 onClick={handleApply}
               >
-                Apply
+                {t('transactions.search.apply')}
               </button>
             </div>
           </div>,

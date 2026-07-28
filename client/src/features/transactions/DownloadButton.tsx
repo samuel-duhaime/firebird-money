@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { getRouteApi } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
 import { faDownload } from '@fortawesome/free-solid-svg-icons';
 import { TopMenuButton } from '../../components/TopMenuButton';
 import { useAnchoredPopover } from '../../lib/use-anchored-popover';
@@ -12,12 +13,10 @@ import './DownloadButton.css';
 
 const routeApi = getRouteApi('/transactions');
 
-const DOWNLOAD_OPTIONS: { value: DownloadFormat; label: string }[] = [
-  { value: 'csv', label: 'Download as CSV' },
-  { value: 'xlsx', label: 'Download as Excel' },
-];
+const DOWNLOAD_FORMATS: DownloadFormat[] = ['csv', 'xlsx'];
 
 export const DownloadButton = () => {
+  const { t } = useTranslation();
   const { search, order, start_date, end_date } = routeApi.useSearch();
   const { isOpen, setIsOpen, position, triggerRef, popoverRef } =
     useAnchoredPopover<HTMLButtonElement>();
@@ -54,7 +53,7 @@ export const DownloadButton = () => {
       <TopMenuButton
         ref={triggerRef}
         icon={faDownload}
-        label="Download"
+        label={t('transactions.download.trigger')}
         aria-haspopup="menu"
         aria-expanded={isOpen}
         onClick={() => setIsOpen((open) => !open)}
@@ -67,15 +66,15 @@ export const DownloadButton = () => {
             ref={popoverRef}
             style={{ top: position.top, left: position.left }}
           >
-            {DOWNLOAD_OPTIONS.map((option, index) => (
+            {DOWNLOAD_FORMATS.map((format, index) => (
               <button
-                key={option.value}
+                key={format}
                 ref={index === 0 ? firstOptionRef : undefined}
                 type="button"
                 className="download-popover-option"
-                onClick={() => handleSelect(option.value)}
+                onClick={() => handleSelect(format)}
               >
-                {option.label}
+                {t(`transactions.download.${format}`)}
               </button>
             ))}
           </div>,

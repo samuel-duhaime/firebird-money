@@ -1,17 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { getRouteApi } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faCalendarDays } from '@fortawesome/free-solid-svg-icons';
 import { TopMenuButton } from '../../components/TopMenuButton';
 import { useAnchoredPopover } from '../../lib/use-anchored-popover';
 import {
   DATE_RANGE_PRESETS,
-  formatDateRangeLabel,
+  formatDateRangeParts,
   isValidDateKey,
   resolvePreset,
 } from './date-range';
 import type { DateRangePreset } from './date-range';
+import { toIntlLocale } from '../../i18n/locale';
 import '../../components/Popover.css';
 import './DateRangeButton.css';
 
@@ -36,6 +38,7 @@ const DateField = ({
   isValid: boolean;
   onChange: (value: string) => void;
 }) => {
+  const { t } = useTranslation();
   const pickerRef = useRef<HTMLInputElement>(null);
 
   const openPicker = () => {
@@ -55,14 +58,14 @@ const DateField = ({
           disabled={!value}
           onClick={() => onChange('')}
         >
-          Clear
+          {t('transactions.dateRange.clear')}
         </button>
       </div>
       <div className="date-range-popover-input-wrapper">
         <input
           id={id}
           type="text"
-          placeholder="YYYY-MM-DD"
+          placeholder={t('transactions.dateRange.placeholder')}
           maxLength={10}
           value={value}
           aria-invalid={!isValid}
@@ -80,7 +83,7 @@ const DateField = ({
         <button
           type="button"
           className="date-range-popover-calendar-button"
-          aria-label={`Pick a ${label.toLowerCase()}`}
+          aria-label={t('transactions.dateRange.pickA', { label: label.toLowerCase() })}
           onClick={openPicker}
         >
           <FontAwesomeIcon icon={faCalendarDays} />
@@ -91,6 +94,8 @@ const DateField = ({
 };
 
 export const DateRangeButton = () => {
+  const { t, i18n } = useTranslation();
+  const locale = toIntlLocale(i18n.resolvedLanguage ?? i18n.language);
   const { start_date, end_date } = routeApi.useSearch();
   const navigate = routeApi.useNavigate();
   const { isOpen, setIsOpen, position, triggerRef, popoverRef } =
@@ -171,12 +176,24 @@ export const DateRangeButton = () => {
     setIsOpen(false);
   };
 
+  const rangeParts = formatDateRangeParts(start_date, end_date, locale);
+  const rangeLabel =
+    rangeParts.kind === 'none'
+      ? t('transactions.dateRange.trigger')
+      : rangeParts.kind === 'single'
+        ? rangeParts.date
+        : rangeParts.kind === 'range'
+          ? `${rangeParts.start} – ${rangeParts.end}`
+          : rangeParts.kind === 'from'
+            ? t('transactions.dateRange.from', { date: rangeParts.date })
+            : t('transactions.dateRange.until', { date: rangeParts.date });
+
   return (
     <div className="date-range-button-trigger">
       <TopMenuButton
         ref={triggerRef}
         icon={faCalendarDays}
-        label={formatDateRangeLabel(start_date, end_date)}
+        label={rangeLabel}
         aria-haspopup="dialog"
         aria-expanded={isOpen}
         onClick={() => setIsOpen((open) => !open)}
@@ -192,17 +209,17 @@ export const DateRangeButton = () => {
           >
             <div className="date-range-popover-columns">
               <div className="date-range-popover-presets">
-                <h4 className="date-range-popover-title">Date Range</h4>
+                <h4 className="date-range-popover-title">{t('transactions.dateRange.title')}</h4>
                 <div className="date-range-popover-preset-list">
                   {DATE_RANGE_PRESETS.map((preset, index) => (
                     <button
-                      key={preset.value}
+                      key={preset}
                       ref={index === 0 ? firstOptionRef : undefined}
                       type="button"
                       className="date-range-popover-preset"
-                      onClick={() => handlePreset(preset.value)}
+                      onClick={() => handlePreset(preset)}
                     >
-                      {preset.label}
+                      {t(`transactions.dateRange.presets.${preset}`)}
                     </button>
                   ))}
                 </div>
@@ -212,20 +229,20 @@ export const DateRangeButton = () => {
                   disabled={hasNothingToClear}
                   onClick={handleClearAll}
                 >
-                  Clear
+                  {t('transactions.dateRange.clear')}
                 </button>
               </div>
               <div className="date-range-popover-fields">
                 <DateField
                   id="date-range-start-date"
-                  label="Start date"
+                  label={t('transactions.dateRange.startDate')}
                   value={draftStart}
                   isValid={isDraftStartValid}
                   onChange={setDraftStart}
                 />
                 <DateField
                   id="date-range-end-date"
-                  label="End date"
+                  label={t('transactions.dateRange.endDate')}
                   value={draftEnd}
                   isValid={isDraftEndValid}
                   onChange={setDraftEnd}
@@ -238,7 +255,7 @@ export const DateRangeButton = () => {
                 className="date-range-popover-button"
                 onClick={handleCancel}
               >
-                Cancel
+                {t('transactions.dateRange.cancel')}
               </button>
               <button
                 type="button"
@@ -246,7 +263,7 @@ export const DateRangeButton = () => {
                 disabled={isRangeInvalid}
                 onClick={handleApply}
               >
-                Apply
+                {t('transactions.dateRange.apply')}
               </button>
             </div>
           </div>,

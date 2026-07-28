@@ -1,4 +1,5 @@
 import { createFileRoute, getRouteApi } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
 import { faFilter, faPlus } from '@fortawesome/free-solid-svg-icons';
 import { TopMenuButton } from '../components/TopMenuButton';
 import { TransactionsList } from '../features/transactions/TransactionsList';
@@ -31,6 +32,7 @@ const parseDateParam = (value: unknown): string | undefined =>
 const routeApi = getRouteApi('/transactions');
 
 const ClearAllButton = () => {
+  const { t } = useTranslation();
   const { search, order, start_date, end_date } = routeApi.useSearch();
   const navigate = routeApi.useNavigate();
 
@@ -42,31 +44,35 @@ const ClearAllButton = () => {
       className="top-menu-clear-all"
       onClick={() => navigate({ search: {}, replace: true })}
     >
-      Clear
+      {t('transactions.topMenu.clear')}
     </button>
   );
 };
 
-const TransactionsTopMenuActions = () => (
-  <>
-    <ClearAllButton />
-    <SearchButton />
-    <DateRangeButton />
-    <TopMenuButton
-      icon={faFilter}
-      label="Filters"
-      onClick={notImplementedToast}
-    />
-    <ImportButton />
-    <DownloadButton />
-    <TopMenuButton
-      icon={faPlus}
-      label="Add"
-      variant="primary"
-      onClick={notImplementedToast}
-    />
-  </>
-);
+const TransactionsTopMenuActions = () => {
+  const { t } = useTranslation();
+
+  return (
+    <>
+      <ClearAllButton />
+      <SearchButton />
+      <DateRangeButton />
+      <TopMenuButton
+        icon={faFilter}
+        label={t('transactions.topMenu.filters')}
+        onClick={notImplementedToast}
+      />
+      <ImportButton />
+      <DownloadButton />
+      <TopMenuButton
+        icon={faPlus}
+        label={t('transactions.topMenu.add')}
+        variant="primary"
+        onClick={notImplementedToast}
+      />
+    </>
+  );
+};
 
 const Transactions = () => <TransactionsList />;
 
@@ -84,7 +90,7 @@ export const Route = createFileRoute('/transactions')({
     end_date: parseDateParam(search.end_date),
   }),
   staticData: {
-    topMenuTitle: 'Transactions',
+    topMenuTitle: 'nav.transactions',
     topMenuActions: TransactionsTopMenuActions,
   },
 });

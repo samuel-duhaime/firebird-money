@@ -1,21 +1,21 @@
 import { toast } from 'sonner';
+import i18n from '../i18n';
+import { toIntlLocale } from '../i18n/locale';
 
 export const notImplementedToast = () =>
-  toast.error('This feature is not available yet.');
+  toast.error(i18n.t('toast.notImplemented'));
 
 export const downloadFailedToast = () =>
-  toast.error('Failed to download transactions.');
+  toast.error(i18n.t('toast.downloadFailed'));
 
 export const importStartedToast = () =>
-  toast('Import started — this can take a minute.');
+  toast(i18n.t('toast.importStarted'));
 
 export const importFailedToast = () =>
-  toast.error('Failed to import transactions.');
+  toast.error(i18n.t('toast.importFailed'));
 
 export const importSucceededToast = (createdCount: number) =>
-  toast.success(
-    `Imported ${createdCount} transaction${createdCount === 1 ? '' : 's'}.`,
-  );
+  toast.success(i18n.t('toast.importSucceeded', { count: createdCount }));
 
 export const importPartialToast = (
   createdCount: number,
@@ -23,10 +23,14 @@ export const importPartialToast = (
   skippedCount: number,
 ) => {
   const issues = [
-    failedCount > 0 ? `${failedCount} failed` : null,
-    skippedCount > 0 ? `${skippedCount} skipped` : null,
-  ].filter(Boolean);
+    failedCount > 0 ? i18n.t('toast.importFailedCount', { count: failedCount }) : null,
+    skippedCount > 0 ? i18n.t('toast.importSkippedCount', { count: skippedCount }) : null,
+  ].filter((issue): issue is string => issue !== null);
+  const locale = toIntlLocale(i18n.resolvedLanguage ?? i18n.language);
   toast.warning(
-    `Imported ${createdCount} transaction${createdCount === 1 ? '' : 's'} (${issues.join(', ')}).`,
+    i18n.t('toast.importPartial', {
+      count: createdCount,
+      issues: new Intl.ListFormat(locale, { style: 'long', type: 'conjunction' }).format(issues),
+    }),
   );
 };

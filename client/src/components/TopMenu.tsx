@@ -1,10 +1,11 @@
 import type { ComponentType } from 'react';
 import { useMatches } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
 import './TopMenu.css';
 
 declare module '@tanstack/react-router' {
   interface StaticDataRouteOption {
-    /** Page title rendered in the TopMenu. */
+    /** i18n key for the page title rendered in the TopMenu. */
     topMenuTitle?: string;
     /** Renders page-specific buttons on the right side of the TopMenu. */
     topMenuActions?: ComponentType;
@@ -12,9 +13,10 @@ declare module '@tanstack/react-router' {
 }
 
 export const TopMenu = () => {
+  const { t } = useTranslation();
   const matches = useMatches();
   const leafMatch = matches.at(-1);
-  const title = leafMatch?.staticData.topMenuTitle;
+  const titleKey = leafMatch?.staticData.topMenuTitle;
   const Actions = leafMatch?.staticData.topMenuActions;
 
   return (
@@ -27,7 +29,7 @@ export const TopMenu = () => {
           <span className="top-menu-logo-accent">.</span>
         </p>
       </div>
-      {title && <h1 className="top-menu-title">{title}</h1>}
+      {titleKey && <h1 className="top-menu-title">{t(titleKey)}</h1>}
       {Actions && (
         <div className="top-menu-actions">
           <Actions />
