@@ -8,6 +8,7 @@
 - [Configuration](#configuration)
 - [How to run](#how-to-run)
 - [API](#api)
+- [Data model](#data-model)
 - [Tests](#tests)
 - [Lint & Format](#lint--format)
 - [License](#license)
@@ -121,6 +122,11 @@ Every transaction response includes its joined category: `category_name_en`, `ca
 - `POST /categories` — create a category (`name_en`, `name_fr`, `type`, where `type` is `income`, `expense`, or `transfer`).
 - `PATCH /categories/{id}` — partially update a category (only the fields you send change).
 - `DELETE /categories/{id}` — delete a category.
+
+## Data model
+
+The currently implemented API only exposes `Category` and `Transaction` (see [API](#api) above). The diagram below is the planned full data model — Household, User, Account, Institution, Merchant, Tag, and Rule are design-stage entities, not yet implemented:
+![API class diagram](docs/images/api-diagram.png)
 
 ## Tests
 
