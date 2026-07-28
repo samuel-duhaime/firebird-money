@@ -13,13 +13,13 @@ export const isValidDateKey = (value: string): boolean =>
   DATE_KEY_PATTERN.test(value);
 
 /** Presets offered in the date-range popover, in display order. */
-export const DATE_RANGE_PRESETS: { value: DateRangePreset; label: string }[] = [
-  { value: 'last_7_days', label: 'Last 7 days' },
-  { value: 'last_30_days', label: 'Last 30 days' },
-  { value: 'this_month', label: 'This month' },
-  { value: 'last_month', label: 'Last month' },
-  { value: 'this_year', label: 'This year' },
-  { value: 'last_year', label: 'Last year' },
+export const DATE_RANGE_PRESETS: DateRangePreset[] = [
+  'last_7_days',
+  'last_30_days',
+  'this_month',
+  'last_month',
+  'this_year',
+  'last_year',
 ];
 
 /** Formats a `Date` as `YYYY-MM-DD` using local date components, matching the API's date format. */
@@ -76,23 +76,32 @@ export const resolvePreset = (
   }
 };
 
-/** Formats a `start_date`/`end_date` pair as a compact label, e.g. `Jul 21 – Jul 27`. */
-export const formatDateRangeLabel = (
-  startDate?: string,
-  endDate?: string,
-): string => {
+/** Structured description of a `start_date`/`end_date` pair, for the caller to translate/render. */
+export type DateRangeLabelParts =
+  | { kind: 'none' }
+  | { kind: 'single'; date: string }
+  | { kind: 'range'; start: string; end: string }
+  | { kind: 'from'; date: string }
+  | { kind: 'until'; date: string };
+
+/** Describes a `start_date`/`end_date` pair, formatting each date as e.g. `Jul 21`. */
+export const formatDateRangeParts = (
+  startDate: string | undefined,
+  endDate: string | undefined,
+  locale: string,
+): DateRangeLabelParts => {
   const format = (dateKey: string) =>
-    parseDateKey(dateKey).toLocaleDateString('en-US', {
+    parseDateKey(dateKey).toLocaleDateString(locale, {
       month: 'short',
       day: 'numeric',
     });
 
   if (startDate && endDate) {
     return startDate === endDate
-      ? format(startDate)
-      : `${format(startDate)} – ${format(endDate)}`;
+      ? { kind: 'single', date: format(startDate) }
+      : { kind: 'range', start: format(startDate), end: format(endDate) };
   }
-  if (startDate) return `From ${format(startDate)}`;
-  if (endDate) return `Until ${format(endDate)}`;
-  return 'Date';
+  if (startDate) return { kind: 'from', date: format(startDate) };
+  if (endDate) return { kind: 'until', date: format(endDate) };
+  return { kind: 'none' };
 };

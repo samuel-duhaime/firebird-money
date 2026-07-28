@@ -1,0 +1,30 @@
+.language-switcher {
+  display: flex;
+  gap: var(--spacing-xs);
+  padding: 0 var(--spacing-xs);
+  margin-top: auto;
+}
+
+.language-switcher-option {
+  flex: 1;
+  padding: 4px;
+  border: 1px solid var(--color-medium);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-lightest);
+  font: 700 13px/1.5 Quicksand, sans-serif;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.language-switcher-option:hover {
+  border-color: var(--color-light);
+  color: var(--color-white);
+}
+
+.language-switcher-option--active,
+.language-switcher-option--active:hover {
+  background: var(--color-medium);
+  border-color: var(--color-medium);
+  color: var(--color-white);
+}

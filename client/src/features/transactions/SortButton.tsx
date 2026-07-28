@@ -1,5 +1,6 @@
 import { createPortal } from 'react-dom';
 import { getRouteApi } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faChevronDown } from '@fortawesome/free-solid-svg-icons';
 import { useAnchoredPopover } from '../../lib/use-anchored-popover';
@@ -9,14 +10,10 @@ import './SortButton.css';
 
 const routeApi = getRouteApi('/transactions');
 
-const SORT_OPTIONS: { value: SortOrder; label: string }[] = [
-  { value: 'date', label: 'Date (new to old)' },
-  { value: 'inverse_date', label: 'Date (old to new)' },
-  { value: 'amount', label: 'Amount (high to low)' },
-  { value: 'inverse_amount', label: 'Amount (low to high)' },
-];
+const SORT_ORDERS: SortOrder[] = ['date', 'inverse_date', 'amount', 'inverse_amount'];
 
 export const SortButton = () => {
+  const { t } = useTranslation();
   const { order } = routeApi.useSearch();
   const navigate = routeApi.useNavigate();
   const { isOpen, setIsOpen, position, triggerRef, popoverRef } =
@@ -38,7 +35,7 @@ export const SortButton = () => {
         ref={triggerRef}
         onClick={() => setIsOpen((open) => !open)}
       >
-        <span>Sort</span>
+        <span>{t('transactions.sort.trigger')}</span>
         <FontAwesomeIcon icon={faChevronDown} />
         {isActive && <span className="sort-button-badge" />}
       </button>
@@ -50,18 +47,18 @@ export const SortButton = () => {
             ref={popoverRef}
             style={{ top: position.top, left: position.left }}
           >
-            {SORT_OPTIONS.map((option) => (
+            {SORT_ORDERS.map((value) => (
               <button
-                key={option.value}
+                key={value}
                 type="button"
                 className={
-                  option.value === selected
+                  value === selected
                     ? 'sort-popover-option sort-popover-option--selected'
                     : 'sort-popover-option'
                 }
-                onClick={() => handleSelect(option.value)}
+                onClick={() => handleSelect(value)}
               >
-                {option.label}
+                {t(`transactions.sort.options.${value}`)}
               </button>
             ))}
           </div>,

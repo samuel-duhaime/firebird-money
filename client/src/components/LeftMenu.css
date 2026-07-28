@@ -67,7 +67,6 @@
   align-items: center;
   gap: var(--spacing-s);
   padding: var(--spacing-xs);
-  margin-top: auto;
 }
 
 .left-menu-profile-icon {

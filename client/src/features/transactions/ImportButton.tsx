@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { faFileImport, faSpinner } from '@fortawesome/free-solid-svg-icons';
 import { TopMenuButton } from '../../components/TopMenuButton';
 import { useImportJob } from './use-import-job';
@@ -13,6 +14,7 @@ import {
 } from '../../lib/toast';
 
 export const ImportButton = () => {
+  const { t } = useTranslation();
   const inputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [jobId, setJobId] = useState<string>();
@@ -69,7 +71,11 @@ export const ImportButton = () => {
         icon={busy ? faSpinner : faFileImport}
         spin={busy}
         disabled={busy}
-        label={busy ? (isUploading ? 'Uploading…' : 'Importing…') : 'Import'}
+        label={
+          busy
+            ? t(isUploading ? 'transactions.import.uploading' : 'transactions.import.importing')
+            : t('transactions.import.trigger')
+        }
         onClick={() => inputRef.current?.click()}
       />
     </>
