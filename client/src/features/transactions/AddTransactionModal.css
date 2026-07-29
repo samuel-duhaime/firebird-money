@@ -6,17 +6,22 @@
   justify-content: center;
   align-items: center;
   z-index: 999;
+
+  overflow-y: auto;
+  padding: 1rem;
 }
 
 .add-transaction-modal {
   width: 420px;
   max-width: 90vw;
+  max-height: calc(100dvh - 2rem);
+  display: flex;
+  flex-direction: column;
   background: #2f2f2f;
   color: #fff;
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
-  font-family: inherit;
 }
 
 .modal-header {
@@ -50,6 +55,8 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
+  padding: 20px 22px;
+  overflow-y: auto;
   padding: 20px 22px;
 }
 
