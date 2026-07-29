@@ -8,10 +8,10 @@ type AddTransactionModalProps = {
   onClose: () => void;
 };
 
-export function AddTransactionModal({
+export const AddTransactionModal = ({
   open,
   onClose,
-}: AddTransactionModalProps) {
+}: AddTransactionModalProps) => {
   const { t, i18n } = useTranslation();
   const { data: categories } = useCategories();
   const [amount, setAmount] = useState('');
@@ -124,4 +124,4 @@ export function AddTransactionModal({
       </div>
     </div>
   );
-}
+};
