@@ -65,6 +65,17 @@ export const fr: typeof en = {
       filters: 'Filtres',
       add: 'Ajouter',
     },
+  
+  add: {
+    title: 'Ajouter une transaction',
+    amount: 'Montant',
+    merchant: 'Commerçant',
+    date: 'Date',
+    category: 'Catégorie',
+    selectCategory: 'Sélectionnez une catégorie',
+    submit: 'Ajouter la transaction',
+  },
+
     toolbar: {
       allTransactions: 'Toutes les transactions',
       editMultiple: 'Modifier plusieurs',
