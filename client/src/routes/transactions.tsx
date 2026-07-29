@@ -11,7 +11,8 @@ import { ImportButton } from '../features/transactions/ImportButton';
 import { notImplementedToast } from '../lib/toast';
 import type { SortOrder } from '../features/transactions/types';
 import '../components/TopMenu.css';
-
+import { useState } from 'react';
+import { AddTransactionModal } from '../features/transactions/AddTransactionModal';
 type TransactionsSearch = {
   search?: string;
   order?: SortOrder;
@@ -51,24 +52,33 @@ const ClearAllButton = () => {
 
 const TransactionsTopMenuActions = () => {
   const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
 
   return (
     <>
       <ClearAllButton />
       <SearchButton />
       <DateRangeButton />
+
       <TopMenuButton
         icon={faFilter}
         label={t('transactions.topMenu.filters')}
         onClick={notImplementedToast}
       />
+
       <ImportButton />
       <DownloadButton />
+
       <TopMenuButton
         icon={faPlus}
         label={t('transactions.topMenu.add')}
         variant="primary"
-        onClick={notImplementedToast}
+        onClick={() => setOpen(true)}
+      />
+
+      <AddTransactionModal
+        open={open}
+        onClose={() => setOpen(false)}
       />
     </>
   );
