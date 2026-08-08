@@ -123,9 +123,34 @@ Every transaction response includes its joined category: `category_name_en`, `ca
 - `PATCH /categories/{id}` — partially update a category (only the fields you send change).
 - `DELETE /categories/{id}` — delete a category.
 
+`/households`:
+
+- `GET /households/{id}` — fetch a single household.
+- `POST /households` — create a new, empty household.
+- `DELETE /households/{id}` — delete a household. Fails while it still has members (see `/household-members`).
+
+A household has no fields of its own beyond `id`/`created_at` — it's a pure container. Who belongs to it, and with what role, lives in `/household-members`.
+
+`/users`:
+
+- `GET /users/{id}` — fetch a single user.
+- `POST /users` — create a user (`email`, `google_id` optional). `status` starts at `pending`.
+- `PATCH /users/{id}` — partially update a user (`email`, `google_id`, `status`, `first_name`, `last_name`, `avatar_url`; only the fields you send change). `status` must be `verified`, `pending`, or `suspended`.
+- `DELETE /users/{id}` — delete a user. Fails while they still belong to a household (see `/household-members`).
+
+A user is a standalone login identity — how they relate to a household is recorded separately, since the same person can belong to more than one.
+
+`/household-members`:
+
+- `GET /household-members` — list memberships, optionally filtered by `?household_id=` and/or `?user_id=`.
+- `GET /household-members/{id}` — fetch a single membership.
+- `POST /household-members` — connect a user to a household with a role (`household_id`, `user_id`, `type`, where `type` is `family_manager` or `family_member`). A user has exactly one role per household.
+- `PATCH /household-members/{id}` — change a membership's role (`type`).
+- `DELETE /household-members/{id}` — remove a membership.
+
 ## Data model
 
-The currently implemented API only exposes `Category` and `Transaction` (see [API](#api) above). The diagram below is the planned full data model — Household, User, Account, Institution, Merchant, Tag, and Rule are design-stage entities, not yet implemented:
+The currently implemented API exposes `Category`, `Transaction`, `Household`, `User`, and `HouseholdMember` (see [API](#api) above). The diagram below is the planned full data model — Account, Institution, Merchant, Tag, and Rule are still design-stage entities, not yet implemented, and `HouseholdMember` (the join between `User` and `Household`) isn't pictured yet either:
 ![API class diagram](docs/images/api-diagram.png)
 
 ## Tests

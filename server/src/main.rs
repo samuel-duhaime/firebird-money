@@ -19,6 +19,12 @@ async fn main() -> std::io::Result<()> {
     println!("  and http://{addr}/transactions/{{id}}        (GET, PATCH, DELETE)");
     println!("  and http://{addr}/categories               (GET list; POST create)");
     println!("  and http://{addr}/categories/{{id}}         (GET, PATCH, DELETE)");
+    println!("  and http://{addr}/households                (POST create)");
+    println!("  and http://{addr}/households/{{id}}          (GET, DELETE)");
+    println!("  and http://{addr}/users                    (POST create)");
+    println!("  and http://{addr}/users/{{id}}                (GET, PATCH, DELETE)");
+    println!("  and http://{addr}/household-members         (GET list, optional ?household_id=&user_id=; POST create)");
+    println!("  and http://{addr}/household-members/{{id}}   (GET, PATCH, DELETE)");
 
     let l10n = web::Data::new(L10n::new());
     let pool = web::Data::new(shared::postgres::create_pool().await);
@@ -42,6 +48,9 @@ async fn main() -> std::io::Result<()> {
             .app_data(import_jobs.clone())
             .configure(features::transactions::configure)
             .configure(features::categories::configure)
+            .configure(features::households::configure)
+            .configure(features::users::configure)
+            .configure(features::household_members::configure)
     })
     .bind(addr)?
     .run()
