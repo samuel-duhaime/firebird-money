@@ -1,0 +1,249 @@
+//! Integration tests for the users HTTP API.
+//!
+//! Each `#[sqlx::test]` gets its own throwaway Postgres database (migrated from
+//! `migrations/`, dropped afterwards), so these never touch real dev data.
+
+use actix_http::Request;
+use actix_web::body::MessageBody;
+use actix_web::dev::{Service, ServiceResponse};
+use actix_web::{test, web, App};
+use sqlx::PgPool;
+
+use super::handlers::configure;
+use crate::shared::l10n::L10n;
+
+fn app_with(
+    pool: PgPool,
+) -> App<
+    impl actix_web::dev::ServiceFactory<
+        actix_web::dev::ServiceRequest,
+        Config = (),
+        Response = actix_web::dev::ServiceResponse,
+        Error = actix_web::Error,
+        InitError = (),
+    >,
+> {
+    App::new()
+        .app_data(web::Data::new(pool))
+        .app_data(web::Data::new(L10n::new()))
+        .configure(configure)
+}
+
+/// Creates a user through `POST /users` and returns its id, for tests that only need an existing
+/// row to act on.
+async fn create_via_api<S, B>(app: &S, email: &str) -> i64
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let req = test::TestRequest::post()
+        .uri("/users")
+        .set_json(serde_json::json!({ "email": email }))
+        .to_request();
+    let resp = test::call_service(app, req).await;
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    body["id"]
+        .as_i64()
+        .unwrap_or_else(|| panic!("expected created user, got {body}"))
+}
+
+// --- POST /users ---
+
+#[sqlx::test]
+async fn create_user_returns_created_row(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let req = test::TestRequest::post()
+        .uri("/users")
+        .set_json(serde_json::json!({
+            "email": "jane@example.com",
+            "google_id": "google-123",
+        }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 201);
+    let location = resp
+        .headers()
+        .get("Location")
+        .expect("Location header")
+        .to_str()
+        .unwrap()
+        .to_string();
+
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["email"], "jane@example.com");
+    assert_eq!(body["google_id"], "google-123");
+    assert_eq!(body["status"], "pending");
+    assert!(body["first_name"].is_null());
+    assert_eq!(location, format!("/users/{}", body["id"].as_i64().unwrap()));
+}
+
+#[sqlx::test]
+async fn create_user_rejects_malformed_body(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let req = test::TestRequest::post()
+        .uri("/users")
+        .set_json(serde_json::json!({}))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 400);
+}
+
+#[sqlx::test]
+async fn create_user_rejects_duplicate_email(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    create_via_api(&app, "jane@example.com").await;
+
+    let req = test::TestRequest::post()
+        .uri("/users")
+        .set_json(serde_json::json!({ "email": "jane@example.com" }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 409);
+}
+
+// --- GET /users/{id} ---
+
+#[sqlx::test]
+async fn get_user_returns_row(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let id = create_via_api(&app, "jane@example.com").await;
+
+    let req = test::TestRequest::get()
+        .uri(&format!("/users/{id}"))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["email"], "jane@example.com");
+}
+
+#[sqlx::test]
+async fn get_user_not_found(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let req = test::TestRequest::get().uri("/users/999999").to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 404);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert!(body["error"].is_string());
+}
+
+// --- PATCH /users/{id} ---
+
+#[sqlx::test]
+async fn update_user_changes_only_given_fields(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let id = create_via_api(&app, "jane@example.com").await;
+
+    let req = test::TestRequest::patch()
+        .uri(&format!("/users/{id}"))
+        .set_json(serde_json::json!({ "first_name": "Jane", "status": "verified" }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["first_name"], "Jane");
+    assert_eq!(body["status"], "verified");
+    assert_eq!(body["email"], "jane@example.com");
+}
+
+#[sqlx::test]
+async fn update_user_not_found(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let req = test::TestRequest::patch()
+        .uri("/users/999999")
+        .set_json(serde_json::json!({ "first_name": "Nope" }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 404);
+}
+
+#[sqlx::test]
+async fn update_user_rejects_invalid_status(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let id = create_via_api(&app, "jane@example.com").await;
+
+    let req = test::TestRequest::patch()
+        .uri(&format!("/users/{id}"))
+        .set_json(serde_json::json!({ "status": "nonsense" }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 400);
+}
+
+// --- DELETE /users/{id} ---
+
+#[sqlx::test]
+async fn delete_user_removes_row(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let id = create_via_api(&app, "jane@example.com").await;
+
+    let delete_req = test::TestRequest::delete()
+        .uri(&format!("/users/{id}"))
+        .to_request();
+    let delete_resp = test::call_service(&app, delete_req).await;
+    assert_eq!(delete_resp.status(), 204);
+
+    let get_req = test::TestRequest::get()
+        .uri(&format!("/users/{id}"))
+        .to_request();
+    let get_resp = test::call_service(&app, get_req).await;
+    assert_eq!(get_resp.status(), 404);
+}
+
+#[sqlx::test]
+async fn delete_user_not_found(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let req = test::TestRequest::delete()
+        .uri("/users/999999")
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 404);
+}
+
+#[sqlx::test]
+async fn delete_user_rejects_when_referenced_by_member(pool: PgPool) {
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(pool))
+            .app_data(web::Data::new(L10n::new()))
+            .configure(configure)
+            .configure(crate::features::households::configure)
+            .configure(crate::features::household_members::configure),
+    )
+    .await;
+    let user_id = create_via_api(&app, "jane@example.com").await;
+
+    let household_req = test::TestRequest::post().uri("/households").to_request();
+    let household_resp = test::call_service(&app, household_req).await;
+    let household_body: serde_json::Value = test::read_body_json(household_resp).await;
+    let household_id = household_body["id"].as_i64().unwrap();
+
+    let member_req = test::TestRequest::post()
+        .uri("/household-members")
+        .set_json(serde_json::json!({
+            "household_id": household_id,
+            "user_id": user_id,
+            "type": "family_manager",
+        }))
+        .to_request();
+    let member_resp = test::call_service(&app, member_req).await;
+    assert_eq!(member_resp.status(), 201);
+
+    let delete_req = test::TestRequest::delete()
+        .uri(&format!("/users/{user_id}"))
+        .to_request();
+    let delete_resp = test::call_service(&app, delete_req).await;
+
+    assert_eq!(delete_resp.status(), 409);
+    let body: serde_json::Value = test::read_body_json(delete_resp).await;
+    assert!(body["error"].is_string());
+}
