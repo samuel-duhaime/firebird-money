@@ -20,6 +20,17 @@ export const en = {
       filters: 'Filters',
       add: 'Add',
     },
+
+  add: {
+    title: 'Add transaction',
+    amount: 'Amount',
+    merchant: 'Merchant',
+    date: 'Date',
+    category: 'Category',
+    submit: 'Add transaction',
+    selectCategory: 'Select category',
+  },
+
     toolbar: {
       allTransactions: 'All transactions',
       editMultiple: 'Edit multiple',
