@@ -8,6 +8,9 @@ use sqlx::FromRow;
 pub struct User {
     pub id: i32,
     pub email: String,
+    // Internal only; read starts with Google auth (#26).
+    #[allow(dead_code)]
+    #[serde(skip_serializing)]
     pub google_id: Option<String>,
     pub status: String,
     pub first_name: Option<String>,
