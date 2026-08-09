@@ -72,7 +72,7 @@ async fn create_user_returns_created_row(pool: PgPool) {
 
     let body: serde_json::Value = test::read_body_json(resp).await;
     assert_eq!(body["email"], "jane@example.com");
-    assert_eq!(body["google_id"], "google-123");
+    assert!(!body.as_object().unwrap().contains_key("google_id"));
     assert_eq!(body["status"], "pending");
     assert!(body["first_name"].is_null());
     assert_eq!(location, format!("/users/{}", body["id"].as_i64().unwrap()));
