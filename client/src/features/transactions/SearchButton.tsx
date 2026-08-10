@@ -8,7 +8,7 @@ import { useAnchoredPopover } from '../../lib/use-anchored-popover';
 import '../../components/Popover.css';
 import './SearchButton.css';
 
-const routeApi = getRouteApi('/transactions');
+const routeApi = getRouteApi('/_app/transactions');
 
 export const SearchButton = () => {
   const { t } = useTranslation();

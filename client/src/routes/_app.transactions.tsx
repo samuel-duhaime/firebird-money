@@ -29,7 +29,7 @@ const SORT_ORDERS: SortOrder[] = [
 const parseDateParam = (value: unknown): string | undefined =>
   typeof value === 'string' && isValidDateKey(value) ? value : undefined;
 
-const routeApi = getRouteApi('/transactions');
+const routeApi = getRouteApi('/_app/transactions');
 
 const ClearAllButton = () => {
   const { t } = useTranslation();
@@ -76,7 +76,7 @@ const TransactionsTopMenuActions = () => {
 
 const Transactions = () => <TransactionsList />;
 
-export const Route = createFileRoute('/transactions')({
+export const Route = createFileRoute('/_app/transactions')({
   component: Transactions,
   validateSearch: (search: Record<string, unknown>): TransactionsSearch => ({
     search:

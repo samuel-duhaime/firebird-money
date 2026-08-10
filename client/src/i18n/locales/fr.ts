@@ -1,6 +1,12 @@
 import type { en } from './en';
 
 export const fr: typeof en = {
+  landing: {
+    headline: 'Tes finances familiales, enfin simples.',
+    description:
+      'Firebird regroupe les transactions, les budgets et les règles de dépenses de ton ménage au même endroit, pour que tu voies où va ton argent.',
+    signIn: 'Se connecter par courriel',
+  },
   nav: {
     dashboard: 'Tableau de bord',
     transactions: 'Transactions',

@@ -6,7 +6,7 @@ import { LanguageSwitcher } from './LanguageSwitcher';
 import './LeftMenu.css';
 
 const navItems = [
-  { to: '/', labelKey: 'nav.dashboard', icon: faHouse },
+  { to: '/dashboard', labelKey: 'nav.dashboard', icon: faHouse },
   { to: '/transactions', labelKey: 'nav.transactions', icon: faReceipt },
   { to: '/rules', labelKey: 'nav.rules', icon: faRuler },
 ] as const;
@@ -21,7 +21,7 @@ export const LeftMenu = () => {
           <li key={to}>
             <Link
               to={to}
-              activeOptions={{ exact: to === '/' }}
+              activeOptions={{ exact: to === '/dashboard' }}
               className="left-menu-link"
               activeProps={{ className: 'left-menu-link left-menu-link--active' }}
             >

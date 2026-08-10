@@ -1,4 +1,10 @@
 export const en = {
+  landing: {
+    headline: 'Family finances, finally clear.',
+    description:
+      "Firebird brings your household's transactions, budgets, and spending rules into one place, so you can see where your money goes.",
+    signIn: 'Sign in with email',
+  },
   nav: {
     dashboard: 'Dashboard',
     transactions: 'Transactions',

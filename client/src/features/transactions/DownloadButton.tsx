@@ -11,7 +11,7 @@ import type { DownloadFormat } from './download';
 import '../../components/Popover.css';
 import './DownloadButton.css';
 
-const routeApi = getRouteApi('/transactions');
+const routeApi = getRouteApi('/_app/transactions');
 
 const DOWNLOAD_FORMATS: DownloadFormat[] = ['csv', 'xlsx'];
 

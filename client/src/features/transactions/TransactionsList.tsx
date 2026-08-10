@@ -74,7 +74,7 @@ const TransactionRow = ({
   );
 };
 
-const routeApi = getRouteApi('/transactions');
+const routeApi = getRouteApi('/_app/transactions');
 
 export const TransactionsList = () => {
   const { t, i18n } = useTranslation();

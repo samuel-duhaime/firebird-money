@@ -8,7 +8,7 @@ import type { SortOrder } from './types';
 import '../../components/Popover.css';
 import './SortButton.css';
 
-const routeApi = getRouteApi('/transactions');
+const routeApi = getRouteApi('/_app/transactions');
 
 const SORT_ORDERS: SortOrder[] = ['date', 'inverse_date', 'amount', 'inverse_amount'];
 

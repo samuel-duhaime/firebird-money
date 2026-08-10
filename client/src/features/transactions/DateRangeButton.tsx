@@ -17,7 +17,7 @@ import { toIntlLocale } from '../../i18n/locale';
 import '../../components/Popover.css';
 import './DateRangeButton.css';
 
-const routeApi = getRouteApi('/transactions');
+const routeApi = getRouteApi('/_app/transactions');
 
 /**
  * A `YYYY-MM-DD` text field paired with a calendar icon that opens a native date picker. The
