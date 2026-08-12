@@ -1,9 +1,8 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, Link } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faEnvelope } from '@fortawesome/free-solid-svg-icons';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
-import { notImplementedToast } from '../lib/toast';
 import './index.css';
 
 const LandingPage = () => {
@@ -25,10 +24,10 @@ const LandingPage = () => {
       <div className="landing-hero">
         <h1>{t('landing.headline')}</h1>
         <p className="landing-description">{t('landing.description')}</p>
-        <button type="button" className="landing-cta" onClick={notImplementedToast}>
+        <Link to="/sign-in" className="landing-cta">
           <FontAwesomeIcon icon={faEnvelope} />
           {t('landing.signIn')}
-        </button>
+        </Link>
       </div>
     </div>
   );

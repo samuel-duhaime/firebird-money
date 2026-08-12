@@ -1,3 +1,4 @@
+pub mod auth;
 pub mod categories;
 pub mod household_members;
 pub mod households;

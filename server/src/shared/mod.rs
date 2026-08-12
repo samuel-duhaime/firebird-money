@@ -1,3 +1,5 @@
+pub mod config;
+pub mod email;
 pub mod http_error;
 pub mod l10n;
 pub mod postgres;

@@ -7,5 +7,10 @@ use sqlx::FromRow;
 #[derive(Debug, Serialize, FromRow)]
 pub struct Household {
     pub id: i32,
+
+    /// Short code an existing member shares so someone else can join this household during
+    /// onboarding. Generated on creation and never changes.
+    pub join_code: String,
+
     pub created_at: DateTime<Utc>,
 }
