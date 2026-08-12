@@ -45,6 +45,24 @@ impl L10n {
         self.locale.clone()
     }
 
+    /// Resolves a caller-supplied language tag (e.g. the client's current UI language) to a
+    /// supported locale, falling back to `DEFAULT_LANGUAGE` when it's absent or unsupported.
+    ///
+    /// Used for the magic-link email, which should arrive in the language the person was just
+    /// reading, not the server's default.
+    pub fn locale_or_default(&self, requested: Option<&str>) -> LanguageIdentifier {
+        let Some(tag) = requested else {
+            return self.locale();
+        };
+
+        // Accept regional tags too: "fr-CA" is French.
+        match tag.trim().to_lowercase().split('-').next() {
+            Some("en") => lid("en"),
+            Some("fr") => lid("fr"),
+            _ => self.locale(),
+        }
+    }
+
     /// Selects the bundle for API responses (`fr` → French; anything else → English).
     fn bundle(&self, locale: &LanguageIdentifier) -> &FluentBundle<FluentResource> {
         if locale.language == "fr" {

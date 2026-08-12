@@ -1,11 +1,19 @@
 import { apiFetch } from '../../lib/api-client';
 import type { CurrentUser, RequestLoginResponse } from './types';
 
-/** Asks for a magic link. Creates the account if this email has never signed in before. */
-export const requestLogin = (email: string): Promise<RequestLoginResponse> =>
+/**
+ * Asks for a magic link. Creates the account if this email has never signed in before.
+ *
+ * `language` is the UI's current language, so the email arrives in the one the person was just
+ * reading rather than the server's default.
+ */
+export const requestLogin = (
+  email: string,
+  language: string,
+): Promise<RequestLoginResponse> =>
   apiFetch<RequestLoginResponse>('/auth/request-login', {
     method: 'POST',
-    body: JSON.stringify({ email }),
+    body: JSON.stringify({ email, language }),
   });
 
 /** Spends the token from a magic link and opens a session. */

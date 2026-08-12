@@ -3,7 +3,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useMutation } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faEnvelope, faPaperPlane } from '@fortawesome/free-solid-svg-icons';
+import { faPaperPlane } from '@fortawesome/free-solid-svg-icons';
 import { requestLogin } from '../features/auth/api';
 import { useSetCurrentUser } from '../features/auth/use-current-user';
 import { signInFailedToast } from '../lib/toast';
@@ -14,14 +14,15 @@ import './auth.css';
  * an unknown address simply becomes an account.
  */
 const SignInPage = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const setCurrentUser = useSetCurrentUser();
   const [email, setEmail] = useState('');
   const [linkSent, setLinkSent] = useState(false);
 
   const signIn = useMutation({
-    mutationFn: requestLogin,
+    mutationFn: (address: string) =>
+      requestLogin(address, i18n.resolvedLanguage ?? i18n.language),
     onSuccess: (response) => {
       // The server skipped the email (localhost without a mail provider) and signed us in.
       if (response.status === 'signed_in' && response.session) {
@@ -70,7 +71,6 @@ const SignInPage = () => {
           signIn.mutate(email);
         }}
       >
-        <FontAwesomeIcon icon={faEnvelope} className="auth-icon" />
         <h1>{t('auth.signIn.title')}</h1>
         <p className="auth-description">{t('auth.signIn.description')}</p>
         <input

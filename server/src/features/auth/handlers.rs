@@ -98,7 +98,19 @@ async fn request_login(
         config.client_base_url.trim_end_matches('/')
     );
 
-    if let Err(e) = email::send_magic_link(&config, &http_client, &email_address, &link).await {
+    // The email goes out in the language the client is showing, not the server's default.
+    let email_locale = l10n.locale_or_default(body.language.as_deref());
+
+    if let Err(e) = email::send_magic_link(
+        &config,
+        &http_client,
+        &l10n,
+        &email_locale,
+        &email_address,
+        &link,
+    )
+    .await
+    {
         error!("failed to send magic link error={e}");
         return error_response(
             &l10n,

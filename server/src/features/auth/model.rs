@@ -7,6 +7,10 @@ use crate::features::users::model::User;
 #[derive(Debug, Deserialize)]
 pub struct LoginRequest {
     pub email: String,
+
+    /// Language the magic-link email should use (`en` or `fr`), i.e. whatever the client's UI is
+    /// showing. Falls back to the server's `DEFAULT_LANGUAGE`.
+    pub language: Option<String>,
 }
 
 /// Query for `GET /auth/verify` — the token carried by the magic link.
