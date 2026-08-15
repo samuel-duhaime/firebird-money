@@ -58,13 +58,33 @@ pub async fn send_magic_link(
     let status = response.status();
     if !status.is_success() {
         // Resend explains refusals (unverified sender, invalid recipient) in the body; that
-        // detail is what makes a failed send diagnosable.
+        // detail is what makes a failed send diagnosable. Resend sometimes echoes the recipient
+        // address back in that detail (e.g. the test-domain restriction message), so it's
+        // redacted before it reaches the log.
         let detail = response.text().await.unwrap_or_default();
-        error!("resend rejected the magic-link email status={status} body={detail}");
+        error!(
+            "resend rejected the magic-link email status={status} body={}",
+            redact_emails(&detail)
+        );
         return Err(format!("Resend returned {status}"));
     }
 
     Ok(())
+}
+
+/// Replaces anything that looks like an email address with `[redacted]`, so a log line built
+/// from third-party text (a Resend error body) can't leak who it was about.
+fn redact_emails(text: &str) -> String {
+    text.split(' ')
+        .map(|word| {
+            if word.contains('@') {
+                "[redacted]"
+            } else {
+                word
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Builds the plain-text body: greeting, instructions, the link on its own line, sign-off.
@@ -101,6 +121,16 @@ mod tests {
         assert!(text.starts_with("Bonjour,"));
         assert!(text.contains("https://example.com/link"));
         assert!(text.contains("15 minutes"));
+    }
+
+    #[test]
+    fn redact_emails_masks_addresses_but_keeps_the_rest() {
+        let text = "You can only send testing emails to sam@example.com (validation_error)";
+        let redacted = redact_emails(text);
+
+        assert!(!redacted.contains('@'));
+        assert!(redacted.contains("validation_error"));
+        assert!(redacted.starts_with("You can only send testing emails to [redacted]"));
     }
 
     #[test]

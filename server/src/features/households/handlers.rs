@@ -9,6 +9,7 @@ use log::error;
 use serde::Deserialize;
 use sqlx::PgPool;
 
+use super::model::PublicHousehold;
 use super::repository;
 use crate::shared::http_error::{
     error_response_with_n, internal_error_response, is_foreign_key_violation, not_found_response,
@@ -34,7 +35,7 @@ async fn create_household(pool: web::Data<PgPool>, l10n: web::Data<L10n>) -> imp
     }
 }
 
-/// `GET /households/{id}` — fetch a single household.
+/// `GET /households/{id}` — fetch a single household, without its `join_code` (see `PublicHousehold`).
 async fn get_household(
     path: web::Path<HouseholdIdPath>,
     pool: web::Data<PgPool>,
@@ -44,7 +45,7 @@ async fn get_household(
     let id = path.id;
 
     match repository::get(&pool, id as i32).await {
-        Ok(Some(household)) => HttpResponse::Ok().json(household),
+        Ok(Some(household)) => HttpResponse::Ok().json(PublicHousehold::from(household)),
         Ok(None) => not_found_response(&l10n, &locale, "household-not-found", id),
         Err(e) => {
             error!("failed to get household id={id} error={e}");

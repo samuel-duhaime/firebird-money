@@ -25,6 +25,7 @@ auth-token-invalid = This sign-in link is invalid, expired, or already used
 auth-email-send-failed = The sign-in email could not be sent, please try again
 auth-not-signed-in = You must be signed in
 auth-join-code-not-found = No household matches this join code
+auth-join-code-blank = join_code cannot be blank; omit it to create a new household instead
 auth-already-in-household = You are already connected to this household
 import-job-not-found = No import job found
 import-file-required = A file to import is required

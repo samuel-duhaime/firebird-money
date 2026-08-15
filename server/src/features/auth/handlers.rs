@@ -230,11 +230,20 @@ async fn onboarding(
         }
     };
 
-    let join_code = body
-        .join_code
-        .as_deref()
-        .map(str::trim)
-        .filter(|code| !code.is_empty());
+    // A `join_code` field that's present but blank is almost certainly a mistake — e.g. a
+    // whitespace-only paste — not a request to create a new household. Treat it as a bad request
+    // rather than silently taking the "create" branch, which would give the caller a household
+    // they didn't intend to start.
+    if matches!(body.join_code.as_deref().map(str::trim), Some("")) {
+        return error_response(
+            &l10n,
+            &locale,
+            StatusCode::BAD_REQUEST,
+            "auth-join-code-blank",
+        );
+    }
+
+    let join_code = body.join_code.as_deref().map(str::trim);
 
     let (household_id, role) = match join_code {
         Some(code) => match households_repository::get_by_join_code(&pool, code).await {

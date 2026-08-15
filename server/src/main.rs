@@ -1,8 +1,11 @@
 mod features;
 mod shared;
 
+use std::time::Duration;
+
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer};
+use log::{info, warn};
 
 use crate::features::transactions::JobStore;
 use crate::shared::config::AuthConfig;
@@ -28,31 +31,47 @@ async fn main() -> std::io::Result<()> {
     };
 
     if auth_config.skip_email_verification {
-        println!(
+        // Security-relevant state: warn, not println!, so it carries a level and timestamp and
+        // can be picked up by log collection rather than only appearing on an attached terminal.
+        warn!(
             "SKIP_EMAIL_VERIFICATION is on: sign-in skips the magic-link email and logs you straight in."
         );
     }
 
     let addr = SERVER_ADDR;
     // Routes are documented in the README rather than echoed here, so the two can't drift.
-    println!("Server listening on http://{addr}");
+    info!("Server listening on http://{addr}");
+
+    // The origin the client actually runs at, so a real deployment's CORS allowance matches
+    // where `CLIENT_BASE_URL` points the magic link — not just localhost.
+    let allowed_origin = auth_config
+        .client_base_url
+        .trim_end_matches('/')
+        .to_string();
 
     let l10n = web::Data::new(L10n::new());
     let pool = web::Data::new(shared::postgres::create_pool().await);
     let import_jobs = web::Data::new(JobStore::default());
     let auth_config = web::Data::new(auth_config);
-    // One client, shared by every magic-link send, so the TLS connection pool is reused.
-    let http_client = web::Data::new(reqwest::Client::new());
+    // One client, shared by every magic-link send, so the TLS connection pool is reused. Short
+    // timeouts keep a stalled Resend call from tying up the request for the 30s default.
+    let http_client = web::Data::new(
+        reqwest::Client::builder()
+            .timeout(Duration::from_secs(10))
+            .connect_timeout(Duration::from_secs(5))
+            .build()
+            .expect("failed to build the shared HTTP client"),
+    );
 
     // Actix web server configuration
     HttpServer::new(move || {
-        // Dev-only: allows the Vite client (a different origin) to call this API.
+        // Allows the client (a different origin) to call this API.
         // `Content-Disposition` must be explicitly exposed, or the browser's `fetch()` can't read
         // the filename off download responses (it's not on the CORS response-header safelist).
         // `supports_credentials` is what lets the browser send the session cookie on these
         // cross-origin calls; it only works alongside an explicit origin, never a wildcard.
         let cors = Cors::default()
-            .allowed_origin("http://localhost:5173")
+            .allowed_origin(&allowed_origin)
             .allow_any_method()
             .allow_any_header()
             .supports_credentials()

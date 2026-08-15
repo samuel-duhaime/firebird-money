@@ -3,7 +3,8 @@
 CREATE TABLE sessions (
     id SERIAL PRIMARY KEY,
 
-    user_id INTEGER NOT NULL REFERENCES users (id),
+    -- Cascades so deleting a user (e.g. account deletion) doesn't get blocked by their sessions.
+    user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
 
     -- SHA-256 of the raw session token, hex encoded.
     token_hash TEXT NOT NULL UNIQUE,

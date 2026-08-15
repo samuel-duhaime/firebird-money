@@ -52,7 +52,13 @@ const OnboardingPage = () => {
             className="auth-form"
             onSubmit={(event) => {
               event.preventDefault();
-              onboard.mutate(joinCode);
+              // `required` only blocks a truly empty field; whitespace still passes it.
+              const trimmedCode = joinCode.trim();
+              if (trimmedCode === '') {
+                joinCodeNotFoundToast();
+                return;
+              }
+              onboard.mutate(trimmedCode);
             }}
           >
             <input

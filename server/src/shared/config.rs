@@ -3,12 +3,15 @@
 //! Everything here is validated once at startup so a misconfigured server refuses to boot instead
 //! of failing later, on someone's sign-in attempt.
 
-/// `APP_ENV` value treated as production (case and surrounding whitespace insensitive, so a
-/// stray "Production" in a real deployment still gets production's protections). Anything else,
-/// including unset, is development.
+/// `APP_ENV` values (case and surrounding whitespace insensitive, so a stray "Production" in a
+/// real deployment still gets production's protections). Nothing else is accepted — see
+/// `validate_app_env` — so a typo or a forgotten variable fails startup instead of silently
+/// landing on development's weaker guarantees.
 const PRODUCTION_APP_ENV: &str = "production";
+const DEVELOPMENT_APP_ENV: &str = "development";
 
-/// Whether an `APP_ENV` value means production.
+/// Whether an `APP_ENV` value means production. Only called after `validate_app_env` has already
+/// confirmed the value is one of the two recognized ones.
 fn is_production_env(app_env: &str) -> bool {
     app_env.trim().eq_ignore_ascii_case(PRODUCTION_APP_ENV)
 }
@@ -49,6 +52,7 @@ impl AuthConfig {
         let skip_email_verification = env_flag("SKIP_EMAIL_VERIFICATION");
         let resend_api_key = non_empty_var("RESEND_API_KEY");
 
+        validate_app_env(&app_env)?;
         validate_email_verification(&app_env, skip_email_verification)?;
         validate_email_provider(skip_email_verification, resend_api_key.as_deref())?;
 
@@ -86,6 +90,22 @@ fn non_empty_var(name: &str) -> Option<String> {
         .ok()
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
+}
+
+/// Rejects an `APP_ENV` that isn't exactly `"production"` or `"development"`. Without this, a
+/// missing variable or a typo (`"prod"`) silently gets treated as development: `validate_email_verification`
+/// would then allow `SKIP_EMAIL_VERIFICATION=true`, and `is_production` would tell the session
+/// cookie to skip `Secure`. Both are fine in dev and dangerous in a real deployment.
+fn validate_app_env(app_env: &str) -> Result<(), String> {
+    let value = app_env.trim();
+    if value.eq_ignore_ascii_case(PRODUCTION_APP_ENV)
+        || value.eq_ignore_ascii_case(DEVELOPMENT_APP_ENV)
+    {
+        return Ok(());
+    }
+    Err(format!(
+        "APP_ENV must be \"{PRODUCTION_APP_ENV}\" or \"{DEVELOPMENT_APP_ENV}\", got {app_env:?}"
+    ))
 }
 
 /// The safeguard: the "skip the email, just log me in" shortcut must never be live in production.
@@ -143,11 +163,20 @@ mod tests {
     }
 
     #[test]
-    fn unrecognized_values_stay_development() {
-        // A deployment that forgets APP_ENV entirely, or writes "prod", is not caught by this
-        // guard — it protects against a wrong flag, not against a missing one.
-        assert!(validate_email_verification("prod", true).is_ok());
-        assert!(validate_email_verification("staging", true).is_ok());
+    fn rejects_unset_or_unrecognized_app_env() {
+        // A forgotten variable or a typo like "prod" no longer falls through to development —
+        // `from_env` refuses to start instead.
+        assert!(validate_app_env("").is_err());
+        assert!(validate_app_env("prod").is_err());
+        assert!(validate_app_env("staging").is_err());
+    }
+
+    #[test]
+    fn accepts_the_two_recognized_app_env_values_regardless_of_case() {
+        assert!(validate_app_env("production").is_ok());
+        assert!(validate_app_env("Production").is_ok());
+        assert!(validate_app_env("development").is_ok());
+        assert!(validate_app_env("  Development  ").is_ok());
     }
 
     #[test]

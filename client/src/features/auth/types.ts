@@ -23,9 +23,8 @@ export interface CurrentUser {
 
 /**
  * Response to `POST /auth/request-login`. `email_sent` means check your inbox; `signed_in` is the
- * server's `SKIP_EMAIL_VERIFICATION` shortcut, which logs you in without any email at all.
+ * server's `SKIP_EMAIL_VERIFICATION` shortcut, which logs you in without any email at all — a
+ * discriminated union so `session` is only reachable on the branch that actually has one.
  */
-export interface RequestLoginResponse {
-  status: 'email_sent' | 'signed_in';
-  session?: CurrentUser;
-}
+export type RequestLoginResponse =
+  { status: 'email_sent' } | { status: 'signed_in'; session: CurrentUser };

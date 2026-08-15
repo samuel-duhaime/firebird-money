@@ -61,7 +61,9 @@ pub async fn create_session(
     Ok(())
 }
 
-/// Resolves a session cookie to its user, or `None` if the session is unknown or expired.
+/// Resolves a session cookie to its user, or `None` if the session is unknown, expired, or its
+/// user has since been suspended — a suspension takes effect immediately rather than waiting out
+/// the session's remaining `SESSION_TTL_DAYS`.
 pub async fn get_session_user(
     pool: &PgPool,
     token_hash: &str,
@@ -70,7 +72,9 @@ pub async fn get_session_user(
         "SELECT {USER_COLUMNS}
          FROM sessions
          JOIN users ON users.id = sessions.user_id
-         WHERE sessions.token_hash = $1 AND sessions.expires_at > now()"
+         WHERE sessions.token_hash = $1
+           AND sessions.expires_at > now()
+           AND users.status <> 'suspended'"
     ))
     .bind(token_hash)
     .fetch_optional(pool)

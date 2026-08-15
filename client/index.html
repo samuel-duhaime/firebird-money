@@ -3,10 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- The magic-link token travels in the /auth/verify URL; without this, following a link
+         from that page would leak it to whatever site is on the other end via the Referer header. -->
+    <meta name="referrer" content="no-referrer" />
     <title>FireBird Money</title>
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-    <link rel="icon" type="image/png" sizes="512x512" href="/icon-512x512.png" />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="512x512"
+      href="/icon-512x512.png"
+    />
   </head>
   <body>
     <div id="root"></div>

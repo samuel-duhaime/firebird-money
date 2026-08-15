@@ -25,7 +25,7 @@ const SignInPage = () => {
       requestLogin(address, i18n.resolvedLanguage ?? i18n.language),
     onSuccess: (response) => {
       // The server skipped the email (localhost without a mail provider) and signed us in.
-      if (response.status === 'signed_in' && response.session) {
+      if (response.status === 'signed_in') {
         setCurrentUser(response.session);
         navigate({
           to:

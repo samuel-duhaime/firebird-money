@@ -88,6 +88,30 @@ async fn get_household_returns_row(pool: PgPool) {
 }
 
 #[sqlx::test]
+async fn get_household_omits_join_code(pool: PgPool) {
+    // `join_code` is a shared secret; this route has no auth check yet (that's #65), so it must
+    // not hand the code to just anyone who can guess an id.
+    let app = test::init_service(app_with(pool)).await;
+    let id = create_via_api(&app).await;
+
+    let req = test::TestRequest::get()
+        .uri(&format!("/households/{id}"))
+        .to_request();
+    let body: serde_json::Value = test::call_and_read_body_json(&app, req).await;
+
+    assert!(body.get("join_code").is_none());
+}
+
+#[sqlx::test]
+async fn create_household_returns_its_join_code(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let req = test::TestRequest::post().uri("/households").to_request();
+    let body: serde_json::Value = test::call_and_read_body_json(&app, req).await;
+
+    assert_eq!(body["join_code"].as_str().unwrap().len(), 8);
+}
+
+#[sqlx::test]
 async fn get_household_not_found(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
     let req = test::TestRequest::get()

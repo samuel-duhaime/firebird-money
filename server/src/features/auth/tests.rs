@@ -161,6 +161,32 @@ async fn request_login_reuses_the_user_on_a_second_sign_in(pool: PgPool) {
 }
 
 #[sqlx::test]
+async fn request_login_sets_a_hardened_session_cookie(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+
+    let req = test::TestRequest::post()
+        .uri("/auth/request-login")
+        .set_json(serde_json::json!({ "email": "sam@example.com" }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    let cookie = resp
+        .response()
+        .cookies()
+        .find(|cookie| cookie.name() == SESSION_COOKIE_NAME)
+        .expect("a session cookie");
+
+    // `build_session_cookie` is what these guarantee; asserting on the wire format is what
+    // catches a regression there, rather than only in a unit test of the builder itself.
+    assert_eq!(cookie.http_only(), Some(true));
+    assert_eq!(cookie.same_site(), Some(actix_web::cookie::SameSite::Lax));
+    assert_eq!(cookie.path(), Some("/"));
+    // Not asserting `secure()`: this config is development, where it's deliberately off (a
+    // `Secure` cookie is dropped over localhost's plain HTTP). Production is covered by
+    // `AuthConfig::is_production` and its own tests in `shared::config`.
+}
+
+#[sqlx::test]
 async fn request_login_rejects_an_unusable_email(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
 
@@ -251,6 +277,21 @@ async fn verify_refuses_an_expired_token(pool: PgPool) {
 }
 
 #[sqlx::test]
+async fn verify_leaves_status_unchanged_when_email_verification_is_skipped(pool: PgPool) {
+    // Reachable if someone hits `GET /auth/verify` directly while the dev shortcut is on — e.g. a
+    // stale link from before the flag was flipped. It must not claim the mailbox was proven.
+    let raw_token = issue_login_token(&pool, "sam@example.com", 15).await;
+    let app = test::init_service(app_with(pool)).await;
+
+    let req = test::TestRequest::get()
+        .uri(&format!("/auth/verify?token={raw_token}"))
+        .to_request();
+    let body: serde_json::Value = test::call_and_read_body_json(&app, req).await;
+
+    assert_eq!(body["user"]["status"], "pending");
+}
+
+#[sqlx::test]
 async fn dev_shortcut_spends_the_token_it_issues(pool: PgPool) {
     let app = test::init_service(app_with(pool.clone())).await;
     sign_in(&app, "sam@example.com").await;
@@ -282,6 +323,27 @@ async fn me_rejects_an_unknown_session_cookie(pool: PgPool) {
     let req = test::TestRequest::get()
         .uri("/auth/me")
         .insert_header(("Cookie", format!("{SESSION_COOKIE_NAME}=made-up")))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 401);
+}
+
+#[sqlx::test]
+async fn me_rejects_a_suspended_users_session(pool: PgPool) {
+    let app = test::init_service(app_with(pool.clone())).await;
+    let cookie = sign_in(&app, "sam@example.com").await;
+
+    // A suspension takes effect immediately: the session row is still live and unexpired, only
+    // the account behind it changed.
+    sqlx::query("UPDATE users SET status = 'suspended' WHERE email = 'sam@example.com'")
+        .execute(&pool)
+        .await
+        .expect("suspend the user");
+
+    let req = test::TestRequest::get()
+        .uri("/auth/me")
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -418,6 +480,23 @@ async fn onboarding_rejects_an_unknown_join_code(pool: PgPool) {
     let resp = test::call_service(&app, req).await;
 
     assert_eq!(resp.status(), 404);
+}
+
+#[sqlx::test]
+async fn onboarding_rejects_a_blank_join_code_instead_of_creating_a_household(pool: PgPool) {
+    // A `join_code` field that's present but empty (or whitespace) is a mistake, not a request
+    // to create a new household — the two must not be conflated.
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in(&app, "sam@example.com").await;
+
+    let req = test::TestRequest::post()
+        .uri("/auth/onboarding")
+        .insert_header(("Cookie", cookie))
+        .set_json(serde_json::json!({ "join_code": "   " }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 400);
 }
 
 #[sqlx::test]

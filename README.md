@@ -65,9 +65,9 @@ cp .env.example .env
 
 Sign-in is passwordless (see [`/auth`](#api)). Out of the box, `SKIP_EMAIL_VERIFICATION="true"` skips the email and signs you in right away, so localhost needs no mail provider.
 
-To send real emails instead — which works from localhost too, since it's just an outbound HTTPS call — set `RESEND_API_KEY` to a [Resend](https://resend.com) key and `SKIP_EMAIL_VERIFICATION="false"`.
+To send real emails instead — which works from localhost too, since it's just an outbound HTTPS call — set `RESEND_API_KEY` to a [Resend](https://resend.com) key and `SKIP_EMAIL_VERIFICATION="false"`. The default `EMAIL_FROM`, `onboarding@resend.dev`, only delivers to the email address on your Resend account; sending to anyone else needs a verified domain and an `EMAIL_FROM` on it.
 
-The server refuses to start if the shortcut is on while `APP_ENV="production"`, or if a real send has no API key. See `.env.example` for every variable and its accepted values.
+The server refuses to start if the shortcut is on while `APP_ENV="production"`, if a real send has no API key, or if `APP_ENV` isn't exactly `"production"` or `"development"`. See `.env.example` for every variable and its accepted values.
 
 ### Client
 

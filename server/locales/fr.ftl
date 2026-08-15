@@ -25,6 +25,7 @@ auth-token-invalid = Ce lien de connexion est invalide, expiré ou déjà utilis
 auth-email-send-failed = Le courriel de connexion n’a pas pu être envoyé, veuillez réessayer
 auth-not-signed-in = Vous devez être connecté
 auth-join-code-not-found = Aucun ménage ne correspond à ce code d’invitation
+auth-join-code-blank = join_code ne peut pas être vide; omets-le pour créer un nouveau ménage à la place
 auth-already-in-household = Vous êtes déjà connecté à ce ménage
 import-job-not-found = Aucune tâche d’importation avec cet identifiant
 import-file-required = Un fichier à importer est requis
