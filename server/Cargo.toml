@@ -13,9 +13,11 @@ dotenvy = "0.15"
 env_logger = "0.11.8"
 fluent = "0.16"
 log = "0.4.28"
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "charset", "http2"] }
 rust_decimal = { version = "1", features = ["serde-with-str"] }
 rust_xlsxwriter = { version = "0.96", features = ["rust_decimal", "chrono"] }
 serde = { version = "1.0.228", features = ["derive"] }
+sha2 = "0.10"
 sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "migrate", "chrono", "rust_decimal"] }
 tokio = { version = "1", features = ["process"] }
 unic-langid = "0.9"

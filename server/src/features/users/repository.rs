@@ -1,6 +1,7 @@
 use sqlx::PgPool;
 
 use super::model::{NewUser, User, UserPatch};
+use crate::shared::http_error::is_unique_violation;
 
 const SELECT_COLUMNS: &str =
     "id, email, google_id, status, first_name, last_name, avatar_url, created_at";
@@ -16,6 +17,41 @@ pub async fn create(pool: &PgPool, new_user: &NewUser) -> Result<User, sqlx::Err
     .bind(&new_user.google_id)
     .fetch_one(pool)
     .await
+}
+
+/// Fetches a user by email (case insensitive), or `None` if nobody uses it.
+pub async fn get_by_email(pool: &PgPool, email: &str) -> Result<Option<User>, sqlx::Error> {
+    sqlx::query_as::<_, User>(&format!(
+        "SELECT {SELECT_COLUMNS} FROM users WHERE lower(email) = lower($1)"
+    ))
+    .bind(email)
+    .fetch_optional(pool)
+    .await
+}
+
+/// Returns the user with this email, creating them if this is the first time we see it — the
+/// find-or-create behind passwordless sign-in, where asking for a link *is* signing up.
+pub async fn find_or_create_by_email(pool: &PgPool, email: &str) -> Result<User, sqlx::Error> {
+    if let Some(user) = get_by_email(pool, email).await? {
+        return Ok(user);
+    }
+
+    let created = create(
+        pool,
+        &NewUser {
+            email: email.to_string(),
+            google_id: None,
+        },
+    )
+    .await;
+
+    match created {
+        // Someone asked for a link twice in quick succession and the other request won the insert.
+        Err(e) if is_unique_violation(&e) => get_by_email(pool, email)
+            .await?
+            .ok_or(sqlx::Error::RowNotFound),
+        other => other,
+    }
 }
 
 /// Fetches a single user by id, or `None` if it doesn't exist.

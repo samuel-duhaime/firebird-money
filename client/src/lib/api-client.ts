@@ -5,6 +5,9 @@ export const apiFetch = async <T>(
   init?: RequestInit,
 ): Promise<T> => {
   const response = await fetch(`${API_BASE_URL}${path}`, {
+    // Sends the session cookie: the API is a different origin, so the browser withholds it
+    // otherwise.
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     ...init,
   });
@@ -15,6 +18,11 @@ export const apiFetch = async <T>(
     );
   }
 
+  // 204 has no body to parse (logout, deletes).
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
   return response.json() as Promise<T>;
 };
 
@@ -23,6 +31,9 @@ export const apiFetchUpload = async <T>(
   formData: FormData,
 ): Promise<T> => {
   const response = await fetch(`${API_BASE_URL}${path}`, {
+    // Sends the session cookie: the API is a different origin, so the browser withholds it
+    // otherwise.
+    credentials: 'include',
     method: 'POST',
     body: formData,
   });
@@ -41,7 +52,11 @@ const parseFilename = (contentDisposition: string | null): string | undefined =>
 export const apiFetchFile = async (
   path: string,
 ): Promise<{ blob: Blob; filename?: string }> => {
-  const response = await fetch(`${API_BASE_URL}${path}`);
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    // Sends the session cookie: the API is a different origin, so the browser withholds it
+    // otherwise.
+    credentials: 'include',
+  });
 
   if (!response.ok) {
     throw new Error(`GET ${path} failed: ${response.status}`);

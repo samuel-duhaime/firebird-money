@@ -5,6 +5,43 @@ export const en = {
       "Firebird brings your household's transactions, budgets, and spending rules into one place, so you can see where your money goes.",
     signIn: 'Sign in with email',
   },
+  auth: {
+    signIn: {
+      title: 'Sign in',
+      description:
+        "Enter your email and we'll send you a link that signs you in. No password to remember.",
+      placeholder: 'you@example.com',
+      submit: 'Send me a link',
+      sending: 'Sending…',
+    },
+    checkInbox: {
+      title: 'Check your inbox',
+      description:
+        'We sent a sign-in link to {{email}}. It expires in 15 minutes.',
+      useAnotherEmail: 'Use another email',
+    },
+    verify: {
+      title: 'Signing you in…',
+      failedTitle: 'This link no longer works',
+      failedDescription:
+        'Sign-in links expire quickly and can only be used once. Ask for a fresh one.',
+      tryAgain: 'Back to sign in',
+    },
+  },
+  onboarding: {
+    title: 'Set up your household',
+    description:
+      "A household is where your family's transactions live. Start one, or join the one someone already set up.",
+    create: {
+      submit: 'Create a household',
+    },
+    join: {
+      trigger: 'I have a join code',
+      placeholder: 'Join code',
+      submit: 'Join household',
+    },
+    back: 'Back',
+  },
   nav: {
     dashboard: 'Dashboard',
     transactions: 'Transactions',
@@ -88,6 +125,9 @@ export const en = {
   },
   toast: {
     notImplemented: 'This feature is not available yet.',
+    signInFailed: 'Could not send the sign-in link. Please try again.',
+    onboardingFailed: 'Could not set up your household. Please try again.',
+    joinCodeNotFound: 'No household matches this join code.',
     downloadFailed: 'Failed to download transactions.',
     importStarted: 'Import started — this can take a minute.',
     importFailed: 'Failed to import transactions.',

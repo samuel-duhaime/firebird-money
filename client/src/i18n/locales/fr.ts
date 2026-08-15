@@ -7,6 +7,43 @@ export const fr: typeof en = {
       'Firebird regroupe les transactions, les budgets et les règles de dépenses de ton ménage au même endroit, pour que tu voies où va ton argent.',
     signIn: 'Se connecter par courriel',
   },
+  auth: {
+    signIn: {
+      title: 'Connexion',
+      description:
+        'Entre ton courriel et on t’envoie un lien qui te connecte. Aucun mot de passe à retenir.',
+      placeholder: 'toi@exemple.com',
+      submit: 'Envoie-moi un lien',
+      sending: 'Envoi…',
+    },
+    checkInbox: {
+      title: 'Vérifie tes courriels',
+      description:
+        'On a envoyé un lien de connexion à {{email}}. Il expire dans 15 minutes.',
+      useAnotherEmail: 'Utiliser un autre courriel',
+    },
+    verify: {
+      title: 'Connexion en cours…',
+      failedTitle: 'Ce lien ne fonctionne plus',
+      failedDescription:
+        'Les liens de connexion expirent rapidement et ne servent qu’une fois. Demandes-en un nouveau.',
+      tryAgain: 'Retour à la connexion',
+    },
+  },
+  onboarding: {
+    title: 'Configure ton ménage',
+    description:
+      'Un ménage, c’est là que vivent les transactions de ta famille. Crées-en un, ou rejoins celui que quelqu’un a déjà créé.',
+    create: {
+      submit: 'Créer un ménage',
+    },
+    join: {
+      trigger: 'J’ai un code d’invitation',
+      placeholder: 'Code d’invitation',
+      submit: 'Rejoindre le ménage',
+    },
+    back: 'Retour',
+  },
   nav: {
     dashboard: 'Tableau de bord',
     transactions: 'Transactions',
@@ -90,6 +127,9 @@ export const fr: typeof en = {
   },
   toast: {
     notImplemented: "Cette fonctionnalité n'est pas encore disponible.",
+    signInFailed: 'Impossible d’envoyer le lien de connexion. Réessaie.',
+    onboardingFailed: 'Impossible de configurer ton ménage. Réessaie.',
+    joinCodeNotFound: 'Aucun ménage ne correspond à ce code d’invitation.',
     downloadFailed: 'Échec du téléchargement des transactions.',
     importStarted: 'Importation commencée — ça peut prendre une minute.',
     importFailed: "Échec de l'importation des transactions.",

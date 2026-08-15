@@ -1,6 +1,6 @@
 mod handlers;
-mod model;
-mod repository;
+pub mod model;
+pub mod repository;
 #[cfg(test)]
 mod tests;
 

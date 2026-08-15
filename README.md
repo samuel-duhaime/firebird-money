@@ -63,6 +63,12 @@ cp .env.example .env
 
 `DEFAULT_LANGUAGE` sets the server's response locale — `"en"` or `"fr"`. Unset or invalid falls back to English.
 
+Sign-in is passwordless (see [`/auth`](#api)). Out of the box, `SKIP_EMAIL_VERIFICATION="true"` skips the email and signs you in right away, so localhost needs no mail provider.
+
+To send real emails instead — which works from localhost too, since it's just an outbound HTTPS call — set `RESEND_API_KEY` to a [Resend](https://resend.com) key and `SKIP_EMAIL_VERIFICATION="false"`. The default `EMAIL_FROM`, `onboarding@resend.dev`, only delivers to the email address on your Resend account; sending to anyone else needs a verified domain and an `EMAIL_FROM` on it.
+
+The server refuses to start if the shortcut is on while `APP_ENV="production"`, if a real send has no API key, or if `APP_ENV` isn't exactly `"production"` or `"development"`. See `.env.example` for every variable and its accepted values.
+
 ### Client
 
 Copy the example environment file into place:
@@ -102,6 +108,16 @@ In VS Code, run the "Run Client and Server" task (`Ctrl+Shift+P` → `Tasks: Run
 
 The API is JSON, backed by Postgres.
 
+`/auth`:
+
+- `POST /auth/request-login` — email a one-time magic link (`email`, optional `language`). Creates the account if the address is new. Answers `{"status": "email_sent"}`, or `{"status": "signed_in", "session": {…}}` when `SKIP_EMAIL_VERIFICATION` is on.
+- `GET /auth/verify?token=` — spend the token and open a session. Returns the `GET /auth/me` payload; `400` if the token is unknown, expired, or already spent.
+- `GET /auth/me` — the signed-in `user` and the `households` they belong to. `401` without a session.
+- `POST /auth/logout` — end the session. Idempotent.
+- `POST /auth/onboarding` — create a household (`family_manager`) or, with a `join_code`, join one (`family_member`). `404` for an unknown code, `409` if already a member.
+
+Magic links last 15 minutes and work once. The session cookie is httpOnly and SameSite=Lax, Secure in production, so browser calls need `fetch(…, { credentials: 'include' })`.
+
 `/transactions`:
 
 - `GET /transactions` — list transactions, optionally filtered with `?date=YYYY-MM-DD`, `?start_date=`/`?end_date=` (inclusive range), `?merchant=`, and/or `?search=` (case-insensitive match against merchant, category, or amount). Accepts `?order=` (`date` [default], `inverse_date`, `amount`, `inverse_amount`).
@@ -129,7 +145,7 @@ Every transaction response includes its joined category: `category_name_en`, `ca
 - `POST /households` — create a new, empty household.
 - `DELETE /households/{id}` — delete a household. Fails while it still has members (see `/household-members`).
 
-A household has no fields of its own beyond `id`/`created_at` — it's a pure container. Who belongs to it, and with what role, lives in `/household-members`.
+Beyond `id`/`created_at`, a household carries only a `join_code`, generated on creation: the code an existing member shares so someone else can join through `POST /auth/onboarding`. Who belongs to it, and with what role, lives in `/household-members`.
 
 `/users`:
 
@@ -138,7 +154,7 @@ A household has no fields of its own beyond `id`/`created_at` — it's a pure co
 - `PATCH /users/{id}` — partially update a user (`email`, `google_id`, `status`, `first_name`, `last_name`, `avatar_url`; only the fields you send change). `status` must be `verified`, `pending`, or `suspended`.
 - `DELETE /users/{id}` — delete a user. Fails while they still belong to a household (see `/household-members`).
 
-A user is a standalone login identity — how they relate to a household is recorded separately, since the same person can belong to more than one.
+A user is a standalone login identity — how they relate to a household is recorded separately, since the same person can belong to more than one. In practice signing in creates them (see [`/auth`](#api)); these routes are for direct management.
 
 `/household-members`:
 
