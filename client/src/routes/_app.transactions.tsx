@@ -11,7 +11,7 @@ import { ImportButton } from '../features/transactions/ImportButton';
 import { notImplementedToast } from '../lib/toast';
 import type { SortOrder } from '../features/transactions/types';
 import '../components/TopMenu.css';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { AddTransactionModal } from '../features/transactions/AddTransactionModal';
 type TransactionsSearch = {
   search?: string;
@@ -53,6 +53,7 @@ const ClearAllButton = () => {
 const TransactionsTopMenuActions = () => {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+  const addButtonRef = useRef<HTMLButtonElement>(null);
 
   return (
     <>
@@ -70,15 +71,21 @@ const TransactionsTopMenuActions = () => {
       <DownloadButton />
 
       <TopMenuButton
+        ref={addButtonRef}
         icon={faPlus}
         label={t('transactions.topMenu.add')}
         variant="primary"
+        aria-haspopup="dialog"
+        aria-expanded={open}
         onClick={() => setOpen(true)}
       />
 
       <AddTransactionModal
         open={open}
-        onClose={() => setOpen(false)}
+        onClose={() => {
+          setOpen(false);
+          addButtonRef.current?.focus();
+        }}
       />
     </>
   );

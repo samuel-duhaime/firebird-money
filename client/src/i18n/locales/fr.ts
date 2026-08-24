@@ -70,10 +70,14 @@ export const fr: typeof en = {
     title: 'Ajouter une transaction',
     amount: 'Montant',
     merchant: 'Commerçant',
+    merchantPlaceholder: 'Nom du commerçant',
     date: 'Date',
     category: 'Catégorie',
     selectCategory: 'Sélectionnez une catégorie',
     submit: 'Ajouter la transaction',
+    cancel: 'Annuler',
+    close: 'Fermer',
+    required: 'Tous les champs sont obligatoires.',
   },
 
     toolbar: {

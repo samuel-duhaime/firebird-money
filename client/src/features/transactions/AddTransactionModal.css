@@ -92,6 +92,35 @@
 
 .modal-body select {
   cursor: pointer;
+  padding-right: 34px;
+}
+
+.modal-body input[type='date']::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+}
+
+.amount-input-wrapper {
+  position: relative;
+}
+
+.amount-prefix {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #999;
+  font-size: 15px;
+  pointer-events: none;
+}
+
+.amount-input-wrapper input {
+  padding-left: 26px;
+}
+
+.modal-error {
+  margin: -6px 0 0;
+  color: #ff6b6b;
+  font-size: 13px;
 }
 
 .modal-footer {
