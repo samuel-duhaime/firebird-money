@@ -68,10 +68,14 @@ export const en = {
     title: 'Add transaction',
     amount: 'Amount',
     merchant: 'Merchant',
+    merchantPlaceholder: 'Merchant Name',
     date: 'Date',
     category: 'Category',
     submit: 'Add transaction',
     selectCategory: 'Select category',
+    cancel: 'Cancel',
+    close: 'Close',
+    required: 'All fields are required.',
   },
 
     toolbar: {
