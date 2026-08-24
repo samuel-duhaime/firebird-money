@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCategories } from '../categories/use-categories';
+import { notImplementedToast } from '../../lib/toast';
 import './AddTransactionModal.css';
 
 type AddTransactionModalProps = {
@@ -88,13 +89,7 @@ export const AddTransactionModal = ({
     }
 
     // API integration will be added in a later issue.
-    console.log({
-      amount,
-      merchant,
-      date,
-      category,
-    });
-
+    notImplementedToast();
     onClose();
   };
 
