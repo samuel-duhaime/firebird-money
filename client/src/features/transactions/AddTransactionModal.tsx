@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faChevronDown } from '@fortawesome/free-solid-svg-icons';
 import { useCategories } from '../categories/use-categories';
 import { notImplementedToast } from '../../lib/toast';
 import './AddTransactionModal.css';
@@ -163,21 +165,29 @@ export const AddTransactionModal = ({
           <label htmlFor="category">
             {t('transactions.add.category', 'Category')}
           </label>
-          <select
-            id="category"
-            value={category}
-            onChange={handleCategoryChange}
-          >
-            <option value="">
-              {t('transactions.add.selectCategory', 'Select a category')}
-            </option>
-
-            {categories?.map((category) => (
-              <option key={category.id} value={category.id}>
-                {i18n.language === 'fr' ? category.name_fr : category.name_en}
+          <div className="category-select-wrapper">
+            <select
+              id="category"
+              value={category}
+              onChange={handleCategoryChange}
+            >
+              <option value="">
+                {t('transactions.add.selectCategory', 'Select a category')}
               </option>
-            ))}
-          </select>
+
+              {categories?.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {i18n.language === 'fr'
+                    ? category.name_fr
+                    : category.name_en}
+                </option>
+              ))}
+            </select>
+            <FontAwesomeIcon
+              icon={faChevronDown}
+              className="category-select-arrow"
+            />
+          </div>
 
           {error && (
             <p className="modal-error" role="alert">

@@ -17,8 +17,8 @@
   max-height: calc(100dvh - 2rem);
   display: flex;
   flex-direction: column;
-  background: #2f2f2f;
-  color: #fff;
+  background: var(--color-dark);
+  color: var(--color-white);
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
@@ -29,7 +29,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 18px 22px;
-  border-bottom: 1px solid #444;
+  border-bottom: 1px solid var(--color-medium);
 }
 
 .modal-header h2 {
@@ -41,14 +41,14 @@
 .modal-close {
   background: transparent;
   border: none;
-  color: #bbb;
+  color: var(--color-lightest);
   font-size: 26px;
   cursor: pointer;
   line-height: 1;
 }
 
 .modal-close:hover {
-  color: #fff;
+  color: var(--color-white);
 }
 
 .modal-body {
@@ -63,7 +63,7 @@
 .modal-body label {
   font-size: 14px;
   font-weight: 600;
-  color: #f1f1f1;
+  color: var(--color-white);
   margin-bottom: -6px;
 }
 
@@ -72,22 +72,26 @@
   width: 100%;
   box-sizing: border-box;
   padding: 11px 14px;
-  border: 1px solid #555;
+  border: 1px solid var(--color-medium);
   border-radius: 8px;
-  background: #1f1f1f;
-  color: #fff;
+  background: var(--color-background);
+  color: var(--color-white);
   font-size: 15px;
   outline: none;
   transition: border-color 0.2s ease;
 }
 
 .modal-body input::placeholder {
-  color: #999;
+  color: var(--color-lightest);
 }
 
 .modal-body input:focus,
 .modal-body select:focus {
-  border-color: #ff7a30;
+  border-color: var(--color-primary);
+}
+
+.category-select-wrapper {
+  position: relative;
 }
 
 .modal-body select {
@@ -96,10 +100,16 @@
   -webkit-appearance: none;
   -moz-appearance: none;
   padding-right: 40px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%23999999' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 14px center;
-  background-size: 12px 8px;
+}
+
+.category-select-arrow {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-lightest);
+  font-size: 12px;
+  pointer-events: none;
 }
 
 .modal-body input[type='date']::-webkit-calendar-picker-indicator {
@@ -115,7 +125,7 @@
   left: 14px;
   top: 50%;
   transform: translateY(-50%);
-  color: #999;
+  color: var(--color-lightest);
   font-size: 15px;
   pointer-events: none;
 }
@@ -126,7 +136,7 @@
 
 .modal-error {
   margin: -6px 0 0;
-  color: #ff6b6b;
+  color: var(--color-error);
   font-size: 13px;
 }
 
@@ -135,7 +145,7 @@
   justify-content: flex-end;
   gap: 10px;
   padding: 18px 22px;
-  border-top: 1px solid #444;
+  border-top: 1px solid var(--color-medium);
 }
 
 .modal-button {
@@ -149,20 +159,20 @@
 
 .modal-button--cancel {
   background: transparent;
-  color: #fff;
-  border: 1px solid #666;
+  color: var(--color-white);
+  border: 1px solid var(--color-light);
 }
 
 .modal-button--cancel:hover {
-  background: #444;
+  background: var(--color-medium);
 }
 
 .modal-button--primary {
-  background: #ff7a30;
+  background: var(--color-primary);
   border: none;
-  color: #fff;
+  color: var(--color-white);
 }
 
 .modal-button--primary:hover {
-  background: #ff8d4f;
+  filter: brightness(1.2);
 }
