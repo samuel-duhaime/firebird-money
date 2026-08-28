@@ -17,6 +17,9 @@ export const joinCodeNotFoundToast = () =>
 export const downloadFailedToast = () =>
   toast.error(i18n.t('toast.downloadFailed'));
 
+export const addTransactionSucceededToast = () =>
+  toast.success(i18n.t('toast.addTransactionSucceeded'));
+
 export const importStartedToast = () => toast(i18n.t('toast.importStarted'));
 
 export const importFailedToast = () =>

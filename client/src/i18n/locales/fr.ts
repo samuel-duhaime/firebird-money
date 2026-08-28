@@ -78,6 +78,7 @@ export const fr: typeof en = {
     cancel: 'Annuler',
     close: 'Fermer',
     required: 'Tous les champs sont obligatoires.',
+    failed: "Impossible d'ajouter la transaction. Réessaie.",
   },
 
     toolbar: {
@@ -146,6 +147,7 @@ export const fr: typeof en = {
     onboardingFailed: 'Impossible de configurer ton ménage. Réessaie.',
     joinCodeNotFound: 'Aucun ménage ne correspond à ce code d’invitation.',
     downloadFailed: 'Échec du téléchargement des transactions.',
+    addTransactionSucceeded: 'Transaction ajoutée.',
     importStarted: 'Importation commencée — ça peut prendre une minute.',
     importFailed: "Échec de l'importation des transactions.",
     importSucceeded_one: '{{count}} transaction importée.',

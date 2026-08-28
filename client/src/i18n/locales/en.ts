@@ -76,6 +76,7 @@ export const en = {
     cancel: 'Cancel',
     close: 'Close',
     required: 'All fields are required.',
+    failed: 'Failed to add the transaction. Please try again.',
   },
 
     toolbar: {
@@ -144,6 +145,7 @@ export const en = {
     onboardingFailed: 'Could not set up your household. Please try again.',
     joinCodeNotFound: 'No household matches this join code.',
     downloadFailed: 'Failed to download transactions.',
+    addTransactionSucceeded: 'Transaction added.',
     importStarted: 'Import started — this can take a minute.',
     importFailed: 'Failed to import transactions.',
     importSucceeded_one: 'Imported {{count}} transaction.',
