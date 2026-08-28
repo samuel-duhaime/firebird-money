@@ -1,12 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faChevronDown } from '@fortawesome/free-solid-svg-icons';
 import { useCategories } from '../categories/use-categories';
-import { createTransaction } from './api';
-import { addTransactionSucceededToast } from '../../lib/toast';
+import { useCreateTransaction } from './use-create-transaction';
 import './AddTransactionModal.css';
 
 /**
@@ -14,6 +12,23 @@ import './AddTransactionModal.css';
  * one — this is the value manually-added transactions carry until accounts exist.
  */
 const MANUAL_ACCOUNT = 'Manual entry';
+
+/**
+ * The amount input accepts a comma or a period as the decimal separator (French keyboards
+ * produce a comma), but a value with both — e.g. "1,234.56" — or a single separator followed by
+ * 3+ digits — e.g. "1,234" — reads as thousands-grouped. Guessing which separator was meant would
+ * silently change the amount rather than fail loudly, so both are rejected instead. Returns the
+ * amount as a server-compatible decimal string ("1234.56"), or null if it's ambiguous.
+ */
+const normalizeAmount = (rawAmount: string): string | null => {
+  const separators = rawAmount.match(/[.,]/g) ?? [];
+  if (separators.length > 1) return null;
+
+  const [wholePart, fractionPart] = rawAmount.split(/[.,]/);
+  if (fractionPart !== undefined && fractionPart.length > 2) return null;
+
+  return fractionPart === undefined ? wholePart : `${wholePart}.${fractionPart}`;
+};
 
 type AddTransactionModalProps = {
   open: boolean;
@@ -29,7 +44,6 @@ export const AddTransactionModal = ({
 }: AddTransactionModalProps) => {
   const { t, i18n } = useTranslation();
   const { data: categories } = useCategories();
-  const queryClient = useQueryClient();
   const [amount, setAmount] = useState('');
   const [merchant, setMerchant] = useState('');
   const [date, setDate] = useState('');
@@ -37,26 +51,7 @@ export const AddTransactionModal = ({
   const [error, setError] = useState('');
   const dialogRef = useRef<HTMLDivElement>(null);
 
-  const createTransactionMutation = useMutation({
-    mutationFn: createTransaction,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['transactions'] });
-      addTransactionSucceededToast();
-      setAmount('');
-      setMerchant('');
-      setDate('');
-      setCategory('');
-      onClose();
-    },
-    onError: () => {
-      setError(
-        t(
-          'transactions.add.failed',
-          'Failed to add the transaction. Please try again.',
-        ),
-      );
-    },
-  });
+  const createTransactionMutation = useCreateTransaction();
 
   useEffect(() => {
     if (!open) return;
@@ -120,16 +115,44 @@ export const AddTransactionModal = ({
       return;
     }
 
+    const normalizedAmount = normalizeAmount(amount.trim());
+    if (normalizedAmount === null) {
+      setError(
+        t(
+          'transactions.add.invalidAmount',
+          'Enter a plain amount, e.g. 12.50, without thousands separators.',
+        ),
+      );
+      return;
+    }
+
     setError('');
-    createTransactionMutation.mutate({
-      date,
-      merchant: merchant.trim(),
-      // Decimal parsing on the server expects a period, but the input allows a comma too (French
-      // locale keyboards produce one).
-      amount: amount.trim().replace(',', '.'),
-      category_id: Number(category),
-      account: MANUAL_ACCOUNT,
-    });
+    createTransactionMutation.mutate(
+      {
+        date,
+        merchant: merchant.trim(),
+        amount: normalizedAmount,
+        category_id: Number(category),
+        account: MANUAL_ACCOUNT,
+      },
+      {
+        onSuccess: () => {
+          setAmount('');
+          setMerchant('');
+          setDate('');
+          setCategory('');
+          onClose();
+        },
+        onError: () => {
+          setError(
+            t(
+              'transactions.add.failed',
+              'Failed to add the transaction. Please try again.',
+            ),
+          );
+        },
+      },
+    );
   };
 
   return (

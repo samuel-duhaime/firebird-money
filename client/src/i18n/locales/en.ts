@@ -76,6 +76,7 @@ export const en = {
     cancel: 'Cancel',
     close: 'Close',
     required: 'All fields are required.',
+    invalidAmount: 'Enter a plain amount, e.g. 12.50, without thousands separators.',
     failed: 'Failed to add the transaction. Please try again.',
   },
 
