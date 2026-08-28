@@ -19,3 +19,21 @@ export const requireAuth = async (queryClient: QueryClient) => {
     throw redirect({ to: '/sign-in' });
   }
 };
+
+/**
+ * Route `beforeLoad` guard for pages that only make sense signed out (sign-in): sends an
+ * already-signed-in visitor on to the same place `SignInPage` sends a fresh sign-in.
+ */
+export const redirectIfAuthenticated = async (queryClient: QueryClient) => {
+  let user;
+  try {
+    user = await queryClient.ensureQueryData({
+      queryKey: currentUserQueryKey,
+      queryFn: fetchCurrentUser,
+      retry: false,
+    });
+  } catch {
+    return;
+  }
+  throw redirect({ to: user.households.length > 0 ? '/dashboard' : '/onboarding' });
+};
