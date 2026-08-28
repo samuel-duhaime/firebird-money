@@ -78,6 +78,8 @@ export const fr: typeof en = {
     cancel: 'Annuler',
     close: 'Fermer',
     required: 'Tous les champs sont obligatoires.',
+    invalidAmount:
+      'Entre un montant simple, par exemple 12,50, sans séparateur de milliers.',
     failed: "Impossible d'ajouter la transaction. Réessaie.",
   },
 
