@@ -66,7 +66,20 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-s);
+  width: 100%;
   padding: var(--spacing-xs);
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--color-white);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.left-menu-profile:hover {
+  background: var(--color-dark);
 }
 
 .left-menu-profile-icon {
@@ -74,7 +87,49 @@
 }
 
 .left-menu-profile-name {
+  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.left-menu-profile-chevron {
+  width: 14px;
+  color: var(--color-lightest);
+}
+
+.left-menu-profile-popover {
+  width: 200px;
+  padding: var(--spacing-xs);
+  gap: 2px;
+}
+
+.left-menu-profile-popover-option {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  width: 100%;
+  padding: var(--spacing-xs) var(--spacing-s);
+  border: none;
+  border-radius: var(--spacing-xs);
+  background: none;
+  color: var(--color-white);
+  font: 400 15px/1.5 Quicksand, sans-serif;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.left-menu-profile-popover-option:hover,
+.left-menu-profile-popover-option:focus-visible {
+  background: var(--color-medium);
+}
+
+.left-menu-profile-popover-option:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.left-menu-profile-popover-option--danger {
+  color: var(--color-error);
 }
