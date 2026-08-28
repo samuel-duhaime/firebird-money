@@ -1,11 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faChevronDown } from '@fortawesome/free-solid-svg-icons';
 import { useCategories } from '../categories/use-categories';
-import { notImplementedToast } from '../../lib/toast';
+import { createTransaction } from './api';
+import { addTransactionSucceededToast } from '../../lib/toast';
 import './AddTransactionModal.css';
+
+/**
+ * The form doesn't collect an account (there's no multi-account UI yet), but the API requires
+ * one — this is the value manually-added transactions carry until accounts exist.
+ */
+const MANUAL_ACCOUNT = 'Manual entry';
 
 type AddTransactionModalProps = {
   open: boolean;
@@ -21,12 +29,34 @@ export const AddTransactionModal = ({
 }: AddTransactionModalProps) => {
   const { t, i18n } = useTranslation();
   const { data: categories } = useCategories();
+  const queryClient = useQueryClient();
   const [amount, setAmount] = useState('');
   const [merchant, setMerchant] = useState('');
   const [date, setDate] = useState('');
   const [category, setCategory] = useState('');
   const [error, setError] = useState('');
   const dialogRef = useRef<HTMLDivElement>(null);
+
+  const createTransactionMutation = useMutation({
+    mutationFn: createTransaction,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      addTransactionSucceededToast();
+      setAmount('');
+      setMerchant('');
+      setDate('');
+      setCategory('');
+      onClose();
+    },
+    onError: () => {
+      setError(
+        t(
+          'transactions.add.failed',
+          'Failed to add the transaction. Please try again.',
+        ),
+      );
+    },
+  });
 
   useEffect(() => {
     if (!open) return;
@@ -90,9 +120,16 @@ export const AddTransactionModal = ({
       return;
     }
 
-    // API integration will be added in a later issue.
-    notImplementedToast();
-    onClose();
+    setError('');
+    createTransactionMutation.mutate({
+      date,
+      merchant: merchant.trim(),
+      // Decimal parsing on the server expects a period, but the input allows a comma too (French
+      // locale keyboards produce one).
+      amount: amount.trim().replace(',', '.'),
+      category_id: Number(category),
+      account: MANUAL_ACCOUNT,
+    });
   };
 
   return (
@@ -209,6 +246,7 @@ export const AddTransactionModal = ({
             type="button"
             className="modal-button modal-button--primary"
             onClick={handleSubmit}
+            disabled={createTransactionMutation.isPending}
           >
             {t('transactions.add.submit', 'Add transaction')}
           </button>
