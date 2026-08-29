@@ -15,6 +15,11 @@ dist-ssr
 # TanStack Router
 src/routeTree.gen.ts
 
+# Playwright
+playwright/test-results
+playwright/playwright-report
+playwright/blob-report
+
 # Environment variables
 .env
 

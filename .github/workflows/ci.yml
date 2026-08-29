@@ -1,6 +1,5 @@
-# CI for the whole repo. Only the Rust server (server/) has code and tests today; each
-# job sets its own working-directory so a "client" job can be added later without
-# touching the server jobs below.
+# CI for the whole repo. Each job sets its own working-directory, so server and client jobs stay
+# independent of each other.
 name: CI
 
 on:
@@ -50,7 +49,7 @@ jobs:
       - run: cargo clippy --all-targets --all-features -- -D warnings
 
   test:
-    name: cargo test
+    name: server test (cargo test)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -84,3 +83,55 @@ jobs:
         with:
           workspaces: server
       - run: cargo test --all-features
+
+  e2e:
+    name: client e2e (playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: client
+    # Each Playwright worker provisions its own throwaway database against this same admin
+    # connection (mirrors the `test` job's sqlx::test pattern above, just keyed per worker instead
+    # of per test — see client/playwright/lib/db.ts), and runs its own server + Vite instance
+    # against it (client/playwright/fixtures/worker-infra.ts).
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      PLAYWRIGHT_PG_ADMIN_URL: postgres://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: server
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci
+      # global-setup.ts builds the server binary itself (see client/playwright/tests/global-setup.ts) —
+      # no separate cargo build step needed here.
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: client/playwright/playwright-report/
+          retention-days: 7
