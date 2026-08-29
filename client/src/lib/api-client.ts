@@ -1,5 +1,17 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL as string;
 
+/** Thrown by the fetch helpers below on a non-OK response; `status` is the real HTTP status, so
+ * callers can branch on it instead of pattern-matching the message. */
+export class ApiError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
 export const apiFetch = async <T>(
   path: string,
   init?: RequestInit,
@@ -13,7 +25,8 @@ export const apiFetch = async <T>(
   });
 
   if (!response.ok) {
-    throw new Error(
+    throw new ApiError(
+      response.status,
       `${init?.method ?? 'GET'} ${path} failed: ${response.status}`,
     );
   }
@@ -39,7 +52,7 @@ export const apiFetchUpload = async <T>(
   });
 
   if (!response.ok) {
-    throw new Error(`POST ${path} failed: ${response.status}`);
+    throw new ApiError(response.status, `POST ${path} failed: ${response.status}`);
   }
 
   return response.json() as Promise<T>;
@@ -59,7 +72,7 @@ export const apiFetchFile = async (
   });
 
   if (!response.ok) {
-    throw new Error(`GET ${path} failed: ${response.status}`);
+    throw new ApiError(response.status, `GET ${path} failed: ${response.status}`);
   }
 
   return {

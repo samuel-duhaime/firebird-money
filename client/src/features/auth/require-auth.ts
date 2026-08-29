@@ -1,11 +1,10 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { redirect } from '@tanstack/react-router';
+import { ApiError } from '../../lib/api-client';
 import { fetchCurrentUser } from './api';
 import { currentUserQueryKey } from './use-current-user';
 
-/** `apiFetch` throws a generic `Error` carrying the status in its message (see `api-client.ts`). */
-const isUnauthorized = (error: unknown) =>
-  error instanceof Error && error.message.includes('401');
+const isUnauthorized = (error: unknown) => error instanceof ApiError && error.status === 401;
 
 /**
  * Route `beforeLoad` guard: redirects to `/sign-in` when there's no live session (`GET /auth/me`
