@@ -52,6 +52,8 @@ export const fr: typeof en = {
   leftMenu: {
     username: "Nom d'utilisateur",
     language: 'Langue',
+    settings: 'Paramètres',
+    signOut: 'Se déconnecter',
   },
   dashboard: {
     loading: 'Chargement des catégories…',
@@ -146,6 +148,7 @@ export const fr: typeof en = {
   toast: {
     notImplemented: "Cette fonctionnalité n'est pas encore disponible.",
     signInFailed: 'Impossible d’envoyer le lien de connexion. Réessaie.',
+    signOutFailed: 'Impossible de te déconnecter. Réessaie.',
     onboardingFailed: 'Impossible de configurer ton ménage. Réessaie.',
     joinCodeNotFound: 'Aucun ménage ne correspond à ce code d’invitation.',
     downloadFailed: 'Échec du téléchargement des transactions.',

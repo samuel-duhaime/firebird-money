@@ -50,6 +50,8 @@ export const en = {
   leftMenu: {
     username: 'Username',
     language: 'Language',
+    settings: 'Settings',
+    signOut: 'Sign out',
   },
   dashboard: {
     loading: 'Loading categories…',
@@ -143,6 +145,7 @@ export const en = {
   toast: {
     notImplemented: 'This feature is not available yet.',
     signInFailed: 'Could not send the sign-in link. Please try again.',
+    signOutFailed: 'Could not sign out. Please try again.',
     onboardingFailed: 'Could not set up your household. Please try again.',
     joinCodeNotFound: 'No household matches this join code.',
     downloadFailed: 'Failed to download transactions.',

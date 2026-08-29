@@ -8,6 +8,9 @@ export const notImplementedToast = () =>
 export const signInFailedToast = () =>
   toast.error(i18n.t('toast.signInFailed'));
 
+export const signOutFailedToast = () =>
+  toast.error(i18n.t('toast.signOutFailed'));
+
 export const onboardingFailedToast = () =>
   toast.error(i18n.t('toast.onboardingFailed'));
 

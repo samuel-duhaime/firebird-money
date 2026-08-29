@@ -6,6 +6,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faHouse, faUserPlus } from '@fortawesome/free-solid-svg-icons';
 import { submitOnboarding } from '../features/auth/api';
 import { useSetCurrentUser } from '../features/auth/use-current-user';
+import { requireAuth } from '../features/auth/require-auth';
 import { joinCodeNotFoundToast, onboardingFailedToast } from '../lib/toast';
 import './auth.css';
 
@@ -110,5 +111,6 @@ const OnboardingPage = () => {
 };
 
 export const Route = createFileRoute('/onboarding')({
+  beforeLoad: ({ context }) => requireAuth(context.queryClient),
   component: OnboardingPage,
 });
