@@ -10,7 +10,6 @@ use log::{info, warn};
 use crate::features::transactions::JobStore;
 use crate::shared::config::AuthConfig;
 use crate::shared::l10n::L10n;
-use crate::shared::SERVER_ADDR;
 
 /// Main function to start the server
 #[actix_web::main]
@@ -38,7 +37,7 @@ async fn main() -> std::io::Result<()> {
         );
     }
 
-    let addr = SERVER_ADDR;
+    let addr = shared::server_addr();
     // Routes are documented in the README rather than echoed here, so the two can't drift.
     info!("Server listening on http://{addr}");
 
@@ -91,7 +90,7 @@ async fn main() -> std::io::Result<()> {
             .configure(features::users::configure)
             .configure(features::household_members::configure)
     })
-    .bind(addr)?
+    .bind(addr.as_str())?
     .run()
     .await
 }

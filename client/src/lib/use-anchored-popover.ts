@@ -74,6 +74,10 @@ export const useAnchoredPopover = <
     const handlePointerDown = (event: MouseEvent) => {
       const target = event.target as Node;
       if (triggerRef.current?.contains(target) || popoverRef.current?.contains(target)) return;
+      // Without this, clicking a non-focusable area lets the browser's own end-of-click focus
+      // resolution clear focus to <body> after this handler's re-focus-the-trigger effect has
+      // already run, silently undoing it.
+      event.preventDefault();
       setIsOpen(false);
     };
     const handleKeyDown = (event: KeyboardEvent) => {

@@ -171,7 +171,7 @@ The currently implemented API exposes `Category`, `Transaction`, `Household`, `U
 
 ## Tests
 
-Server only — the client has no tests yet.
+### Server
 
 ```bash
 cd server
@@ -179,6 +179,16 @@ cargo test
 ```
 
 Each test runs against its own throwaway Postgres database (auto-migrated, auto-dropped), so your real data is untouched.
+
+### Client (Playwright, end-to-end)
+
+```bash
+cd client
+npx playwright install   # first time only
+npm run test:ui
+```
+
+Each worker gets its own throwaway server, Vite instance, and Postgres database — same idea as the server tests above, just per Playwright worker instead of per test. Override `PLAYWRIGHT_PG_ADMIN_URL` if your local Postgres differs from `postgres://postgres:postgres@localhost:5432/postgres`.
 
 ## Lint & Format
 
