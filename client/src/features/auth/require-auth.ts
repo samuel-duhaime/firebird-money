@@ -3,19 +3,26 @@ import { redirect } from '@tanstack/react-router';
 import { fetchCurrentUser } from './api';
 import { currentUserQueryKey } from './use-current-user';
 
+/** `apiFetch` throws a generic `Error` carrying the status in its message (see `api-client.ts`). */
+const isUnauthorized = (error: unknown) =>
+  error instanceof Error && error.message.includes('401');
+
 /**
  * Route `beforeLoad` guard: redirects to `/sign-in` when there's no live session (`GET /auth/me`
- * answers 401), otherwise lets the navigation through. Reuses whatever `useCurrentUser` already
- * has cached, so this doesn't cause an extra fetch on top of what the page renders.
+ * answers 401), otherwise lets the navigation through. Always hits the network — a route guard
+ * can't accept a stale cached session — so a revoked or expired session is caught even when
+ * `useCurrentUser` still has fresh-looking data cached from before it died.
  */
 export const requireAuth = async (queryClient: QueryClient) => {
   try {
-    await queryClient.ensureQueryData({
+    await queryClient.fetchQuery({
       queryKey: currentUserQueryKey,
       queryFn: fetchCurrentUser,
+      staleTime: 0,
       retry: false,
     });
-  } catch {
+  } catch (error) {
+    if (!isUnauthorized(error)) throw error;
     throw redirect({ to: '/sign-in' });
   }
 };
@@ -27,12 +34,14 @@ export const requireAuth = async (queryClient: QueryClient) => {
 export const redirectIfAuthenticated = async (queryClient: QueryClient) => {
   let user;
   try {
-    user = await queryClient.ensureQueryData({
+    user = await queryClient.fetchQuery({
       queryKey: currentUserQueryKey,
       queryFn: fetchCurrentUser,
+      staleTime: 0,
       retry: false,
     });
-  } catch {
+  } catch (error) {
+    if (!isUnauthorized(error)) throw error;
     return;
   }
   throw redirect({ to: user.households.length > 0 ? '/dashboard' : '/onboarding' });
