@@ -1,4 +1,5 @@
 import { test as base } from '@playwright/test';
+import type { ChildProcess } from 'node:child_process';
 import {
   closeTransactionPool,
   createWorkerDatabase,
@@ -53,20 +54,32 @@ export const test = base.extend<{}, WorkerFixtures>({
       await dropWorkerDatabase(databaseName);
       await createWorkerDatabase(databaseName);
 
-      const server = spawnServer({
-        port: serverPort,
-        databaseUrl,
-        clientOrigin,
-        label: `server:w${idx}`,
-      });
-      await waitForPort('127.0.0.1', serverPort);
+      let server: ChildProcess | undefined;
+      let vite: ChildProcess | undefined;
 
-      const vite = spawnVite({
-        port: vitePort,
-        apiOrigin,
-        label: `vite:w${idx}`,
-      });
-      await waitForPort('127.0.0.1', vitePort);
+      try {
+        server = spawnServer({
+          port: serverPort,
+          databaseUrl,
+          clientOrigin,
+          label: `server:w${idx}`,
+        });
+        await waitForPort('127.0.0.1', serverPort);
+
+        vite = spawnVite({
+          port: vitePort,
+          apiOrigin,
+          label: `vite:w${idx}`,
+        });
+        await waitForPort('127.0.0.1', vitePort);
+      } catch (error) {
+        // A timed-out waitForPort otherwise skips `use(...)` and the teardown below entirely,
+        // leaking whatever of the server/Vite/database this worker already stood up.
+        if (vite) await killTree(vite);
+        if (server) await killTree(server);
+        await dropWorkerDatabase(databaseName);
+        throw error;
+      }
 
       await use({
         databaseName,

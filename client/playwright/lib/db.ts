@@ -94,11 +94,13 @@ export const dropWorkerDatabase = async (name: string): Promise<void> => {
  */
 export const sweepStaleDatabases = async (): Promise<void> => {
   await withAdminClient(async (client) => {
+    // Filtering in JS rather than with a SQL `LIKE` avoids the prefix's underscores being read as
+    // single-character wildcards, which could otherwise match (and drop) an unrelated database.
     const { rows } = await client.query<{ datname: string }>(
-      'SELECT datname FROM pg_database WHERE datname LIKE $1',
-      [`${STALE_DATABASE_PREFIX}%`],
+      'SELECT datname FROM pg_database',
     );
     for (const { datname } of rows) {
+      if (!datname.startsWith(STALE_DATABASE_PREFIX)) continue;
       assertSafeName(datname);
       await client.query(`DROP DATABASE IF EXISTS "${datname}" WITH (FORCE)`);
     }

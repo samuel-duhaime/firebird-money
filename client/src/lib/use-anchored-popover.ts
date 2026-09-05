@@ -8,6 +8,11 @@ const VIEWPORT_MARGIN = 8;
 /** Gap kept between the trigger and the popover. */
 const TRIGGER_GAP = 8;
 
+/** Elements the browser can move focus to on its own, so an outside click landing on one of these
+ * should be left alone rather than having its default (focus-shifting) action cancelled. */
+const OUTSIDE_FOCUSABLE_SELECTOR =
+  'input, select, textarea, button, a[href], [tabindex]:not([tabindex="-1"])';
+
 /**
  * State + positioning for a button-triggered popover that's portaled to `document.body` (so it
  * can't be clipped by a scrolling ancestor). Tracks the trigger's position on scroll/resize, opens
@@ -76,8 +81,11 @@ export const useAnchoredPopover = <
       if (triggerRef.current?.contains(target) || popoverRef.current?.contains(target)) return;
       // Without this, clicking a non-focusable area lets the browser's own end-of-click focus
       // resolution clear focus to <body> after this handler's re-focus-the-trigger effect has
-      // already run, silently undoing it.
-      event.preventDefault();
+      // already run, silently undoing it. Skipped for a focusable target so the browser can still
+      // move focus there normally — e.g. the user clicking straight into another input.
+      if (!(target instanceof Element) || !target.closest(OUTSIDE_FOCUSABLE_SELECTOR)) {
+        event.preventDefault();
+      }
       setIsOpen(false);
     };
     const handleKeyDown = (event: KeyboardEvent) => {
