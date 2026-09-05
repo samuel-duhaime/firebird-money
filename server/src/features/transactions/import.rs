@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use super::jobs::JobStore;
 use super::model::ImportJobStatus;
-use crate::shared::SERVER_ADDR;
+use crate::shared::server_addr;
 
 /// How much of the subprocess's combined stdout/stderr to keep as `error_message` when it fails
 /// (or exits without reporting a result), so a runaway process can't bloat the database row.
@@ -61,11 +61,12 @@ fn build_command(job_id: Uuid, file_path: &Path) -> Command {
     );
     // `*` right after `curl` tolerates incidental flags (e.g. `-s`) the model adds out of habit —
     // a rigid `curl http://...` prefix broke on the first real run when it wrote `curl -s http://...`.
+    let addr = server_addr();
     let allowed_tools = format!(
         "Read({upload_dir}/*) \
-         Bash(curl*http://{SERVER_ADDR}/categories*) \
-         Bash(curl*-X POST*http://{SERVER_ADDR}/transactions*) \
-         Bash(curl*-X PATCH*http://{SERVER_ADDR}/transactions/import/jobs/*)",
+         Bash(curl*http://{addr}/categories*) \
+         Bash(curl*-X POST*http://{addr}/transactions*) \
+         Bash(curl*-X PATCH*http://{addr}/transactions/import/jobs/*)",
         upload_dir = upload_dir.display(),
     );
 

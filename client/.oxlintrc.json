@@ -12,6 +12,13 @@
       "rules": {
         "react/only-export-components": "off"
       }
+    },
+    {
+      "files": ["playwright/**"],
+      "rules": {
+        "react/rules-of-hooks": "off",
+        "no-empty-pattern": "off"
+      }
     }
   ]
 }
