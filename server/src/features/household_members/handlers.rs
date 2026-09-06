@@ -9,6 +9,7 @@ use sqlx::PgPool;
 
 use super::model::{HouseholdMemberFilter, HouseholdMemberPatch, NewHouseholdMember};
 use super::repository;
+use crate::features::auth::CurrentUser;
 use crate::shared::http_error::{
     error_response, error_response_with_n, internal_error_response, is_check_violation,
     is_foreign_key_violation, is_unique_violation, not_found_response,
@@ -55,6 +56,7 @@ fn foreign_key_error_response(
 /// `POST /household-members` — connect a user to a household with a role.
 async fn create_household_member(
     new_member: web::Json<NewHouseholdMember>,
+    _current_user: CurrentUser,
     pool: web::Data<PgPool>,
     l10n: web::Data<L10n>,
 ) -> impl Responder {
@@ -89,6 +91,7 @@ async fn create_household_member(
 /// `user_id`.
 async fn list_household_members(
     filter: web::Query<HouseholdMemberFilter>,
+    _current_user: CurrentUser,
     pool: web::Data<PgPool>,
     l10n: web::Data<L10n>,
 ) -> impl Responder {
@@ -104,6 +107,7 @@ async fn list_household_members(
 /// `GET /household-members/{id}` — fetch a single membership.
 async fn get_household_member(
     path: web::Path<HouseholdMemberIdPath>,
+    _current_user: CurrentUser,
     pool: web::Data<PgPool>,
     l10n: web::Data<L10n>,
 ) -> impl Responder {
@@ -124,6 +128,7 @@ async fn get_household_member(
 async fn update_household_member(
     path: web::Path<HouseholdMemberIdPath>,
     patch: web::Json<HouseholdMemberPatch>,
+    _current_user: CurrentUser,
     pool: web::Data<PgPool>,
     l10n: web::Data<L10n>,
 ) -> impl Responder {
@@ -149,6 +154,7 @@ async fn update_household_member(
 /// `DELETE /household-members/{id}` — remove a membership.
 async fn delete_household_member(
     path: web::Path<HouseholdMemberIdPath>,
+    _current_user: CurrentUser,
     pool: web::Data<PgPool>,
     l10n: web::Data<L10n>,
 ) -> impl Responder {

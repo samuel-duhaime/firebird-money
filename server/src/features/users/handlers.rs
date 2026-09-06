@@ -8,6 +8,7 @@ use sqlx::PgPool;
 
 use super::model::{NewUser, UserPatch};
 use super::repository;
+use crate::features::auth::CurrentUser;
 use crate::shared::http_error::{
     error_response, error_response_with_n, internal_error_response, is_check_violation,
     is_foreign_key_violation, is_unique_violation, not_found_response,
@@ -23,6 +24,7 @@ struct UserIdPath {
 /// `POST /users` — create a user.
 async fn create_user(
     new_user: web::Json<NewUser>,
+    _current_user: CurrentUser,
     pool: web::Data<PgPool>,
     l10n: web::Data<L10n>,
 ) -> impl Responder {
@@ -44,6 +46,7 @@ async fn create_user(
 /// `GET /users/{id}` — fetch a single user.
 async fn get_user(
     path: web::Path<UserIdPath>,
+    _current_user: CurrentUser,
     pool: web::Data<PgPool>,
     l10n: web::Data<L10n>,
 ) -> impl Responder {
@@ -64,6 +67,7 @@ async fn get_user(
 async fn update_user(
     path: web::Path<UserIdPath>,
     patch: web::Json<UserPatch>,
+    _current_user: CurrentUser,
     pool: web::Data<PgPool>,
     l10n: web::Data<L10n>,
 ) -> impl Responder {
@@ -92,6 +96,7 @@ async fn update_user(
 /// `DELETE /users/{id}` — delete a user.
 async fn delete_user(
     path: web::Path<UserIdPath>,
+    _current_user: CurrentUser,
     pool: web::Data<PgPool>,
     l10n: web::Data<L10n>,
 ) -> impl Responder {

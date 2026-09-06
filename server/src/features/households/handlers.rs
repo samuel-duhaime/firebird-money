@@ -11,6 +11,7 @@ use sqlx::PgPool;
 
 use super::model::PublicHousehold;
 use super::repository;
+use crate::features::auth::CurrentUser;
 use crate::shared::http_error::{
     error_response_with_n, internal_error_response, is_foreign_key_violation, not_found_response,
 };
@@ -23,7 +24,11 @@ struct HouseholdIdPath {
 }
 
 /// `POST /households` — create a new, empty household.
-async fn create_household(pool: web::Data<PgPool>, l10n: web::Data<L10n>) -> impl Responder {
+async fn create_household(
+    _current_user: CurrentUser,
+    pool: web::Data<PgPool>,
+    l10n: web::Data<L10n>,
+) -> impl Responder {
     match repository::create(&pool).await {
         Ok(household) => HttpResponse::Created()
             .insert_header(("Location", format!("/households/{}", household.id)))
@@ -38,6 +43,7 @@ async fn create_household(pool: web::Data<PgPool>, l10n: web::Data<L10n>) -> imp
 /// `GET /households/{id}` — fetch a single household, without its `join_code` (see `PublicHousehold`).
 async fn get_household(
     path: web::Path<HouseholdIdPath>,
+    _current_user: CurrentUser,
     pool: web::Data<PgPool>,
     l10n: web::Data<L10n>,
 ) -> impl Responder {
@@ -57,6 +63,7 @@ async fn get_household(
 /// `DELETE /households/{id}` — delete a household.
 async fn delete_household(
     path: web::Path<HouseholdIdPath>,
+    _current_user: CurrentUser,
     pool: web::Data<PgPool>,
     l10n: web::Data<L10n>,
 ) -> impl Responder {
