@@ -112,7 +112,7 @@ The API is JSON, backed by Postgres.
 
 - `POST /auth/request-login` — email a one-time magic link (`email`, optional `language`). Creates the account if the address is new. Answers `{"status": "email_sent"}`, or `{"status": "signed_in", "session": {…}}` when `SKIP_EMAIL_VERIFICATION` is on.
 - `GET /auth/verify?token=` — spend the token and open a session. Returns the `GET /auth/me` payload; `400` if the token is unknown, expired, or already spent.
-- `GET /auth/me` — the signed-in `user` and the `households` they belong to. `401` without a session.
+- `GET /auth/me` — the signed-in `user` and the `household` they belong to (`null` before onboarding). `401` without a session.
 - `POST /auth/logout` — end the session. Idempotent.
 - `POST /auth/onboarding` — create a household (`family_manager`) or, with a `join_code`, join one (`family_member`). `404` for an unknown code, `409` if already a member.
 
@@ -154,7 +154,7 @@ Beyond `id`/`created_at`, a household carries only a `join_code`, generated on c
 - `PATCH /users/{id}` — partially update a user (`email`, `google_id`, `status`, `first_name`, `last_name`, `avatar_url`; only the fields you send change). `status` must be `verified`, `pending`, or `suspended`.
 - `DELETE /users/{id}` — delete a user. Fails while they still belong to a household (see `/household-members`).
 
-A user is a standalone login identity — how they relate to a household is recorded separately, since the same person can belong to more than one. In practice signing in creates them (see [`/auth`](#api)); these routes are for direct management.
+A user is a standalone login identity — how they relate to their (at most one) household is recorded separately. In practice signing in creates them (see [`/auth`](#api)); these routes are for direct management.
 
 `/household-members`:
 

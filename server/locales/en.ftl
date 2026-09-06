@@ -12,7 +12,7 @@ user-duplicate-email = A user with this email already exists
 user-invalid-status = status must be one of verified, pending, or suspended
 user-in-use = User { $n } is still connected to a household
 household-member-not-found = No household member with id { $n }
-household-member-duplicate = This user is already connected to this household
+household-member-duplicate = This user is already connected to a household
 household-member-invalid-type = type must be family_manager or family_member
 # Magic-link email. The link itself is inserted between the instructions and the sign-off.
 auth-email-subject = Your FireBird Money sign-in link
@@ -26,7 +26,7 @@ auth-email-send-failed = The sign-in email could not be sent, please try again
 auth-not-signed-in = You must be signed in
 auth-join-code-not-found = No household matches this join code
 auth-join-code-blank = join_code cannot be blank; omit it to create a new household instead
-auth-already-in-household = You are already connected to this household
+auth-already-in-household = You are already connected to a household
 import-job-not-found = No import job found
 import-file-required = A file to import is required
 import-file-too-large = The uploaded file is too large (10 MB max)

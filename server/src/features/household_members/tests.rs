@@ -195,6 +195,30 @@ async fn create_household_member_rejects_duplicate_pair(pool: PgPool) {
     assert_eq!(resp.status(), 409);
 }
 
+#[sqlx::test]
+async fn create_household_member_rejects_a_second_household_for_the_same_user(pool: PgPool) {
+    // A user belongs to exactly one household ever, not just "one per household_id" — joining a
+    // *different* household once already connected to one must be rejected the same way as
+    // rejoining the same one.
+    let app = test::init_service(app_with(pool)).await;
+    let household_a = create_household(&app).await;
+    let household_b = create_household(&app).await;
+    let user_id = create_user(&app, "jane@example.com").await;
+    create_member_via_api(&app, household_a, user_id, "family_manager").await;
+
+    let req = test::TestRequest::post()
+        .uri("/household-members")
+        .set_json(serde_json::json!({
+            "household_id": household_b,
+            "user_id": user_id,
+            "type": "family_member",
+        }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 409);
+}
+
 // --- GET /household-members ---
 
 #[sqlx::test]
@@ -223,18 +247,20 @@ async fn list_household_members_filters_by_user(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
     let household_a = create_household(&app).await;
     let household_b = create_household(&app).await;
-    let user_id = create_user(&app, "jane@example.com").await;
-    create_member_via_api(&app, household_a, user_id, "family_manager").await;
-    create_member_via_api(&app, household_b, user_id, "family_member").await;
+    let user_1 = create_user(&app, "one@example.com").await;
+    let user_2 = create_user(&app, "two@example.com").await;
+    create_member_via_api(&app, household_a, user_1, "family_manager").await;
+    create_member_via_api(&app, household_b, user_2, "family_manager").await;
 
     let req = test::TestRequest::get()
-        .uri(&format!("/household-members?user_id={user_id}"))
+        .uri(&format!("/household-members?user_id={user_1}"))
         .to_request();
     let resp = test::call_service(&app, req).await;
     let body: serde_json::Value = test::read_body_json(resp).await;
     let rows = body.as_array().unwrap();
 
-    assert_eq!(rows.len(), 2);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["household_id"].as_i64().unwrap(), household_a);
 }
 
 // --- GET /household-members/{id} ---

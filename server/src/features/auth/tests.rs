@@ -520,6 +520,39 @@ async fn onboarding_rejects_joining_the_same_household_twice(pool: PgPool) {
 }
 
 #[sqlx::test]
+async fn onboarding_rejects_joining_a_second_different_household(pool: PgPool) {
+    // A user belongs to exactly one household ever, not "one per household" — joining any other
+    // household once already connected to one must be rejected the same way.
+    let app = test::init_service(app_with(pool)).await;
+
+    let first_cookie = sign_in(&app, "sam@example.com").await;
+    let create_first = test::TestRequest::post()
+        .uri("/auth/onboarding")
+        .insert_header(("Cookie", first_cookie.clone()))
+        .set_json(serde_json::json!({}))
+        .to_request();
+    assert_eq!(test::call_service(&app, create_first).await.status(), 201);
+
+    let other_cookie = sign_in(&app, "other@example.com").await;
+    let create_other = test::TestRequest::post()
+        .uri("/auth/onboarding")
+        .insert_header(("Cookie", other_cookie))
+        .set_json(serde_json::json!({}))
+        .to_request();
+    let other: serde_json::Value = test::call_and_read_body_json(&app, create_other).await;
+    let other_join_code = other["household"]["join_code"].as_str().unwrap();
+
+    let join_other_req = test::TestRequest::post()
+        .uri("/auth/onboarding")
+        .insert_header(("Cookie", first_cookie))
+        .set_json(serde_json::json!({ "join_code": other_join_code }))
+        .to_request();
+    let join_other_resp = test::call_service(&app, join_other_req).await;
+
+    assert_eq!(join_other_resp.status(), 409);
+}
+
+#[sqlx::test]
 async fn onboarding_requires_a_session(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
 
