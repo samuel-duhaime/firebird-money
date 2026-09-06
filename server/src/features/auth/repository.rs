@@ -99,16 +99,21 @@ pub async fn mark_user_verified(pool: &PgPool, user_id: i32) -> Result<(), sqlx:
     Ok(())
 }
 
-/// Lists every household this user belongs to, with the role they hold in each.
-pub async fn list_memberships(pool: &PgPool, user_id: i32) -> Result<Vec<Membership>, sqlx::Error> {
+/// The household this user belongs to, with the role they hold in it — `None` if they haven't
+/// onboarded yet. A user belongs to at most one household (enforced by a unique constraint on
+/// `household_members.user_id`).
+pub async fn get_membership(
+    pool: &PgPool,
+    user_id: i32,
+) -> Result<Option<Membership>, sqlx::Error> {
     sqlx::query_as::<_, Membership>(
-        "SELECT household_members.household_id, households.join_code, household_members.type
+        "SELECT household_members.id, household_members.household_id, households.join_code,
+                household_members.type
          FROM household_members
          JOIN households ON households.id = household_members.household_id
-         WHERE household_members.user_id = $1
-         ORDER BY household_members.household_id",
+         WHERE household_members.user_id = $1",
     )
     .bind(user_id)
-    .fetch_all(pool)
+    .fetch_optional(pool)
     .await
 }

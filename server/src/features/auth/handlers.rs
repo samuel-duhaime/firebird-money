@@ -13,11 +13,11 @@ use log::error;
 use sqlx::PgPool;
 
 use super::model::{
-    normalize_email, CurrentUser, LoginRequest, Membership, OnboardingRequest,
-    RequestLoginResponse, VerifyQuery,
+    normalize_email, AuthSession, LoginRequest, OnboardingRequest, RequestLoginResponse,
+    VerifyQuery,
 };
-use super::session::{build_removal_cookie, build_session_cookie, current_user, session_token};
-use super::{repository, tokens};
+use super::session::{build_removal_cookie, build_session_cookie, session_token};
+use super::{repository, tokens, CurrentUser};
 use crate::features::household_members::model::NewHouseholdMember;
 use crate::features::household_members::repository as household_members_repository;
 use crate::features::households::repository as households_repository;
@@ -154,33 +154,13 @@ async fn verify(
     }
 }
 
-/// `GET /auth/me` — the signed-in user and the households they belong to.
-async fn me(req: HttpRequest, pool: web::Data<PgPool>, l10n: web::Data<L10n>) -> impl Responder {
-    let locale = l10n.locale();
-
-    let user = match current_user(&req, &pool).await {
-        Ok(Some(user)) => user,
-        Ok(None) => {
-            return error_response(
-                &l10n,
-                &locale,
-                StatusCode::UNAUTHORIZED,
-                "auth-not-signed-in",
-            )
-        }
-        Err(e) => {
-            error!("failed to load session user error={e}");
-            return internal_error_response(&l10n, &locale);
-        }
-    };
-
-    match load_current_user(&pool, user).await {
-        Ok(session) => HttpResponse::Ok().json(session),
-        Err(e) => {
-            error!("failed to list memberships error={e}");
-            internal_error_response(&l10n, &locale)
-        }
-    }
+/// `GET /auth/me` — the signed-in user and the household they belong to, if any. Requiring
+/// `CurrentUser` is what gates this route on a live session.
+async fn me(current_user: CurrentUser) -> impl Responder {
+    HttpResponse::Ok().json(AuthSession {
+        user: current_user.user,
+        household: current_user.household,
+    })
 }
 
 /// `POST /auth/logout` — end the session and clear the cookie.
@@ -208,27 +188,12 @@ async fn logout(
 /// existing one by `join_code` (becoming a `family_member`).
 async fn onboarding(
     body: web::Json<OnboardingRequest>,
-    req: HttpRequest,
+    current_user: CurrentUser,
     pool: web::Data<PgPool>,
     l10n: web::Data<L10n>,
 ) -> impl Responder {
     let locale = l10n.locale();
-
-    let user = match current_user(&req, &pool).await {
-        Ok(Some(user)) => user,
-        Ok(None) => {
-            return error_response(
-                &l10n,
-                &locale,
-                StatusCode::UNAUTHORIZED,
-                "auth-not-signed-in",
-            )
-        }
-        Err(e) => {
-            error!("failed to load session user error={e}");
-            return internal_error_response(&l10n, &locale);
-        }
-    };
+    let user = current_user.user;
 
     // A `join_code` field that's present but blank is almost certainly a mistake — e.g. a
     // whitespace-only paste — not a request to create a new household. Treat it as a bad request
@@ -277,10 +242,10 @@ async fn onboarding(
     };
 
     match household_members_repository::create(&pool, &new_member).await {
-        Ok(_) => match load_current_user(&pool, user).await {
+        Ok(_) => match load_auth_session(&pool, user).await {
             Ok(session) => HttpResponse::Created().json(session),
             Err(e) => {
-                error!("failed to list memberships after onboarding error={e}");
+                error!("failed to load household membership after onboarding error={e}");
                 internal_error_response(&l10n, &locale)
             }
         },
@@ -305,7 +270,7 @@ async fn sign_in_with_token(
     pool: &PgPool,
     config: &AuthConfig,
     raw_token: &str,
-) -> Result<Option<(actix_web::cookie::Cookie<'static>, CurrentUser)>, sqlx::Error> {
+) -> Result<Option<(actix_web::cookie::Cookie<'static>, AuthSession)>, sqlx::Error> {
     let Some(user_id) = repository::consume_login_token(pool, &tokens::hash(raw_token)).await?
     else {
         return Ok(None);
@@ -325,14 +290,14 @@ async fn sign_in_with_token(
         return Ok(None);
     };
 
-    let session = load_current_user(pool, user).await?;
+    let session = load_auth_session(pool, user).await?;
     Ok(Some((build_session_cookie(config, session_token), session)))
 }
 
-/// Pairs a user with the households they belong to.
-async fn load_current_user(pool: &PgPool, user: User) -> Result<CurrentUser, sqlx::Error> {
-    let households: Vec<Membership> = repository::list_memberships(pool, user.id).await?;
-    Ok(CurrentUser { user, households })
+/// Pairs a user with the household they belong to, if any.
+async fn load_auth_session(pool: &PgPool, user: User) -> Result<AuthSession, sqlx::Error> {
+    let household = repository::get_membership(pool, user.id).await?;
+    Ok(AuthSession { user, household })
 }
 
 /// Registers the auth feature's routes.
