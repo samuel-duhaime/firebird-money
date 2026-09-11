@@ -1,4 +1,4 @@
-//! HTTP API for categories: JSON CRUD backed by Postgres.
+//! HTTP API for categories: JSON CRUD backed by Postgres, scoped to the caller's household.
 
 use actix_web::http::StatusCode;
 use actix_web::{web, HttpResponse, Responder};
@@ -8,6 +8,7 @@ use sqlx::PgPool;
 
 use super::model::{CategoryPatch, NewCategory};
 use super::repository;
+use crate::features::auth::CurrentUser;
 use crate::shared::http_error::{
     error_response, error_response_with_n, internal_error_response, is_foreign_key_violation,
     is_unique_violation, not_found_response,
@@ -20,14 +21,20 @@ struct CategoryIdPath {
     id: u32,
 }
 
-/// `POST /categories` — create a category.
+/// `POST /categories` — create a category in the caller's household.
 async fn create_category(
     new_category: web::Json<NewCategory>,
+    current_user: CurrentUser,
     pool: web::Data<PgPool>,
     l10n: web::Data<L10n>,
 ) -> impl Responder {
     let locale = l10n.locale();
-    match repository::create(&pool, &new_category).await {
+    let household_id = match current_user.require_household_id(&l10n, &locale) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
+
+    match repository::create(&pool, household_id, &new_category).await {
         Ok(category) => HttpResponse::Created()
             .insert_header(("Location", format!("/categories/{}", category.id)))
             .json(category),
@@ -51,27 +58,42 @@ async fn create_category(
     }
 }
 
-/// `GET /categories` — list all categories.
-async fn list_categories(pool: web::Data<PgPool>, l10n: web::Data<L10n>) -> impl Responder {
-    match repository::list(&pool).await {
+/// `GET /categories` — list the caller's household's categories.
+async fn list_categories(
+    current_user: CurrentUser,
+    pool: web::Data<PgPool>,
+    l10n: web::Data<L10n>,
+) -> impl Responder {
+    let locale = l10n.locale();
+    let household_id = match current_user.require_household_id(&l10n, &locale) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
+
+    match repository::list(&pool, household_id).await {
         Ok(categories) => HttpResponse::Ok().json(categories),
         Err(e) => {
             error!("failed to list categories error={e}");
-            internal_error_response(&l10n, &l10n.locale())
+            internal_error_response(&l10n, &locale)
         }
     }
 }
 
-/// `GET /categories/{id}` — fetch a single category.
+/// `GET /categories/{id}` — fetch a single category from the caller's household.
 async fn get_category(
     path: web::Path<CategoryIdPath>,
+    current_user: CurrentUser,
     pool: web::Data<PgPool>,
     l10n: web::Data<L10n>,
 ) -> impl Responder {
     let locale = l10n.locale();
     let id = path.id;
+    let household_id = match current_user.require_household_id(&l10n, &locale) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
 
-    match repository::get(&pool, id as i32).await {
+    match repository::get(&pool, household_id, id as i32).await {
         Ok(Some(category)) => HttpResponse::Ok().json(category),
         Ok(None) => not_found_response(&l10n, &locale, "category-not-found", id),
         Err(e) => {
@@ -81,17 +103,23 @@ async fn get_category(
     }
 }
 
-/// `PATCH /categories/{id}` — partially update a category; unset fields are left unchanged.
+/// `PATCH /categories/{id}` — partially update a category in the caller's household; unset fields
+/// are left unchanged.
 async fn update_category(
     path: web::Path<CategoryIdPath>,
     patch: web::Json<CategoryPatch>,
+    current_user: CurrentUser,
     pool: web::Data<PgPool>,
     l10n: web::Data<L10n>,
 ) -> impl Responder {
     let locale = l10n.locale();
     let id = path.id;
+    let household_id = match current_user.require_household_id(&l10n, &locale) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
 
-    match repository::update(&pool, id as i32, &patch).await {
+    match repository::update(&pool, household_id, id as i32, &patch).await {
         Ok(Some(category)) => HttpResponse::Ok().json(category),
         Ok(None) => not_found_response(&l10n, &locale, "category-not-found", id),
         Err(e) if is_unique_violation(&e) => error_response(
@@ -114,16 +142,21 @@ async fn update_category(
     }
 }
 
-/// `DELETE /categories/{id}` — delete a category.
+/// `DELETE /categories/{id}` — delete a category from the caller's household.
 async fn delete_category(
     path: web::Path<CategoryIdPath>,
+    current_user: CurrentUser,
     pool: web::Data<PgPool>,
     l10n: web::Data<L10n>,
 ) -> impl Responder {
     let locale = l10n.locale();
     let id = path.id;
+    let household_id = match current_user.require_household_id(&l10n, &locale) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
 
-    match repository::delete(&pool, id as i32).await {
+    match repository::delete(&pool, household_id, id as i32).await {
         Ok(true) => HttpResponse::NoContent().finish(),
         Ok(false) => not_found_response(&l10n, &locale, "category-not-found", id),
         Err(e) if is_foreign_key_violation(&e) => {

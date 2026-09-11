@@ -7,6 +7,7 @@ use sqlx::FromRow;
 #[derive(Debug, Serialize, FromRow)]
 pub struct Category {
     pub id: i32,
+    pub household_id: i32,
     pub group_id: i32,
     pub name_en: String,
     pub name_fr: String,

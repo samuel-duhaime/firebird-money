@@ -4,7 +4,7 @@ use sqlx::PgPool;
 use super::defaults::DefaultCategory;
 use super::model::{Category, CategoryPatch, NewCategory};
 
-const SELECT_COLUMNS: &str = "id, group_id, name_en, name_fr, created_at";
+const SELECT_COLUMNS: &str = "id, household_id, group_id, name_en, name_fr, created_at";
 
 /// Inserts the starter categories for one newly created default group, as part of
 /// `category_groups::repository::seed_defaults`. Takes the transaction connection directly (rather
@@ -28,13 +28,18 @@ pub async fn insert_defaults(
     Ok(())
 }
 
-/// Inserts a new category and returns the created row.
-pub async fn create(pool: &PgPool, new_category: &NewCategory) -> Result<Category, sqlx::Error> {
+/// Inserts a new category, scoped to `household_id`, and returns the created row.
+pub async fn create(
+    pool: &PgPool,
+    household_id: i32,
+    new_category: &NewCategory,
+) -> Result<Category, sqlx::Error> {
     sqlx::query_as::<_, Category>(&format!(
-        "INSERT INTO categories (group_id, name_en, name_fr)
-         VALUES ($1, $2, $3)
+        "INSERT INTO categories (household_id, group_id, name_en, name_fr)
+         VALUES ($1, $2, $3, $4)
          RETURNING {SELECT_COLUMNS}"
     ))
+    .bind(household_id)
     .bind(new_category.group_id)
     .bind(&new_category.name_en)
     .bind(&new_category.name_fr)
@@ -42,41 +47,51 @@ pub async fn create(pool: &PgPool, new_category: &NewCategory) -> Result<Categor
     .await
 }
 
-/// Lists all categories, ordered by id.
-pub async fn list(pool: &PgPool) -> Result<Vec<Category>, sqlx::Error> {
+/// Lists a household's categories, ordered by id.
+pub async fn list(pool: &PgPool, household_id: i32) -> Result<Vec<Category>, sqlx::Error> {
     sqlx::query_as::<_, Category>(&format!(
-        "SELECT {SELECT_COLUMNS} FROM categories ORDER BY id"
+        "SELECT {SELECT_COLUMNS} FROM categories WHERE household_id = $1 ORDER BY id"
     ))
+    .bind(household_id)
     .fetch_all(pool)
     .await
 }
 
-/// Fetches a single category by id, or `None` if it doesn't exist.
-pub async fn get(pool: &PgPool, id: i32) -> Result<Option<Category>, sqlx::Error> {
+/// Fetches a single category by id, scoped to `household_id`, or `None` if it doesn't exist
+/// (including when it belongs to a different household).
+pub async fn get(
+    pool: &PgPool,
+    household_id: i32,
+    id: i32,
+) -> Result<Option<Category>, sqlx::Error> {
     sqlx::query_as::<_, Category>(&format!(
-        "SELECT {SELECT_COLUMNS} FROM categories WHERE id = $1"
+        "SELECT {SELECT_COLUMNS} FROM categories WHERE id = $1 AND household_id = $2"
     ))
     .bind(id)
+    .bind(household_id)
     .fetch_optional(pool)
     .await
 }
 
-/// Applies a partial update (only `Some` fields change) and returns the updated row, or `None` if
-/// the id doesn't exist.
+/// Applies a partial update (only `Some` fields change), scoped to `household_id`, and returns the
+/// updated row, or `None` if the id doesn't exist (including when it belongs to a different
+/// household).
 pub async fn update(
     pool: &PgPool,
+    household_id: i32,
     id: i32,
     patch: &CategoryPatch,
 ) -> Result<Option<Category>, sqlx::Error> {
     sqlx::query_as::<_, Category>(&format!(
         "UPDATE categories
-         SET name_en = COALESCE($2, name_en),
-             name_fr = COALESCE($3, name_fr),
-             group_id = COALESCE($4, group_id)
-         WHERE id = $1
+         SET name_en = COALESCE($3, name_en),
+             name_fr = COALESCE($4, name_fr),
+             group_id = COALESCE($5, group_id)
+         WHERE id = $1 AND household_id = $2
          RETURNING {SELECT_COLUMNS}"
     ))
     .bind(id)
+    .bind(household_id)
     .bind(&patch.name_en)
     .bind(&patch.name_fr)
     .bind(patch.group_id)
@@ -84,10 +99,12 @@ pub async fn update(
     .await
 }
 
-/// Deletes a category by id. Returns `true` if a row was deleted, `false` if the id didn't exist.
-pub async fn delete(pool: &PgPool, id: i32) -> Result<bool, sqlx::Error> {
-    let result = sqlx::query("DELETE FROM categories WHERE id = $1")
+/// Deletes a category by id, scoped to `household_id`. Returns `true` if a row was deleted,
+/// `false` if the id didn't exist (including when it belongs to a different household).
+pub async fn delete(pool: &PgPool, household_id: i32, id: i32) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query("DELETE FROM categories WHERE id = $1 AND household_id = $2")
         .bind(id)
+        .bind(household_id)
         .execute(pool)
         .await?;
     Ok(result.rows_affected() > 0)
