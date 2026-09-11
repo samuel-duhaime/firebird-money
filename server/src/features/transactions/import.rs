@@ -1,8 +1,10 @@
 //! Drives an unattended `claude` subprocess through the `budget-file-to-transaction` skill for
 //! `POST /transactions/import`. The subprocess talks to this same server's API directly (see the
-//! skill's "Unattended mode" section); this module only stages the uploaded file, launches the
-//! subprocess with a narrow tool allowlist, and falls back to marking the job failed if the
-//! subprocess never reports its own result.
+//! skill's "Unattended mode" section), authenticating as the caller who kicked off the import via
+//! their own session cookie, forwarded into the subprocess's environment (never the visible
+//! prompt) — every route it calls requires a session, same as the rest of the API. This module
+//! only stages the uploaded file, launches the subprocess with a narrow tool allowlist, and falls
+//! back to marking the job failed if the subprocess never reports its own result.
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -53,14 +55,20 @@ pub fn sanitize_filename(name: &str) -> String {
 /// Builds the unattended `claude` invocation: no `--dangerously-skip-permissions`, instead a
 /// pre-approved allowlist scoped to reading the uploaded file and calling this server's three
 /// import-related endpoints — anything else has no TTY to prompt on, so it's denied automatically.
-fn build_command(job_id: Uuid, file_path: &Path) -> Command {
+///
+/// `session_token` is the caller's own (already-valid) session cookie value, handed to the
+/// subprocess via the `SESSION_COOKIE` environment variable rather than the prompt text, so it
+/// doesn't end up embedded in a transcript. The skill's own curl commands read it from there to
+/// authenticate — every route now requires a session, including the ones this subprocess calls.
+fn build_command(job_id: Uuid, file_path: &Path, session_token: &str) -> Command {
     let upload_dir = upload_dir(job_id);
     let prompt = format!(
         "/budget-file-to-transaction Import the file at {} with job_id={job_id}.",
         file_path.display()
     );
-    // `*` right after `curl` tolerates incidental flags (e.g. `-s`) the model adds out of habit —
-    // a rigid `curl http://...` prefix broke on the first real run when it wrote `curl -s http://...`.
+    // `*` right after `curl` tolerates incidental flags (e.g. `-s`, `-b "..."`) the model adds out
+    // of habit — a rigid `curl http://...` prefix broke on the first real run when it wrote
+    // `curl -s http://...`.
     let addr = server_addr();
     let allowed_tools = format!(
         "Read({upload_dir}/*) \
@@ -73,6 +81,7 @@ fn build_command(job_id: Uuid, file_path: &Path) -> Command {
     let mut command = Command::new("claude");
     command
         .current_dir(repo_root())
+        .env("SESSION_COOKIE", session_token)
         .arg("-p")
         .arg(prompt)
         .arg("--tools")
@@ -127,10 +136,20 @@ fn truncate_tail(text: &str) -> String {
 /// it, then — only if the job is still `pending`/`running` afterward, meaning the skill's own
 /// final `PATCH` never landed — marks it failed using the captured output. Always cleans up the
 /// staged upload file.
-pub async fn run_import(job_store: &JobStore, job_id: Uuid, file_path: PathBuf) {
+///
+/// `session_token` is forwarded to the subprocess so it can authenticate as the caller — see
+/// `build_command`.
+pub async fn run_import(
+    job_store: &JobStore,
+    job_id: Uuid,
+    file_path: PathBuf,
+    session_token: String,
+) {
     job_store.mark_running(job_id);
 
-    let output = build_command(job_id, &file_path).output().await;
+    let output = build_command(job_id, &file_path, &session_token)
+        .output()
+        .await;
 
     let fallback_error = match &output {
         Ok(output) => {

@@ -16,7 +16,7 @@ use super::import;
 use super::jobs::JobStore;
 use super::model::{ImportJobReport, NewTransaction, TransactionFilter, TransactionPatch};
 use super::repository;
-use crate::features::auth::CurrentUser;
+use crate::features::auth::{session_token, CurrentUser};
 use crate::shared::http_error::{
     error_response, error_response_with_n, internal_error_response, is_foreign_key_violation,
     not_found_response,
@@ -207,10 +207,15 @@ fn import_upload_error_handler(err: MultipartError, req: &HttpRequest) -> actix_
 /// `GET /transactions/import/jobs/{id}` for status.
 async fn import_transactions(
     MultipartForm(form): MultipartForm<ImportUploadForm>,
+    _current_user: CurrentUser,
+    req: HttpRequest,
     job_store: web::Data<JobStore>,
     l10n: web::Data<L10n>,
 ) -> impl Responder {
     let locale = l10n.locale();
+
+    // Guaranteed present: `CurrentUser` already resolved this same cookie to a live session.
+    let session_token = session_token(&req).expect("CurrentUser implies a session cookie");
 
     let original_name = form.file.file_name.clone().unwrap_or_default();
     if !import::is_valid_upload(&original_name, form.file.size as u64) {
@@ -235,7 +240,7 @@ async fn import_transactions(
     let job_store_for_task = job_store.clone();
     let job_id = job.id;
     tokio::spawn(async move {
-        import::run_import(&job_store_for_task, job_id, dest_path).await;
+        import::run_import(&job_store_for_task, job_id, dest_path, session_token).await;
     });
 
     HttpResponse::Accepted()
@@ -246,6 +251,7 @@ async fn import_transactions(
 /// `GET /transactions/import/jobs/{id}` — poll the status of an import job.
 async fn get_import_job(
     path: web::Path<ImportJobIdPath>,
+    _current_user: CurrentUser,
     job_store: web::Data<JobStore>,
     l10n: web::Data<L10n>,
 ) -> impl Responder {
@@ -261,11 +267,13 @@ async fn get_import_job(
 }
 
 /// `PATCH /transactions/import/jobs/{id}` — how the unattended import subprocess reports its own
-/// final result back to the server (see the skill's "Unattended mode" section). Not intended to
-/// be called from the client.
+/// final result back to the server (see the skill's "Unattended mode" section), authenticating
+/// with the session cookie forwarded to it in `import::build_command`. Not intended to be called
+/// from the client.
 async fn report_import_job(
     path: web::Path<ImportJobIdPath>,
     report: web::Json<ImportJobReport>,
+    _current_user: CurrentUser,
     job_store: web::Data<JobStore>,
 ) -> impl Responder {
     job_store.complete(

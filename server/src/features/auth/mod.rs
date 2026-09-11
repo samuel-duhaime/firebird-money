@@ -9,3 +9,4 @@ mod tokens;
 
 pub use current_user::CurrentUser;
 pub use handlers::configure;
+pub use session::session_token;

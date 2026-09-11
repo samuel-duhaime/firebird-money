@@ -1985,7 +1985,7 @@ async fn import_transactions_rejects_a_file_over_the_size_limit(pool: PgPool) {
 // `claude` subprocess, which has no place in an automated test suite.
 
 #[sqlx::test]
-async fn get_import_job_returns_404_for_unknown_id(pool: PgPool) {
+async fn get_import_job_requires_a_session(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
 
     let req = test::TestRequest::get()
@@ -1993,6 +1993,23 @@ async fn get_import_job_returns_404_for_unknown_id(pool: PgPool) {
             "/transactions/import/jobs/{}",
             uuid::Uuid::new_v4()
         ))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 401);
+}
+
+#[sqlx::test]
+async fn get_import_job_returns_404_for_unknown_id(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+
+    let req = test::TestRequest::get()
+        .uri(&format!(
+            "/transactions/import/jobs/{}",
+            uuid::Uuid::new_v4()
+        ))
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -2004,9 +2021,11 @@ async fn get_import_job_returns_a_freshly_created_job_as_pending(pool: PgPool) {
     let job_store = web::Data::new(JobStore::default());
     let job = job_store.create("statement.csv".to_string());
     let app = test::init_service(app_with_jobs(pool, job_store)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
 
     let req = test::TestRequest::get()
         .uri(&format!("/transactions/import/jobs/{}", job.id))
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -2017,13 +2036,30 @@ async fn get_import_job_returns_a_freshly_created_job_as_pending(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn report_import_job_updates_status_and_get_reflects_it(pool: PgPool) {
+async fn report_import_job_requires_a_session(pool: PgPool) {
     let job_store = web::Data::new(JobStore::default());
     let job = job_store.create("statement.csv".to_string());
     let app = test::init_service(app_with_jobs(pool, job_store)).await;
 
     let patch_req = test::TestRequest::patch()
         .uri(&format!("/transactions/import/jobs/{}", job.id))
+        .set_json(serde_json::json!({ "status": "succeeded" }))
+        .to_request();
+    let patch_resp = test::call_service(&app, patch_req).await;
+
+    assert_eq!(patch_resp.status(), 401);
+}
+
+#[sqlx::test]
+async fn report_import_job_updates_status_and_get_reflects_it(pool: PgPool) {
+    let job_store = web::Data::new(JobStore::default());
+    let job = job_store.create("statement.csv".to_string());
+    let app = test::init_service(app_with_jobs(pool, job_store)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+
+    let patch_req = test::TestRequest::patch()
+        .uri(&format!("/transactions/import/jobs/{}", job.id))
+        .insert_header(("Cookie", cookie.clone()))
         .set_json(serde_json::json!({
             "status": "succeeded",
             "created_count": 3,
@@ -2036,6 +2072,7 @@ async fn report_import_job_updates_status_and_get_reflects_it(pool: PgPool) {
 
     let get_req = test::TestRequest::get()
         .uri(&format!("/transactions/import/jobs/{}", job.id))
+        .insert_header(("Cookie", cookie))
         .to_request();
     let get_resp = test::call_service(&app, get_req).await;
 
