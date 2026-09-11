@@ -40,7 +40,7 @@ const shiftDateKey = (dateKey: string, days: number): string => {
 const getCategoryId = async (
   request: APIRequestContext,
   apiOrigin: string,
-  nameEn: 'Groceries' | 'Salary' | 'Transfer',
+  nameEn: 'Groceries' | 'Paychecks' | 'Transfer',
 ): Promise<number> => {
   const response = await request.get(`${apiOrigin}/categories`);
   const categories: { id: number; name_en: string }[] = await response.json();
@@ -137,7 +137,7 @@ test.describe('list, grouping, and daily subtotal', () => {
     const salary = await getCategoryId(
       context.request,
       workerInfra.apiOrigin,
-      'Salary',
+      'Paychecks',
     );
 
     await seedTransaction(context.request, workerInfra.apiOrigin, {
