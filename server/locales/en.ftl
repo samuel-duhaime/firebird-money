@@ -17,6 +17,7 @@ user-in-use = User { $n } is still connected to a household
 household-member-not-found = No household member with id { $n }
 household-member-duplicate = This user is already connected to a household
 household-member-invalid-type = type must be family_manager or family_member
+household-member-requires-manager = Only a family manager can add members to this household
 # Magic-link email. The link itself is inserted between the instructions and the sign-off.
 auth-email-subject = Your FireBird Money sign-in link
 auth-email-greeting = Hi,

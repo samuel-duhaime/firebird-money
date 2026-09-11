@@ -195,6 +195,18 @@ async fn onboarding(
     let locale = l10n.locale();
     let user = current_user.user;
 
+    // `CurrentUser` already loaded this — reject up front rather than discovering it after
+    // creating (and, for the no-join branch, having to unwind) a household nobody will end up
+    // owning.
+    if current_user.household.is_some() {
+        return error_response(
+            &l10n,
+            &locale,
+            StatusCode::CONFLICT,
+            "auth-already-in-household",
+        );
+    }
+
     // A `join_code` field that's present but blank is almost certainly a mistake — e.g. a
     // whitespace-only paste — not a request to create a new household. Treat it as a bad request
     // rather than silently taking the "create" branch, which would give the caller a household
@@ -210,55 +222,74 @@ async fn onboarding(
 
     let join_code = body.join_code.as_deref().map(str::trim);
 
-    let (household_id, role) = match join_code {
-        Some(code) => match households_repository::get_by_join_code(&pool, code).await {
-            Ok(Some(household)) => (household.id, "family_member"),
-            Ok(None) => {
-                return error_response(
+    match join_code {
+        Some(code) => {
+            let household = match households_repository::get_by_join_code(&pool, code).await {
+                Ok(Some(household)) => household,
+                Ok(None) => {
+                    return error_response(
+                        &l10n,
+                        &locale,
+                        StatusCode::NOT_FOUND,
+                        "auth-join-code-not-found",
+                    )
+                }
+                Err(e) => {
+                    error!("failed to look up join code error={e}");
+                    return internal_error_response(&l10n, &locale);
+                }
+            };
+
+            let new_member = NewHouseholdMember {
+                user_id: user.id,
+                r#type: "family_member".to_string(),
+            };
+
+            match household_members_repository::create(pool.get_ref(), household.id, &new_member)
+                .await
+            {
+                Ok(_) => match load_auth_session(&pool, user).await {
+                    Ok(session) => HttpResponse::Created().json(session),
+                    Err(e) => {
+                        error!("failed to load household membership after onboarding error={e}");
+                        internal_error_response(&l10n, &locale)
+                    }
+                },
+                Err(e) if is_unique_violation(&e) => error_response(
                     &l10n,
                     &locale,
-                    StatusCode::NOT_FOUND,
-                    "auth-join-code-not-found",
-                )
+                    StatusCode::CONFLICT,
+                    "auth-already-in-household",
+                ),
+                Err(e) => {
+                    error!("failed to connect user to household error={e}");
+                    internal_error_response(&l10n, &locale)
+                }
             }
-            Err(e) => {
-                error!("failed to look up join code error={e}");
-                return internal_error_response(&l10n, &locale);
-            }
-        },
-        None => match households_repository::create(&pool).await {
-            Ok(household) => (household.id, "family_manager"),
+        }
+        // Household creation, starter-data seeding, and the manager membership all happen in one
+        // transaction (see `create_with_manager`), so a failure at any step — including the
+        // `user_id` unique violation from a concurrent onboarding request on the same account —
+        // never leaves an orphaned household behind.
+        None => match households_repository::create_with_manager(&pool, user.id).await {
+            Ok(_) => match load_auth_session(&pool, user).await {
+                Ok(session) => HttpResponse::Created().json(session),
+                Err(e) => {
+                    error!("failed to load household membership after onboarding error={e}");
+                    internal_error_response(&l10n, &locale)
+                }
+            },
+            Err(e) if is_unique_violation(&e) => error_response(
+                &l10n,
+                &locale,
+                StatusCode::CONFLICT,
+                "auth-already-in-household",
+            ),
             Err(e) => {
                 error!("failed to create household error={e}");
-                return internal_error_response(&l10n, &locale);
-            }
-        },
-    };
-
-    let new_member = NewHouseholdMember {
-        household_id,
-        user_id: user.id,
-        r#type: role.to_string(),
-    };
-
-    match household_members_repository::create(&pool, &new_member).await {
-        Ok(_) => match load_auth_session(&pool, user).await {
-            Ok(session) => HttpResponse::Created().json(session),
-            Err(e) => {
-                error!("failed to load household membership after onboarding error={e}");
                 internal_error_response(&l10n, &locale)
             }
         },
-        Err(e) if is_unique_violation(&e) => error_response(
-            &l10n,
-            &locale,
-            StatusCode::CONFLICT,
-            "auth-already-in-household",
-        ),
-        Err(e) => {
-            error!("failed to connect user to household error={e}");
-            internal_error_response(&l10n, &locale)
-        }
     }
 }
 

@@ -207,12 +207,16 @@ fn import_upload_error_handler(err: MultipartError, req: &HttpRequest) -> actix_
 /// `GET /transactions/import/jobs/{id}` for status.
 async fn import_transactions(
     MultipartForm(form): MultipartForm<ImportUploadForm>,
-    _current_user: CurrentUser,
+    current_user: CurrentUser,
     req: HttpRequest,
     job_store: web::Data<JobStore>,
     l10n: web::Data<L10n>,
 ) -> impl Responder {
     let locale = l10n.locale();
+    let household_id = match current_user.require_household_id(&l10n, &locale) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
 
     // Guaranteed present: `CurrentUser` already resolved this same cookie to a live session.
     let session_token = session_token(&req).expect("CurrentUser implies a session cookie");
@@ -227,7 +231,7 @@ async fn import_transactions(
         );
     }
 
-    let job = job_store.create(import::sanitize_filename(&original_name));
+    let job = job_store.create(import::sanitize_filename(&original_name), household_id);
     let dest_path = match import::stage_upload(job.id, &original_name, form.file.file.path()).await
     {
         Ok(dest_path) => dest_path,
@@ -248,18 +252,25 @@ async fn import_transactions(
         .json(job)
 }
 
-/// `GET /transactions/import/jobs/{id}` — poll the status of an import job.
+/// `GET /transactions/import/jobs/{id}` — poll the status of an import job from the caller's own
+/// household.
 async fn get_import_job(
     path: web::Path<ImportJobIdPath>,
-    _current_user: CurrentUser,
+    current_user: CurrentUser,
     job_store: web::Data<JobStore>,
     l10n: web::Data<L10n>,
 ) -> impl Responder {
-    match job_store.get(path.id) {
+    let locale = l10n.locale();
+    let household_id = match current_user.require_household_id(&l10n, &locale) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
+
+    match job_store.get(path.id, household_id) {
         Some(job) => HttpResponse::Ok().json(job),
         None => error_response(
             &l10n,
-            &l10n.locale(),
+            &locale,
             StatusCode::NOT_FOUND,
             "import-job-not-found",
         ),
@@ -273,9 +284,28 @@ async fn get_import_job(
 async fn report_import_job(
     path: web::Path<ImportJobIdPath>,
     report: web::Json<ImportJobReport>,
-    _current_user: CurrentUser,
+    current_user: CurrentUser,
     job_store: web::Data<JobStore>,
+    l10n: web::Data<L10n>,
 ) -> impl Responder {
+    let locale = l10n.locale();
+    let household_id = match current_user.require_household_id(&l10n, &locale) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
+
+    // Confirms the job belongs to the caller's household before letting them report a result for
+    // it — `complete` itself is id-only, trusted by its other caller (the server's own fallback
+    // failure handler in `import::run_import`, which never takes untrusted input).
+    if job_store.get(path.id, household_id).is_none() {
+        return error_response(
+            &l10n,
+            &locale,
+            StatusCode::NOT_FOUND,
+            "import-job-not-found",
+        );
+    }
+
     job_store.complete(
         path.id,
         report.status,

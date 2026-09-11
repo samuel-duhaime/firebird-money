@@ -17,6 +17,7 @@ user-in-use = L’utilisateur { $n } est toujours connecté à un ménage
 household-member-not-found = Aucun membre de ménage avec l’id { $n }
 household-member-duplicate = Cet utilisateur est déjà connecté à un ménage
 household-member-invalid-type = type doit être family_manager ou family_member
+household-member-requires-manager = Seul un gestionnaire familial peut ajouter des membres à ce ménage
 # Courriel de connexion. Le lien est inséré entre les instructions et la signature.
 auth-email-subject = Ton lien de connexion FireBird Money
 auth-email-greeting = Bonjour,

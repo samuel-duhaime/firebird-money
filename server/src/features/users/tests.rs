@@ -1,4 +1,5 @@
-//! Integration tests for the users HTTP API.
+//! Integration tests for the users HTTP API. `GET`/`PATCH`/`DELETE /users/{id}` are restricted to
+//! the signed-in caller's own record — see `handlers.rs`.
 //!
 //! Each `#[sqlx::test]` gets its own throwaway Postgres database (migrated from
 //! `migrations/`, dropped afterwards), so these never touch real dev data.
@@ -68,23 +69,23 @@ where
     format!("{}={}", cookie.name(), cookie.value())
 }
 
-/// Creates a user through `POST /users` and returns its id, for tests that only need an existing
-/// row to act on.
-async fn create_via_api<S, B>(app: &S, cookie: &str, email: &str) -> i64
+/// Signs in and returns both the session cookie and the caller's own `user.id` (per
+/// `GET /auth/me`) — `GET`/`PATCH`/`DELETE /users/{id}` only ever work on this id.
+async fn sign_in_with_id<S, B>(app: &S, email: &str) -> (String, i64)
 where
     S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
     B: MessageBody,
 {
-    let req = test::TestRequest::post()
-        .uri("/users")
-        .insert_header(("Cookie", cookie))
-        .set_json(serde_json::json!({ "email": email }))
+    let cookie = sign_in(app, email).await;
+
+    let me_req = test::TestRequest::get()
+        .uri("/auth/me")
+        .insert_header(("Cookie", cookie.clone()))
         .to_request();
-    let resp = test::call_service(app, req).await;
-    let body: serde_json::Value = test::read_body_json(resp).await;
-    body["id"]
-        .as_i64()
-        .unwrap_or_else(|| panic!("expected created user, got {body}"))
+    let me: serde_json::Value = test::call_and_read_body_json(app, me_req).await;
+    let user_id = me["user"]["id"].as_i64().unwrap();
+
+    (cookie, user_id)
 }
 
 // --- POST /users ---
@@ -152,12 +153,11 @@ async fn create_user_rejects_malformed_body(pool: PgPool) {
 async fn create_user_rejects_duplicate_email(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
     let cookie = sign_in(&app, "sam@example.com").await;
-    create_via_api(&app, &cookie, "jane@example.com").await;
 
     let req = test::TestRequest::post()
         .uri("/users")
         .insert_header(("Cookie", cookie))
-        .set_json(serde_json::json!({ "email": "jane@example.com" }))
+        .set_json(serde_json::json!({ "email": "sam@example.com" }))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -169,8 +169,7 @@ async fn create_user_rejects_duplicate_email(pool: PgPool) {
 #[sqlx::test]
 async fn get_user_returns_row(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    let cookie = sign_in(&app, "sam@example.com").await;
-    let id = create_via_api(&app, &cookie, "jane@example.com").await;
+    let (cookie, id) = sign_in_with_id(&app, "jane@example.com").await;
 
     let req = test::TestRequest::get()
         .uri(&format!("/users/{id}"))
@@ -199,13 +198,27 @@ async fn get_user_not_found(pool: PgPool) {
     assert!(body["error"].is_string());
 }
 
+#[sqlx::test]
+async fn get_user_from_another_user_is_not_found(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let (_cookie_a, id_a) = sign_in_with_id(&app, "a@example.com").await;
+    let (cookie_b, _id_b) = sign_in_with_id(&app, "b@example.com").await;
+
+    let req = test::TestRequest::get()
+        .uri(&format!("/users/{id_a}"))
+        .insert_header(("Cookie", cookie_b))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 404);
+}
+
 // --- PATCH /users/{id} ---
 
 #[sqlx::test]
 async fn update_user_changes_only_given_fields(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    let cookie = sign_in(&app, "sam@example.com").await;
-    let id = create_via_api(&app, &cookie, "jane@example.com").await;
+    let (cookie, id) = sign_in_with_id(&app, "jane@example.com").await;
 
     let req = test::TestRequest::patch()
         .uri(&format!("/users/{id}"))
@@ -239,8 +252,7 @@ async fn update_user_not_found(pool: PgPool) {
 #[sqlx::test]
 async fn update_user_rejects_invalid_status(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    let cookie = sign_in(&app, "sam@example.com").await;
-    let id = create_via_api(&app, &cookie, "jane@example.com").await;
+    let (cookie, id) = sign_in_with_id(&app, "jane@example.com").await;
 
     let req = test::TestRequest::patch()
         .uri(&format!("/users/{id}"))
@@ -252,13 +264,28 @@ async fn update_user_rejects_invalid_status(pool: PgPool) {
     assert_eq!(resp.status(), 400);
 }
 
+#[sqlx::test]
+async fn update_user_from_another_user_is_not_found(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let (_cookie_a, id_a) = sign_in_with_id(&app, "a@example.com").await;
+    let (cookie_b, _id_b) = sign_in_with_id(&app, "b@example.com").await;
+
+    let req = test::TestRequest::patch()
+        .uri(&format!("/users/{id_a}"))
+        .insert_header(("Cookie", cookie_b))
+        .set_json(serde_json::json!({ "first_name": "Hijacked" }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 404);
+}
+
 // --- DELETE /users/{id} ---
 
 #[sqlx::test]
 async fn delete_user_removes_row(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    let cookie = sign_in(&app, "sam@example.com").await;
-    let id = create_via_api(&app, &cookie, "jane@example.com").await;
+    let (cookie, id) = sign_in_with_id(&app, "jane@example.com").await;
 
     let delete_req = test::TestRequest::delete()
         .uri(&format!("/users/{id}"))
@@ -272,7 +299,8 @@ async fn delete_user_removes_row(pool: PgPool) {
         .insert_header(("Cookie", cookie))
         .to_request();
     let get_resp = test::call_service(&app, get_req).await;
-    assert_eq!(get_resp.status(), 404);
+    // 401, not 404: deleting the account also invalidated its own session.
+    assert_eq!(get_resp.status(), 401);
 }
 
 #[sqlx::test]
@@ -290,44 +318,34 @@ async fn delete_user_not_found(pool: PgPool) {
 }
 
 #[sqlx::test]
+async fn delete_user_from_another_user_is_not_found(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let (_cookie_a, id_a) = sign_in_with_id(&app, "a@example.com").await;
+    let (cookie_b, _id_b) = sign_in_with_id(&app, "b@example.com").await;
+
+    let req = test::TestRequest::delete()
+        .uri(&format!("/users/{id_a}"))
+        .insert_header(("Cookie", cookie_b))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 404);
+}
+
+#[sqlx::test]
 async fn delete_user_rejects_when_referenced_by_member(pool: PgPool) {
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(pool))
-            .app_data(web::Data::new(L10n::new()))
-            .app_data(web::Data::new(test_config()))
-            .app_data(web::Data::new(reqwest::Client::new()))
-            .configure(configure)
-            .configure(auth::configure)
-            .configure(crate::features::households::configure)
-            .configure(crate::features::household_members::configure),
-    )
-    .await;
-    let cookie = sign_in(&app, "sam@example.com").await;
-    let user_id = create_via_api(&app, &cookie, "jane@example.com").await;
+    let app = test::init_service(app_with(pool)).await;
+    let (cookie, id) = sign_in_with_id(&app, "jane@example.com").await;
 
-    let household_req = test::TestRequest::post()
-        .uri("/households")
+    let onboard_req = test::TestRequest::post()
+        .uri("/auth/onboarding")
         .insert_header(("Cookie", cookie.clone()))
+        .set_json(serde_json::json!({}))
         .to_request();
-    let household_resp = test::call_service(&app, household_req).await;
-    let household_body: serde_json::Value = test::read_body_json(household_resp).await;
-    let household_id = household_body["id"].as_i64().unwrap();
-
-    let member_req = test::TestRequest::post()
-        .uri("/household-members")
-        .insert_header(("Cookie", cookie.clone()))
-        .set_json(serde_json::json!({
-            "household_id": household_id,
-            "user_id": user_id,
-            "type": "family_manager",
-        }))
-        .to_request();
-    let member_resp = test::call_service(&app, member_req).await;
-    assert_eq!(member_resp.status(), 201);
+    assert_eq!(test::call_service(&app, onboard_req).await.status(), 201);
 
     let delete_req = test::TestRequest::delete()
-        .uri(&format!("/users/{user_id}"))
+        .uri(&format!("/users/{id}"))
         .insert_header(("Cookie", cookie))
         .to_request();
     let delete_resp = test::call_service(&app, delete_req).await;

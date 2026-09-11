@@ -45,6 +45,10 @@ pub struct NewTransaction {
 #[derive(Debug, Clone, Serialize)]
 pub struct ImportJob {
     pub id: Uuid,
+    /// Whoever kicked off the import — checked on every later read so one household can't poll or
+    /// complete another's job by guessing its (random, but not secret-strength) UUID.
+    #[serde(skip_serializing)]
+    pub household_id: i32,
     pub status: ImportJobStatus,
     pub file_name: String,
     pub created_count: Option<i32>,

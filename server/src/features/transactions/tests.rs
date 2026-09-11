@@ -111,6 +111,20 @@ where
     body["household"]["id"].as_i64().unwrap()
 }
 
+/// The `household.household_id` of the signed-in caller, per `GET /auth/me`.
+async fn own_household_id<S, B>(app: &S, cookie: &str) -> i32
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let req = test::TestRequest::get()
+        .uri("/auth/me")
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    let body: serde_json::Value = test::call_and_read_body_json(app, req).await;
+    body["household"]["household_id"].as_i64().unwrap() as i32
+}
+
 async fn create_group_via_api<S, B>(app: &S, cookie: &str, name_en: &str, name_fr: &str) -> i64
 where
     S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
@@ -2019,9 +2033,10 @@ async fn get_import_job_returns_404_for_unknown_id(pool: PgPool) {
 #[sqlx::test]
 async fn get_import_job_returns_a_freshly_created_job_as_pending(pool: PgPool) {
     let job_store = web::Data::new(JobStore::default());
-    let job = job_store.create("statement.csv".to_string());
-    let app = test::init_service(app_with_jobs(pool, job_store)).await;
+    let app = test::init_service(app_with_jobs(pool, job_store.clone())).await;
     let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let household_id = own_household_id(&app, &cookie).await;
+    let job = job_store.create("statement.csv".to_string(), household_id);
 
     let req = test::TestRequest::get()
         .uri(&format!("/transactions/import/jobs/{}", job.id))
@@ -2038,7 +2053,7 @@ async fn get_import_job_returns_a_freshly_created_job_as_pending(pool: PgPool) {
 #[sqlx::test]
 async fn report_import_job_requires_a_session(pool: PgPool) {
     let job_store = web::Data::new(JobStore::default());
-    let job = job_store.create("statement.csv".to_string());
+    let job = job_store.create("statement.csv".to_string(), 1);
     let app = test::init_service(app_with_jobs(pool, job_store)).await;
 
     let patch_req = test::TestRequest::patch()
@@ -2053,9 +2068,10 @@ async fn report_import_job_requires_a_session(pool: PgPool) {
 #[sqlx::test]
 async fn report_import_job_updates_status_and_get_reflects_it(pool: PgPool) {
     let job_store = web::Data::new(JobStore::default());
-    let job = job_store.create("statement.csv".to_string());
-    let app = test::init_service(app_with_jobs(pool, job_store)).await;
+    let app = test::init_service(app_with_jobs(pool, job_store.clone())).await;
     let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let household_id = own_household_id(&app, &cookie).await;
+    let job = job_store.create("statement.csv".to_string(), household_id);
 
     let patch_req = test::TestRequest::patch()
         .uri(&format!("/transactions/import/jobs/{}", job.id))
@@ -2081,6 +2097,43 @@ async fn report_import_job_updates_status_and_get_reflects_it(pool: PgPool) {
     assert_eq!(body["status"], "succeeded");
     assert_eq!(body["created_count"], 3);
     assert_eq!(body["skipped_count"], 1);
+}
+
+#[sqlx::test]
+async fn get_import_job_does_not_leak_another_households_job(pool: PgPool) {
+    let job_store = web::Data::new(JobStore::default());
+    let app = test::init_service(app_with_jobs(pool, job_store.clone())).await;
+    let cookie_a = sign_in_with_household(&app, "a@example.com").await;
+    let household_a = own_household_id(&app, &cookie_a).await;
+    let job = job_store.create("statement.csv".to_string(), household_a);
+    let cookie_b = sign_in_with_household(&app, "b@example.com").await;
+
+    let req = test::TestRequest::get()
+        .uri(&format!("/transactions/import/jobs/{}", job.id))
+        .insert_header(("Cookie", cookie_b))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 404);
+}
+
+#[sqlx::test]
+async fn report_import_job_rejects_another_households_job(pool: PgPool) {
+    let job_store = web::Data::new(JobStore::default());
+    let app = test::init_service(app_with_jobs(pool, job_store.clone())).await;
+    let cookie_a = sign_in_with_household(&app, "a@example.com").await;
+    let household_a = own_household_id(&app, &cookie_a).await;
+    let job = job_store.create("statement.csv".to_string(), household_a);
+    let cookie_b = sign_in_with_household(&app, "b@example.com").await;
+
+    let patch_req = test::TestRequest::patch()
+        .uri(&format!("/transactions/import/jobs/{}", job.id))
+        .insert_header(("Cookie", cookie_b))
+        .set_json(serde_json::json!({ "status": "succeeded" }))
+        .to_request();
+    let patch_resp = test::call_service(&app, patch_req).await;
+
+    assert_eq!(patch_resp.status(), 404);
 }
 
 #[sqlx::test]
