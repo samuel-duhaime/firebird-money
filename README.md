@@ -106,13 +106,14 @@ In VS Code, run the "Run Client and Server" task (`Ctrl+Shift+P` → `Tasks: Run
 
 ## API
 
-The API is JSON, backed by Postgres.
+The API is JSON, backed by Postgres, and requires a session. `transactions`, `categories`, and
+`category-groups` are scoped to the caller's household.
 
 `/auth`:
 
 - `POST /auth/request-login` — email a one-time magic link (`email`, optional `language`). Creates the account if the address is new. Answers `{"status": "email_sent"}`, or `{"status": "signed_in", "session": {…}}` when `SKIP_EMAIL_VERIFICATION` is on.
 - `GET /auth/verify?token=` — spend the token and open a session. Returns the `GET /auth/me` payload; `400` if the token is unknown, expired, or already spent.
-- `GET /auth/me` — the signed-in `user` and the `households` they belong to. `401` without a session.
+- `GET /auth/me` — the signed-in `user` and the `household` they belong to (`null` before onboarding). `401` without a session.
 - `POST /auth/logout` — end the session. Idempotent.
 - `POST /auth/onboarding` — create a household (`family_manager`) or, with a `join_code`, join one (`family_member`). `404` for an unknown code, `409` if already a member.
 
@@ -120,30 +121,42 @@ Magic links last 15 minutes and work once. The session cookie is httpOnly and Sa
 
 `/transactions`:
 
-- `GET /transactions` — list transactions, optionally filtered with `?date=YYYY-MM-DD`, `?start_date=`/`?end_date=` (inclusive range), `?merchant=`, and/or `?search=` (case-insensitive match against merchant, category, or amount). Accepts `?order=` (`date` [default], `inverse_date`, `amount`, `inverse_amount`).
+- `GET /transactions` — list the caller's household's transactions, optionally filtered with `?date=YYYY-MM-DD`, `?start_date=`/`?end_date=` (inclusive range), `?merchant=`, and/or `?search=` (case-insensitive match against merchant, category, or amount). Accepts `?order=` (`date` [default], `inverse_date`, `amount`, `inverse_amount`).
 - `GET /transactions/{id}` — fetch a single transaction.
-- `POST /transactions` — create a transaction (`date`, `merchant`, `amount`, `category_id`, `account`).
+- `POST /transactions` — create a transaction (`date`, `merchant`, `amount`, `category_id`, `account`). `household_id` and `household_member_id` are never read from the body — they're always the caller's own household and membership.
 - `PATCH /transactions/{id}` — partially update a transaction (only the fields you send change).
 - `DELETE /transactions/{id}` — delete a transaction.
 - `GET /transactions/download` — download the same filtered/sorted transactions as `GET /transactions`, rendered as a file. Accepts the same query params plus `?format=` (`csv` or `xlsx`, required).
-- `POST /transactions/import` — upload a budget file (multipart, field `file`, 10 MB max) to import as transactions. Kicks off an async job and returns `202 Accepted` with a `Location` header pointing at the job. Requires the `claude` CLI (see [Install](#install)).
+- `POST /transactions/import` — upload a budget file (multipart, field `file`, 10 MB max) to import as transactions. Kicks off an async job and returns `202 Accepted` with a `Location` header pointing at the job. Requires the `claude` CLI (see [Install](#install)); the unattended subprocess it spawns authenticates as the caller via a forwarded session cookie.
 - `GET /transactions/import/jobs/{id}` — poll an import job's status (`pending`, `running`, `succeeded`, `failed`) and, once terminal, its `created_count`/`failed_count`/`skipped_count`/`error_message`.
 
-Every transaction response includes its joined category: `category_name_en`, `category_name_fr`, and `category_type` alongside `category_id`. `category_id` must reference an existing category (enforced by a foreign key).
+Every transaction response includes its joined category (`category_name_en`, `category_name_fr`, `category_type`). `category_id` must belong to the caller's own household.
 
 `/categories`:
 
-- `GET /categories` — list all categories.
+- `GET /categories` — list the caller's household's categories.
 - `GET /categories/{id}` — fetch a single category.
-- `POST /categories` — create a category (`name_en`, `name_fr`, `type`, where `type` is `income`, `expense`, or `transfer`).
+- `POST /categories` — create a category (`group_id`, `name_en`, `name_fr`). `group_id` must reference a category group in the caller's own household.
 - `PATCH /categories/{id}` — partially update a category (only the fields you send change).
-- `DELETE /categories/{id}` — delete a category.
+- `DELETE /categories/{id}` — delete a category. Fails while it's still used by existing transactions.
+
+`type` lives on the category's group, not the category. Names are unique per household, not globally.
+
+`/category-groups`:
+
+- `GET /category-groups` — list the caller's household's category groups.
+- `GET /category-groups/{id}` — fetch a single category group.
+- `POST /category-groups` — create a category group (`name_en`, `name_fr`, `type`, where `type` is `income`, `expense`, or `transfer`).
+- `PATCH /category-groups/{id}` — partially update a category group (only the fields you send change).
+- `DELETE /category-groups/{id}` — delete a category group. Fails while it still has categories in it.
+
+New households are seeded with starter groups and categories automatically.
 
 `/households`:
 
 - `GET /households/{id}` — fetch a single household.
-- `POST /households` — create a new, empty household.
-- `DELETE /households/{id}` — delete a household. Fails while it still has members (see `/household-members`).
+- `POST /households` — create a new household, seeded with its starter category groups and categories.
+- `DELETE /households/{id}` — delete a household. Fails while it still has data connected to it (members, category groups, categories, or transactions).
 
 Beyond `id`/`created_at`, a household carries only a `join_code`, generated on creation: the code an existing member shares so someone else can join through `POST /auth/onboarding`. Who belongs to it, and with what role, lives in `/household-members`.
 
@@ -154,19 +167,19 @@ Beyond `id`/`created_at`, a household carries only a `join_code`, generated on c
 - `PATCH /users/{id}` — partially update a user (`email`, `google_id`, `status`, `first_name`, `last_name`, `avatar_url`; only the fields you send change). `status` must be `verified`, `pending`, or `suspended`.
 - `DELETE /users/{id}` — delete a user. Fails while they still belong to a household (see `/household-members`).
 
-A user is a standalone login identity — how they relate to a household is recorded separately, since the same person can belong to more than one. In practice signing in creates them (see [`/auth`](#api)); these routes are for direct management.
+A user is a standalone login identity — how they relate to their (at most one) household is recorded separately. In practice signing in creates them (see [`/auth`](#api)); these routes are for direct management.
 
 `/household-members`:
 
 - `GET /household-members` — list memberships, optionally filtered by `?household_id=` and/or `?user_id=`.
 - `GET /household-members/{id}` — fetch a single membership.
-- `POST /household-members` — connect a user to a household with a role (`household_id`, `user_id`, `type`, where `type` is `family_manager` or `family_member`). A user has exactly one role per household.
+- `POST /household-members` — connect a user to a household with a role (`household_id`, `user_id`, `type`, where `type` is `family_manager` or `family_member`). A user belongs to at most one household, ever — not just one per `household_id`.
 - `PATCH /household-members/{id}` — change a membership's role (`type`).
 - `DELETE /household-members/{id}` — remove a membership.
 
 ## Data model
 
-The currently implemented API exposes `Category`, `Transaction`, `Household`, `User`, and `HouseholdMember` (see [API](#api) above). The diagram below is the planned full data model — Account, Institution, Merchant, Tag, and Rule are still design-stage entities, not yet implemented, and `HouseholdMember` (the join between `User` and `Household`) isn't pictured yet either:
+The currently implemented API exposes `Category`, `CategoryGroup`, `Transaction`, `Household`, `User`, and `HouseholdMember` (see [API](#api) above). The diagram below predates `CategoryGroup` and household scoping — Account, Institution, Merchant, Tag, and Rule are still design-stage, and `HouseholdMember` isn't pictured either:
 ![API class diagram](docs/images/api-diagram.png)
 
 ## Tests

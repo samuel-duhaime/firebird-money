@@ -43,5 +43,5 @@ export const redirectIfAuthenticated = async (queryClient: QueryClient) => {
     if (!isUnauthorized(error)) throw error;
     return;
   }
-  throw redirect({ to: user.households.length > 0 ? '/dashboard' : '/onboarding' });
+  throw redirect({ to: user.household !== null ? '/dashboard' : '/onboarding' });
 };

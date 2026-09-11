@@ -26,20 +26,24 @@ pub struct OnboardingRequest {
     pub join_code: Option<String>,
 }
 
-/// One household the current user belongs to, with the role they hold in it.
+/// The household a user belongs to (a user belongs to exactly one, never more), with the role
+/// they hold in it. `id` is the `household_members` row's own id — a transaction is attributed to
+/// this, not to the household directly (see `CurrentUser::household_member_id`).
 #[derive(Debug, Serialize, FromRow)]
 pub struct Membership {
+    pub id: i32,
     pub household_id: i32,
     pub join_code: String,
     pub r#type: String,
 }
 
-/// Who the caller is: the user plus every household they belong to. The payload behind
-/// `GET /auth/me`, and what a successful login returns so the client doesn't need a second call.
+/// Who the caller is: the user plus the household they belong to, if any (nobody has one until
+/// onboarding). The payload behind `GET /auth/me`, and what a successful login returns so the
+/// client doesn't need a second call.
 #[derive(Debug, Serialize)]
-pub struct CurrentUser {
+pub struct AuthSession {
     pub user: User,
-    pub households: Vec<Membership>,
+    pub household: Option<Membership>,
 }
 
 /// Response to `POST /auth/request-login`.
@@ -51,7 +55,7 @@ pub struct RequestLoginResponse {
 
     /// Present only for `signed_in`, so the client can skip the `GET /auth/me` round trip.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub session: Option<CurrentUser>,
+    pub session: Option<AuthSession>,
 }
 
 /// Trims and lowercases an email, returning `None` if it can't plausibly be one.

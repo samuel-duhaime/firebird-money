@@ -8,6 +8,7 @@ use sqlx::PgPool;
 
 use super::model::{NewUser, UserPatch};
 use super::repository;
+use crate::features::auth::CurrentUser;
 use crate::shared::http_error::{
     error_response, error_response_with_n, internal_error_response, is_check_violation,
     is_foreign_key_violation, is_unique_violation, not_found_response,
@@ -23,6 +24,7 @@ struct UserIdPath {
 /// `POST /users` — create a user.
 async fn create_user(
     new_user: web::Json<NewUser>,
+    _current_user: CurrentUser,
     pool: web::Data<PgPool>,
     l10n: web::Data<L10n>,
 ) -> impl Responder {
@@ -41,14 +43,19 @@ async fn create_user(
     }
 }
 
-/// `GET /users/{id}` — fetch a single user.
+/// `GET /users/{id}` — fetch a single user. Only the signed-in user's own record.
 async fn get_user(
     path: web::Path<UserIdPath>,
+    current_user: CurrentUser,
     pool: web::Data<PgPool>,
     l10n: web::Data<L10n>,
 ) -> impl Responder {
     let locale = l10n.locale();
     let id = path.id;
+
+    if current_user.user.id != id as i32 {
+        return not_found_response(&l10n, &locale, "user-not-found", id);
+    }
 
     match repository::get(&pool, id as i32).await {
         Ok(Some(user)) => HttpResponse::Ok().json(user),
@@ -60,15 +67,21 @@ async fn get_user(
     }
 }
 
-/// `PATCH /users/{id}` — partially update a user; unset fields are left unchanged.
+/// `PATCH /users/{id}` — partially update a user; unset fields are left unchanged. Only the
+/// signed-in user's own record.
 async fn update_user(
     path: web::Path<UserIdPath>,
     patch: web::Json<UserPatch>,
+    current_user: CurrentUser,
     pool: web::Data<PgPool>,
     l10n: web::Data<L10n>,
 ) -> impl Responder {
     let locale = l10n.locale();
     let id = path.id;
+
+    if current_user.user.id != id as i32 {
+        return not_found_response(&l10n, &locale, "user-not-found", id);
+    }
 
     match repository::update(&pool, id as i32, &patch).await {
         Ok(Some(user)) => HttpResponse::Ok().json(user),
@@ -89,14 +102,19 @@ async fn update_user(
     }
 }
 
-/// `DELETE /users/{id}` — delete a user.
+/// `DELETE /users/{id}` — delete a user. Only the signed-in user's own record.
 async fn delete_user(
     path: web::Path<UserIdPath>,
+    current_user: CurrentUser,
     pool: web::Data<PgPool>,
     l10n: web::Data<L10n>,
 ) -> impl Responder {
     let locale = l10n.locale();
     let id = path.id;
+
+    if current_user.user.id != id as i32 {
+        return not_found_response(&l10n, &locale, "user-not-found", id);
+    }
 
     match repository::delete(&pool, id as i32).await {
         Ok(true) => HttpResponse::NoContent().finish(),

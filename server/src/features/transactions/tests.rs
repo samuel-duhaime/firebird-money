@@ -11,7 +11,20 @@ use sqlx::PgPool;
 
 use super::handlers::configure;
 use super::jobs::JobStore;
+use crate::features::auth;
+use crate::shared::config::{AuthConfig, SESSION_COOKIE_NAME};
 use crate::shared::l10n::L10n;
+
+/// An `AuthConfig` for tests: no mail provider, no production flags.
+fn test_config() -> AuthConfig {
+    AuthConfig {
+        app_env: "development".to_string(),
+        skip_email_verification: true,
+        resend_api_key: None,
+        email_from: "FireBird Money <test@example.com>".to_string(),
+        client_base_url: "http://localhost:5173".to_string(),
+    }
+}
 
 fn app_with(
     pool: PgPool,
@@ -45,30 +58,190 @@ fn app_with_jobs(
     App::new()
         .app_data(web::Data::new(pool))
         .app_data(web::Data::new(L10n::new()))
+        .app_data(web::Data::new(test_config()))
+        .app_data(web::Data::new(reqwest::Client::new()))
         .app_data(job_store)
         .configure(configure)
+        .configure(auth::configure)
+        .configure(crate::features::category_groups::configure)
+        .configure(crate::features::categories::configure)
+}
+
+/// Signs in and completes onboarding (creating a fresh household), returning the session cookie.
+async fn sign_in_with_household<S, B>(app: &S, email: &str) -> String
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let req = test::TestRequest::post()
+        .uri("/auth/request-login")
+        .set_json(serde_json::json!({ "email": email }))
+        .to_request();
+    let resp = test::call_service(app, req).await;
+    assert_eq!(resp.status(), 200);
+
+    let cookie = resp
+        .response()
+        .cookies()
+        .find(|cookie| cookie.name() == SESSION_COOKIE_NAME)
+        .unwrap_or_else(|| panic!("expected a {SESSION_COOKIE_NAME} cookie"));
+    let cookie = format!("{}={}", cookie.name(), cookie.value());
+
+    let onboard_req = test::TestRequest::post()
+        .uri("/auth/onboarding")
+        .insert_header(("Cookie", cookie.clone()))
+        .set_json(serde_json::json!({}))
+        .to_request();
+    assert_eq!(test::call_service(app, onboard_req).await.status(), 201);
+
+    cookie
+}
+
+/// The `household.id` (i.e. `household_member_id`) of the signed-in caller, per `GET /auth/me`.
+async fn own_household_member_id<S, B>(app: &S, cookie: &str) -> i64
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let req = test::TestRequest::get()
+        .uri("/auth/me")
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    let body: serde_json::Value = test::call_and_read_body_json(app, req).await;
+    body["household"]["id"].as_i64().unwrap()
+}
+
+/// The `household.household_id` of the signed-in caller, per `GET /auth/me`.
+async fn own_household_id<S, B>(app: &S, cookie: &str) -> i32
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let req = test::TestRequest::get()
+        .uri("/auth/me")
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    let body: serde_json::Value = test::call_and_read_body_json(app, req).await;
+    body["household"]["household_id"].as_i64().unwrap() as i32
+}
+
+async fn create_group_via_api<S, B>(app: &S, cookie: &str, name_en: &str, name_fr: &str) -> i64
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let req = test::TestRequest::post()
+        .uri("/category-groups")
+        .insert_header(("Cookie", cookie))
+        .set_json(serde_json::json!({ "name_en": name_en, "name_fr": name_fr, "type": "expense" }))
+        .to_request();
+    let resp = test::call_service(app, req).await;
+    let status = resp.status();
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    body["id"]
+        .as_i64()
+        .unwrap_or_else(|| panic!("expected created group, status={status} body={body}"))
+}
+
+async fn create_category_via_api<S, B>(
+    app: &S,
+    cookie: &str,
+    group_id: i64,
+    name_en: &str,
+    name_fr: &str,
+) -> i64
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let req = test::TestRequest::post()
+        .uri("/categories")
+        .insert_header(("Cookie", cookie))
+        .set_json(
+            serde_json::json!({ "group_id": group_id, "name_en": name_en, "name_fr": name_fr }),
+        )
+        .to_request();
+    let resp = test::call_service(app, req).await;
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    body["id"]
+        .as_i64()
+        .unwrap_or_else(|| panic!("expected created category, got {body}"))
+}
+
+/// A category named "Other"/"Autre" (expense) — matches what the old flat default seed called
+/// `category_id: 1`, so most transaction assertions below didn't need to change once categories
+/// became per-household. The group itself is named distinctly from the seeded "Other" group
+/// (group names are unique per household; "Other" is already taken by a default group), but the
+/// category name "Other" isn't used by any seeded leaf category, so it's free to create.
+async fn create_other_category<S, B>(app: &S, cookie: &str) -> i64
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let group_id = create_group_via_api(app, cookie, "Custom Group", "Groupe personnalisé").await;
+    create_category_via_api(app, cookie, group_id, "Other", "Autre").await
+}
+
+/// The id of the seeded "Education"/"Éducation" category (under the seeded "Education" group) —
+/// fetched rather than created, since both that group and category names are already taken by the
+/// household's starter data.
+async fn find_category_id_by_name<S, B>(app: &S, cookie: &str, name_en: &str) -> i64
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let req = test::TestRequest::get()
+        .uri("/categories")
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    let body: serde_json::Value = test::call_and_read_body_json(app, req).await;
+    body.as_array()
+        .unwrap()
+        .iter()
+        .find(|category| category["name_en"] == name_en)
+        .unwrap_or_else(|| panic!("expected a seeded category named {name_en}"))["id"]
+        .as_i64()
+        .unwrap()
+}
+
+async fn education_category_id<S, B>(app: &S, cookie: &str) -> i64
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    find_category_id_by_name(app, cookie, "Education").await
 }
 
 /// Creates a transaction through `POST /transactions` and returns its id, for tests that only
 /// need an existing row to act on.
-async fn create_via_api<S, B>(app: &S, date: &str, merchant: &str, amount: &str) -> i64
+async fn create_via_api<S, B>(
+    app: &S,
+    cookie: &str,
+    category_id: i64,
+    date: &str,
+    merchant: &str,
+    amount: &str,
+) -> i64
 where
     S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
     B: MessageBody,
 {
     let req = test::TestRequest::post()
         .uri("/transactions")
+        .insert_header(("Cookie", cookie))
         .set_json(serde_json::json!({
             "date": date,
             "merchant": merchant,
             "amount": amount,
-            "category_id": 1,
+            "category_id": category_id,
             "account": "User 1",
         }))
         .to_request();
     let resp = test::call_service(app, req).await;
     let body: serde_json::Value = test::read_body_json(resp).await;
-    body["id"].as_i64().unwrap()
+    body["id"]
+        .as_i64()
+        .unwrap_or_else(|| panic!("expected created transaction, got {body}"))
 }
 
 // --- GET /transactions ---
@@ -76,10 +249,23 @@ where
 #[sqlx::test]
 async fn list_transactions_returns_all_rows(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
-    create_via_api(&app, "2024-01-16", "IGA", "56.78").await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "12.34",
+    )
+    .await;
+    create_via_api(&app, &cookie, category_id, "2024-01-16", "IGA", "56.78").await;
 
-    let req = test::TestRequest::get().uri("/transactions").to_request();
+    let req = test::TestRequest::get()
+        .uri("/transactions")
+        .insert_header(("Cookie", cookie))
+        .to_request();
     let resp = test::call_service(&app, req).await;
 
     assert_eq!(resp.status(), 200);
@@ -88,13 +274,66 @@ async fn list_transactions_returns_all_rows(pool: PgPool) {
 }
 
 #[sqlx::test]
+async fn list_transactions_requires_a_session(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let req = test::TestRequest::get().uri("/transactions").to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 401);
+}
+
+#[sqlx::test]
+async fn list_transactions_does_not_leak_another_households_transactions(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie_a = sign_in_with_household(&app, "a@example.com").await;
+    let cookie_b = sign_in_with_household(&app, "b@example.com").await;
+    let category_a = create_other_category(&app, &cookie_a).await;
+    create_via_api(
+        &app,
+        &cookie_a,
+        category_a,
+        "2024-01-15",
+        "ONLY A'S",
+        "12.34",
+    )
+    .await;
+
+    let req = test::TestRequest::get()
+        .uri("/transactions")
+        .insert_header(("Cookie", cookie_b))
+        .to_request();
+    let body: serde_json::Value = test::call_and_read_body_json(&app, req).await;
+
+    assert_eq!(body.as_array().unwrap().len(), 0);
+}
+
+#[sqlx::test]
 async fn list_transactions_filters_by_merchant(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
-    create_via_api(&app, "2024-01-16", "IGA SUPERMARKT", "56.78").await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "12.34",
+    )
+    .await;
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-16",
+        "IGA SUPERMARKT",
+        "56.78",
+    )
+    .await;
 
     let req = test::TestRequest::get()
         .uri("/transactions?merchant=iga")
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -108,11 +347,22 @@ async fn list_transactions_filters_by_merchant(pool: PgPool) {
 #[sqlx::test]
 async fn list_transactions_filters_by_date(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
-    create_via_api(&app, "2024-01-16", "IGA", "56.78").await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "12.34",
+    )
+    .await;
+    create_via_api(&app, &cookie, category_id, "2024-01-16", "IGA", "56.78").await;
 
     let req = test::TestRequest::get()
         .uri("/transactions?date=2024-01-15")
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -126,12 +376,23 @@ async fn list_transactions_filters_by_date(pool: PgPool) {
 #[sqlx::test]
 async fn list_transactions_filters_by_date_and_merchant_combined(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
-    create_via_api(&app, "2024-01-15", "IGA", "56.78").await;
-    create_via_api(&app, "2024-01-16", "IGA", "78.90").await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "12.34",
+    )
+    .await;
+    create_via_api(&app, &cookie, category_id, "2024-01-15", "IGA", "56.78").await;
+    create_via_api(&app, &cookie, category_id, "2024-01-16", "IGA", "78.90").await;
 
     let req = test::TestRequest::get()
         .uri("/transactions?date=2024-01-15&merchant=iga")
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -146,13 +407,24 @@ async fn list_transactions_filters_by_date_and_merchant_combined(pool: PgPool) {
 #[sqlx::test]
 async fn list_transactions_filters_by_date_range(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    create_via_api(&app, "2024-01-14", "STARBUCKS", "12.34").await;
-    create_via_api(&app, "2024-01-15", "IGA", "56.78").await;
-    create_via_api(&app, "2024-01-16", "METRO", "20.00").await;
-    create_via_api(&app, "2024-01-17", "COSTCO", "99.99").await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-14",
+        "STARBUCKS",
+        "12.34",
+    )
+    .await;
+    create_via_api(&app, &cookie, category_id, "2024-01-15", "IGA", "56.78").await;
+    create_via_api(&app, &cookie, category_id, "2024-01-16", "METRO", "20.00").await;
+    create_via_api(&app, &cookie, category_id, "2024-01-17", "COSTCO", "99.99").await;
 
     let req = test::TestRequest::get()
         .uri("/transactions?start_date=2024-01-15&end_date=2024-01-16")
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -166,11 +438,22 @@ async fn list_transactions_filters_by_date_range(pool: PgPool) {
 #[sqlx::test]
 async fn list_transactions_filters_by_start_date_only(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
-    create_via_api(&app, "2024-01-16", "IGA", "56.78").await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "12.34",
+    )
+    .await;
+    create_via_api(&app, &cookie, category_id, "2024-01-16", "IGA", "56.78").await;
 
     let req = test::TestRequest::get()
         .uri("/transactions?start_date=2024-01-16")
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -184,11 +467,22 @@ async fn list_transactions_filters_by_start_date_only(pool: PgPool) {
 #[sqlx::test]
 async fn list_transactions_filters_by_end_date_only(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
-    create_via_api(&app, "2024-01-16", "IGA", "56.78").await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "12.34",
+    )
+    .await;
+    create_via_api(&app, &cookie, category_id, "2024-01-16", "IGA", "56.78").await;
 
     let req = test::TestRequest::get()
         .uri("/transactions?end_date=2024-01-15")
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -202,11 +496,30 @@ async fn list_transactions_filters_by_end_date_only(pool: PgPool) {
 #[sqlx::test]
 async fn list_transactions_filters_by_search_matches_merchant(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
-    create_via_api(&app, "2024-01-16", "IGA SUPERMARKT", "56.78").await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "12.34",
+    )
+    .await;
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-16",
+        "IGA SUPERMARKT",
+        "56.78",
+    )
+    .await;
 
     let req = test::TestRequest::get()
         .uri("/transactions?search=starb")
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -220,22 +533,23 @@ async fn list_transactions_filters_by_search_matches_merchant(pool: PgPool) {
 #[sqlx::test]
 async fn list_transactions_filters_by_search_matches_category_name(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await; // category_id 1 = Other/Autre
-
-    let req = test::TestRequest::post()
-        .uri("/transactions")
-        .set_json(serde_json::json!({
-            "date": "2024-01-16",
-            "merchant": "SCHOOL SUPPLIES",
-            "amount": "40.00",
-            "category_id": 7,
-            "account": "User 1",
-        }))
-        .to_request();
-    test::call_service(&app, req).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let other_id = create_other_category(&app, &cookie).await;
+    create_via_api(&app, &cookie, other_id, "2024-01-15", "STARBUCKS", "12.34").await;
+    let education_id = education_category_id(&app, &cookie).await;
+    create_via_api(
+        &app,
+        &cookie,
+        education_id,
+        "2024-01-16",
+        "SCHOOL SUPPLIES",
+        "40.00",
+    )
+    .await;
 
     let req = test::TestRequest::get()
         .uri("/transactions?search=educ")
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -250,20 +564,21 @@ async fn list_transactions_filters_by_search_matches_category_name(pool: PgPool)
 #[sqlx::test]
 async fn list_transactions_filters_by_search_matches_french_category_name(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    let req = test::TestRequest::post()
-        .uri("/transactions")
-        .set_json(serde_json::json!({
-            "date": "2024-01-16",
-            "merchant": "SCHOOL SUPPLIES",
-            "amount": "40.00",
-            "category_id": 7,
-            "account": "User 1",
-        }))
-        .to_request();
-    test::call_service(&app, req).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let education_id = education_category_id(&app, &cookie).await;
+    create_via_api(
+        &app,
+        &cookie,
+        education_id,
+        "2024-01-16",
+        "SCHOOL SUPPLIES",
+        "40.00",
+    )
+    .await;
 
     let req = test::TestRequest::get()
         .uri("/transactions?search=%C3%A9duc")
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -277,11 +592,22 @@ async fn list_transactions_filters_by_search_matches_french_category_name(pool: 
 #[sqlx::test]
 async fn list_transactions_filters_by_search_matches_amount(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
-    create_via_api(&app, "2024-01-16", "IGA", "56.78").await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "12.34",
+    )
+    .await;
+    create_via_api(&app, &cookie, category_id, "2024-01-16", "IGA", "56.78").await;
 
     let req = test::TestRequest::get()
         .uri("/transactions?search=12.34")
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -295,10 +621,21 @@ async fn list_transactions_filters_by_search_matches_amount(pool: PgPool) {
 #[sqlx::test]
 async fn list_transactions_filters_by_search_is_case_insensitive(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "12.34",
+    )
+    .await;
 
     let req = test::TestRequest::get()
         .uri("/transactions?search=STARbucks")
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -310,12 +647,31 @@ async fn list_transactions_filters_by_search_is_case_insensitive(pool: PgPool) {
 #[sqlx::test]
 async fn list_transactions_filters_by_search_treats_percent_literally(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    create_via_api(&app, "2024-01-15", "50% OFF STORE", "12.34").await;
-    create_via_api(&app, "2024-01-16", "50X OFF STORE", "56.78").await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "50% OFF STORE",
+        "12.34",
+    )
+    .await;
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-16",
+        "50X OFF STORE",
+        "56.78",
+    )
+    .await;
 
     // "50% OFF" URL-encoded: %25 is a literal '%', %20 is a space.
     let req = test::TestRequest::get()
         .uri("/transactions?search=50%25%20OFF")
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -329,11 +685,30 @@ async fn list_transactions_filters_by_search_treats_percent_literally(pool: PgPo
 #[sqlx::test]
 async fn list_transactions_filters_by_search_treats_underscore_literally(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    create_via_api(&app, "2024-01-15", "ITEM_CODE 123", "12.34").await;
-    create_via_api(&app, "2024-01-16", "ITEMXCODE 123", "56.78").await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "ITEM_CODE 123",
+        "12.34",
+    )
+    .await;
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-16",
+        "ITEMXCODE 123",
+        "56.78",
+    )
+    .await;
 
     let req = test::TestRequest::get()
         .uri("/transactions?search=ITEM_CODE")
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -347,11 +722,22 @@ async fn list_transactions_filters_by_search_treats_underscore_literally(pool: P
 #[sqlx::test]
 async fn list_transactions_filters_by_search_treats_backslash_literally(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    create_via_api(&app, "2024-01-15", r"PATH\TO STORE", "12.34").await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        r"PATH\TO STORE",
+        "12.34",
+    )
+    .await;
 
     // "PATH\TO" URL-encoded: %5C is a literal backslash.
     let req = test::TestRequest::get()
         .uri("/transactions?search=PATH%5CTO")
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -365,10 +751,21 @@ async fn list_transactions_filters_by_search_treats_backslash_literally(pool: Pg
 #[sqlx::test]
 async fn list_transactions_filters_by_search_returns_empty_when_no_matches(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "12.34",
+    )
+    .await;
 
     let req = test::TestRequest::get()
         .uri("/transactions?search=nonexistent")
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -380,10 +777,21 @@ async fn list_transactions_filters_by_search_returns_empty_when_no_matches(pool:
 #[sqlx::test]
 async fn list_transactions_returns_empty_array_when_no_matches(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "12.34",
+    )
+    .await;
 
     let req = test::TestRequest::get()
         .uri("/transactions?merchant=nonexistent")
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -395,11 +803,24 @@ async fn list_transactions_returns_empty_array_when_no_matches(pool: PgPool) {
 #[sqlx::test]
 async fn list_transactions_orders_by_date_desc(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
-    create_via_api(&app, "2024-01-17", "SHELL", "40.00").await;
-    create_via_api(&app, "2024-01-16", "IGA", "56.78").await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "12.34",
+    )
+    .await;
+    create_via_api(&app, &cookie, category_id, "2024-01-17", "SHELL", "40.00").await;
+    create_via_api(&app, &cookie, category_id, "2024-01-16", "IGA", "56.78").await;
 
-    let req = test::TestRequest::get().uri("/transactions").to_request();
+    let req = test::TestRequest::get()
+        .uri("/transactions")
+        .insert_header(("Cookie", cookie))
+        .to_request();
     let resp = test::call_service(&app, req).await;
 
     assert_eq!(resp.status(), 200);
@@ -412,12 +833,23 @@ async fn list_transactions_orders_by_date_desc(pool: PgPool) {
 #[sqlx::test]
 async fn list_transactions_orders_by_date_explicit(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
-    create_via_api(&app, "2024-01-17", "SHELL", "40.00").await;
-    create_via_api(&app, "2024-01-16", "IGA", "56.78").await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "12.34",
+    )
+    .await;
+    create_via_api(&app, &cookie, category_id, "2024-01-17", "SHELL", "40.00").await;
+    create_via_api(&app, &cookie, category_id, "2024-01-16", "IGA", "56.78").await;
 
     let req = test::TestRequest::get()
         .uri("/transactions?order=date")
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -431,12 +863,23 @@ async fn list_transactions_orders_by_date_explicit(pool: PgPool) {
 #[sqlx::test]
 async fn list_transactions_orders_by_inverse_date(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
-    create_via_api(&app, "2024-01-17", "SHELL", "40.00").await;
-    create_via_api(&app, "2024-01-16", "IGA", "56.78").await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "12.34",
+    )
+    .await;
+    create_via_api(&app, &cookie, category_id, "2024-01-17", "SHELL", "40.00").await;
+    create_via_api(&app, &cookie, category_id, "2024-01-16", "IGA", "56.78").await;
 
     let req = test::TestRequest::get()
         .uri("/transactions?order=inverse_date")
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -450,12 +893,23 @@ async fn list_transactions_orders_by_inverse_date(pool: PgPool) {
 #[sqlx::test]
 async fn list_transactions_orders_by_amount_desc(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
-    create_via_api(&app, "2024-01-17", "SHELL", "40.00").await;
-    create_via_api(&app, "2024-01-16", "IGA", "56.78").await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "12.34",
+    )
+    .await;
+    create_via_api(&app, &cookie, category_id, "2024-01-17", "SHELL", "40.00").await;
+    create_via_api(&app, &cookie, category_id, "2024-01-16", "IGA", "56.78").await;
 
     let req = test::TestRequest::get()
         .uri("/transactions?order=amount")
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -469,12 +923,23 @@ async fn list_transactions_orders_by_amount_desc(pool: PgPool) {
 #[sqlx::test]
 async fn list_transactions_orders_by_inverse_amount(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
-    create_via_api(&app, "2024-01-17", "SHELL", "40.00").await;
-    create_via_api(&app, "2024-01-16", "IGA", "56.78").await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "12.34",
+    )
+    .await;
+    create_via_api(&app, &cookie, category_id, "2024-01-17", "SHELL", "40.00").await;
+    create_via_api(&app, &cookie, category_id, "2024-01-16", "IGA", "56.78").await;
 
     let req = test::TestRequest::get()
         .uri("/transactions?order=inverse_amount")
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -488,9 +953,11 @@ async fn list_transactions_orders_by_inverse_amount(pool: PgPool) {
 #[sqlx::test]
 async fn list_transactions_rejects_invalid_order(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
 
     let req = test::TestRequest::get()
         .uri("/transactions?order=nonsense")
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -502,11 +969,22 @@ async fn list_transactions_rejects_invalid_order(pool: PgPool) {
 #[sqlx::test]
 async fn download_transactions_csv_contains_header_and_rows(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
-    create_via_api(&app, "2024-01-16", "IGA", "56.78").await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "12.34",
+    )
+    .await;
+    create_via_api(&app, &cookie, category_id, "2024-01-16", "IGA", "56.78").await;
 
     let req = test::TestRequest::get()
         .uri("/transactions/download?format=csv")
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -528,15 +1006,81 @@ async fn download_transactions_csv_contains_header_and_rows(pool: PgPool) {
 }
 
 #[sqlx::test]
+async fn download_transactions_requires_a_session(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let req = test::TestRequest::get()
+        .uri("/transactions/download?format=csv")
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 401);
+}
+
+#[sqlx::test]
+async fn download_transactions_does_not_leak_another_households_transactions(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie_a = sign_in_with_household(&app, "a@example.com").await;
+    let cookie_b = sign_in_with_household(&app, "b@example.com").await;
+    let category_a = create_other_category(&app, &cookie_a).await;
+    create_via_api(
+        &app,
+        &cookie_a,
+        category_a,
+        "2024-01-15",
+        "ONLY A'S",
+        "12.34",
+    )
+    .await;
+
+    let req = test::TestRequest::get()
+        .uri("/transactions/download?format=csv")
+        .insert_header(("Cookie", cookie_b))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    let body = test::read_body(resp).await;
+    let csv = String::from_utf8(body.to_vec()).unwrap();
+    assert!(!csv.contains("ONLY A'S"));
+}
+
+#[sqlx::test]
 async fn download_transactions_csv_escapes_formula_like_merchant(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    create_via_api(&app, "2024-01-15", "=SUM(A1:A2)", "12.34").await;
-    create_via_api(&app, "2024-01-16", "+1234567890", "20.00").await;
-    create_via_api(&app, "2024-01-17", "-2+3", "30.00").await;
-    create_via_api(&app, "2024-01-18", "@SUM(A1)", "40.00").await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "=SUM(A1:A2)",
+        "12.34",
+    )
+    .await;
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-16",
+        "+1234567890",
+        "20.00",
+    )
+    .await;
+    create_via_api(&app, &cookie, category_id, "2024-01-17", "-2+3", "30.00").await;
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-18",
+        "@SUM(A1)",
+        "40.00",
+    )
+    .await;
 
     let req = test::TestRequest::get()
         .uri("/transactions/download?format=csv&order=inverse_date")
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -552,23 +1096,30 @@ async fn download_transactions_csv_escapes_formula_like_merchant(pool: PgPool) {
 
 #[sqlx::test]
 async fn download_transactions_csv_escapes_formula_like_category(pool: PgPool) {
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(pool))
-            .app_data(web::Data::new(L10n::new()))
-            .configure(configure)
-            .configure(crate::features::categories::configure),
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+
+    let patch_req = test::TestRequest::patch()
+        .uri(&format!("/categories/{category_id}"))
+        .insert_header(("Cookie", cookie.clone()))
+        .set_json(serde_json::json!({ "name_en": "=cmd" }))
+        .to_request();
+    assert_eq!(test::call_service(&app, patch_req).await.status(), 200);
+
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "12.34",
     )
     .await;
-    let patch_req = test::TestRequest::patch()
-        .uri("/categories/1")
-        .set_json(serde_json::json!({ "name_en": "=cmd", "name_fr": "Autre" }))
-        .to_request();
-    test::call_service(&app, patch_req).await;
-    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
 
     let req = test::TestRequest::get()
         .uri("/transactions/download?format=csv")
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -584,10 +1135,21 @@ async fn download_transactions_csv_escapes_formula_like_category(pool: PgPool) {
 #[sqlx::test]
 async fn download_transactions_filename_reflects_search_and_order(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "12.34",
+    )
+    .await;
 
     let req = test::TestRequest::get()
         .uri("/transactions/download?format=csv&search=Coffee%20Shop!&order=amount")
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -601,10 +1163,21 @@ async fn download_transactions_filename_reflects_search_and_order(pool: PgPool) 
 #[sqlx::test]
 async fn download_transactions_filename_reflects_date_range(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "12.34",
+    )
+    .await;
 
     let req = test::TestRequest::get()
         .uri("/transactions/download?format=csv&start_date=2024-01-01&end_date=2024-01-31")
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -618,11 +1191,22 @@ async fn download_transactions_filename_reflects_date_range(pool: PgPool) {
 #[sqlx::test]
 async fn download_transactions_respects_date_range_filter(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
-    create_via_api(&app, "2024-02-15", "IGA", "56.78").await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "12.34",
+    )
+    .await;
+    create_via_api(&app, &cookie, category_id, "2024-02-15", "IGA", "56.78").await;
 
     let req = test::TestRequest::get()
         .uri("/transactions/download?format=csv&start_date=2024-01-01&end_date=2024-01-31")
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -636,10 +1220,21 @@ async fn download_transactions_respects_date_range_filter(pool: PgPool) {
 #[sqlx::test]
 async fn download_transactions_xlsx_returns_xlsx_content_type(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "12.34",
+    )
+    .await;
 
     let req = test::TestRequest::get()
         .uri("/transactions/download?format=xlsx")
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -656,11 +1251,22 @@ async fn download_transactions_xlsx_returns_xlsx_content_type(pool: PgPool) {
 #[sqlx::test]
 async fn download_transactions_respects_search_filter(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
-    create_via_api(&app, "2024-01-16", "IGA", "56.78").await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "12.34",
+    )
+    .await;
+    create_via_api(&app, &cookie, category_id, "2024-01-16", "IGA", "56.78").await;
 
     let req = test::TestRequest::get()
         .uri("/transactions/download?format=csv&search=starb")
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -676,11 +1282,22 @@ async fn download_transactions_respects_search_filter(pool: PgPool) {
 #[sqlx::test]
 async fn download_transactions_respects_order(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
-    create_via_api(&app, "2024-01-16", "IGA", "56.78").await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "12.34",
+    )
+    .await;
+    create_via_api(&app, &cookie, category_id, "2024-01-16", "IGA", "56.78").await;
 
     let req = test::TestRequest::get()
         .uri("/transactions/download?format=csv&order=inverse_date")
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -695,9 +1312,11 @@ async fn download_transactions_respects_order(pool: PgPool) {
 #[sqlx::test]
 async fn download_transactions_rejects_missing_format(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
 
     let req = test::TestRequest::get()
         .uri("/transactions/download")
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -707,9 +1326,11 @@ async fn download_transactions_rejects_missing_format(pool: PgPool) {
 #[sqlx::test]
 async fn download_transactions_rejects_invalid_format(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
 
     let req = test::TestRequest::get()
         .uri("/transactions/download?format=pdf")
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -721,10 +1342,21 @@ async fn download_transactions_rejects_invalid_format(pool: PgPool) {
 #[sqlx::test]
 async fn get_transaction_returns_row(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    let id = create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    let id = create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "12.34",
+    )
+    .await;
 
     let req = test::TestRequest::get()
         .uri(&format!("/transactions/{id}"))
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -735,43 +1367,55 @@ async fn get_transaction_returns_row(pool: PgPool) {
     assert_eq!(body["category_name_en"], "Other");
     assert_eq!(body["category_name_fr"], "Autre");
     assert_eq!(body["category_type"], "expense");
+    assert!(body["household_id"].is_i64());
+    assert!(body["household_member_id"].is_i64());
 }
 
 #[sqlx::test]
 async fn get_transaction_reflects_renamed_category(pool: PgPool) {
-    let app = test::init_service(
-        App::new()
-            .app_data(web::Data::new(pool))
-            .app_data(web::Data::new(L10n::new()))
-            .configure(configure)
-            .configure(crate::features::categories::configure),
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    let id = create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "12.34",
     )
     .await;
-    let id = create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
 
     let patch_req = test::TestRequest::patch()
-        .uri("/categories/1")
-        .set_json(serde_json::json!({ "name_en": "Miscellaneous", "name_fr": "Divers" }))
+        .uri(&format!("/categories/{category_id}"))
+        .insert_header(("Cookie", cookie.clone()))
+        .set_json(
+            serde_json::json!({ "name_en": "Renamed Category", "name_fr": "Catégorie renommée" }),
+        )
         .to_request();
     let patch_resp = test::call_service(&app, patch_req).await;
     assert_eq!(patch_resp.status(), 200);
 
     let get_req = test::TestRequest::get()
         .uri(&format!("/transactions/{id}"))
+        .insert_header(("Cookie", cookie))
         .to_request();
     let get_resp = test::call_service(&app, get_req).await;
 
     assert_eq!(get_resp.status(), 200);
     let body: serde_json::Value = test::read_body_json(get_resp).await;
-    assert_eq!(body["category_name_en"], "Miscellaneous");
-    assert_eq!(body["category_name_fr"], "Divers");
+    assert_eq!(body["category_name_en"], "Renamed Category");
+    assert_eq!(body["category_name_fr"], "Catégorie renommée");
 }
 
 #[sqlx::test]
 async fn get_transaction_not_found(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+
     let req = test::TestRequest::get()
         .uri("/transactions/999999")
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -780,18 +1424,47 @@ async fn get_transaction_not_found(pool: PgPool) {
     assert!(body["error"].is_string());
 }
 
+#[sqlx::test]
+async fn get_transaction_from_another_household_is_not_found(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie_a = sign_in_with_household(&app, "a@example.com").await;
+    let cookie_b = sign_in_with_household(&app, "b@example.com").await;
+    let category_a = create_other_category(&app, &cookie_a).await;
+    let id = create_via_api(
+        &app,
+        &cookie_a,
+        category_a,
+        "2024-01-15",
+        "ONLY A'S",
+        "12.34",
+    )
+    .await;
+
+    let req = test::TestRequest::get()
+        .uri(&format!("/transactions/{id}"))
+        .insert_header(("Cookie", cookie_b))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 404);
+}
+
 // --- POST /transactions ---
 
 #[sqlx::test]
 async fn create_transaction_returns_created_row(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+
     let req = test::TestRequest::post()
         .uri("/transactions")
+        .insert_header(("Cookie", cookie))
         .set_json(serde_json::json!({
             "date": "2024-01-15",
             "merchant": "STARBUCKS",
             "amount": "12.34",
-            "category_id": 1,
+            "category_id": category_id,
             "account": "User 1",
         }))
         .to_request();
@@ -819,46 +1492,33 @@ async fn create_transaction_returns_created_row(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn create_transaction_rejects_malformed_body(pool: PgPool) {
+async fn create_transaction_attributes_it_to_the_callers_membership(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    let expected_member_id = own_household_member_id(&app, &cookie).await;
+
     let req = test::TestRequest::post()
         .uri("/transactions")
-        .set_json(serde_json::json!({ "merchant": "STARBUCKS" }))
-        .to_request();
-    let resp = test::call_service(&app, req).await;
-
-    assert_eq!(resp.status(), 400);
-}
-
-#[sqlx::test]
-async fn create_transaction_persists_all_fields(pool: PgPool) {
-    let app = test::init_service(app_with(pool)).await;
-    let req = test::TestRequest::post()
-        .uri("/transactions")
+        .insert_header(("Cookie", cookie))
         .set_json(serde_json::json!({
             "date": "2024-01-15",
             "merchant": "STARBUCKS",
             "amount": "12.34",
-            "category_id": 7,
-            "account": "User 2",
+            "category_id": category_id,
+            "account": "User 1",
         }))
         .to_request();
-    let resp = test::call_service(&app, req).await;
+    let body: serde_json::Value = test::call_and_read_body_json(&app, req).await;
 
-    assert_eq!(resp.status(), 201);
-    let body: serde_json::Value = test::read_body_json(resp).await;
-    assert_eq!(body["date"], "2024-01-15");
-    assert_eq!(body["merchant"], "STARBUCKS");
-    assert_eq!(body["amount"], "12.34");
-    assert_eq!(body["category_id"], 7);
-    assert_eq!(body["category_name_en"], "Education");
-    assert_eq!(body["category_name_fr"], "Éducation");
-    assert_eq!(body["category_type"], "expense");
-    assert_eq!(body["account"], "User 2");
+    assert_eq!(
+        body["household_member_id"].as_i64().unwrap(),
+        expected_member_id
+    );
 }
 
 #[sqlx::test]
-async fn create_transaction_defaults_reviewed_to_true(pool: PgPool) {
+async fn create_transaction_requires_a_session(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
     let req = test::TestRequest::post()
         .uri("/transactions")
@@ -872,6 +1532,105 @@ async fn create_transaction_defaults_reviewed_to_true(pool: PgPool) {
         .to_request();
     let resp = test::call_service(&app, req).await;
 
+    assert_eq!(resp.status(), 401);
+}
+
+#[sqlx::test]
+async fn create_transaction_requires_a_household(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let login_req = test::TestRequest::post()
+        .uri("/auth/request-login")
+        .set_json(serde_json::json!({ "email": "sam@example.com" }))
+        .to_request();
+    let login_resp = test::call_service(&app, login_req).await;
+    let cookie = login_resp
+        .response()
+        .cookies()
+        .find(|cookie| cookie.name() == SESSION_COOKIE_NAME)
+        .unwrap();
+    let cookie = format!("{}={}", cookie.name(), cookie.value());
+
+    let req = test::TestRequest::post()
+        .uri("/transactions")
+        .insert_header(("Cookie", cookie))
+        .set_json(serde_json::json!({
+            "date": "2024-01-15",
+            "merchant": "STARBUCKS",
+            "amount": "12.34",
+            "category_id": 1,
+            "account": "User 1",
+        }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 403);
+}
+
+#[sqlx::test]
+async fn create_transaction_rejects_malformed_body(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+
+    let req = test::TestRequest::post()
+        .uri("/transactions")
+        .insert_header(("Cookie", cookie))
+        .set_json(serde_json::json!({ "merchant": "STARBUCKS" }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 400);
+}
+
+#[sqlx::test]
+async fn create_transaction_persists_all_fields(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = education_category_id(&app, &cookie).await;
+
+    let req = test::TestRequest::post()
+        .uri("/transactions")
+        .insert_header(("Cookie", cookie))
+        .set_json(serde_json::json!({
+            "date": "2024-01-15",
+            "merchant": "STARBUCKS",
+            "amount": "12.34",
+            "category_id": category_id,
+            "account": "User 2",
+        }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 201);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["date"], "2024-01-15");
+    assert_eq!(body["merchant"], "STARBUCKS");
+    assert_eq!(body["amount"], "12.34");
+    assert_eq!(body["category_id"].as_i64().unwrap(), category_id);
+    assert_eq!(body["category_name_en"], "Education");
+    assert_eq!(body["category_name_fr"], "Éducation");
+    assert_eq!(body["category_type"], "expense");
+    assert_eq!(body["account"], "User 2");
+}
+
+#[sqlx::test]
+async fn create_transaction_defaults_reviewed_to_true(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+
+    let req = test::TestRequest::post()
+        .uri("/transactions")
+        .insert_header(("Cookie", cookie))
+        .set_json(serde_json::json!({
+            "date": "2024-01-15",
+            "merchant": "STARBUCKS",
+            "amount": "12.34",
+            "category_id": category_id,
+            "account": "User 1",
+        }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
     assert_eq!(resp.status(), 201);
     let body: serde_json::Value = test::read_body_json(resp).await;
     assert_eq!(body["reviewed"], true);
@@ -880,13 +1639,17 @@ async fn create_transaction_defaults_reviewed_to_true(pool: PgPool) {
 #[sqlx::test]
 async fn create_transaction_respects_explicit_reviewed_false(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+
     let req = test::TestRequest::post()
         .uri("/transactions")
+        .insert_header(("Cookie", cookie))
         .set_json(serde_json::json!({
             "date": "2024-01-15",
             "merchant": "STARBUCKS",
             "amount": "12.34",
-            "category_id": 1,
+            "category_id": category_id,
             "account": "User 1",
             "reviewed": false,
         }))
@@ -901,8 +1664,11 @@ async fn create_transaction_respects_explicit_reviewed_false(pool: PgPool) {
 #[sqlx::test]
 async fn create_transaction_rejects_unknown_category_id(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+
     let req = test::TestRequest::post()
         .uri("/transactions")
+        .insert_header(("Cookie", cookie))
         .set_json(serde_json::json!({
             "date": "2024-01-15",
             "merchant": "STARBUCKS",
@@ -919,15 +1685,42 @@ async fn create_transaction_rejects_unknown_category_id(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn create_transaction_rejects_invalid_date(pool: PgPool) {
+async fn create_transaction_rejects_another_households_category(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
+    let cookie_a = sign_in_with_household(&app, "a@example.com").await;
+    let cookie_b = sign_in_with_household(&app, "b@example.com").await;
+    let category_a = create_other_category(&app, &cookie_a).await;
+
     let req = test::TestRequest::post()
         .uri("/transactions")
+        .insert_header(("Cookie", cookie_b))
+        .set_json(serde_json::json!({
+            "date": "2024-01-15",
+            "merchant": "STARBUCKS",
+            "amount": "12.34",
+            "category_id": category_a,
+            "account": "User 1",
+        }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 400);
+}
+
+#[sqlx::test]
+async fn create_transaction_rejects_invalid_date(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+
+    let req = test::TestRequest::post()
+        .uri("/transactions")
+        .insert_header(("Cookie", cookie))
         .set_json(serde_json::json!({
             "date": "not-a-date",
             "merchant": "STARBUCKS",
             "amount": "12.34",
-            "category_id": 1,
+            "category_id": category_id,
             "account": "User 1",
         }))
         .to_request();
@@ -941,10 +1734,21 @@ async fn create_transaction_rejects_invalid_date(pool: PgPool) {
 #[sqlx::test]
 async fn update_transaction_changes_only_given_fields(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    let id = create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    let id = create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "12.34",
+    )
+    .await;
 
     let req = test::TestRequest::patch()
         .uri(&format!("/transactions/{id}"))
+        .insert_header(("Cookie", cookie))
         .set_json(serde_json::json!({ "amount": "20.00" }))
         .to_request();
     let resp = test::call_service(&app, req).await;
@@ -958,17 +1762,21 @@ async fn update_transaction_changes_only_given_fields(pool: PgPool) {
 #[sqlx::test]
 async fn update_transaction_changes_category(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    let id = create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let other_id = create_other_category(&app, &cookie).await;
+    let id = create_via_api(&app, &cookie, other_id, "2024-01-15", "STARBUCKS", "12.34").await;
+    let education_id = education_category_id(&app, &cookie).await;
 
     let req = test::TestRequest::patch()
         .uri(&format!("/transactions/{id}"))
-        .set_json(serde_json::json!({ "category_id": 7 }))
+        .insert_header(("Cookie", cookie))
+        .set_json(serde_json::json!({ "category_id": education_id }))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
     assert_eq!(resp.status(), 200);
     let body: serde_json::Value = test::read_body_json(resp).await;
-    assert_eq!(body["category_id"], 7);
+    assert_eq!(body["category_id"].as_i64().unwrap(), education_id);
     assert_eq!(body["category_name_en"], "Education");
     assert_eq!(body["category_type"], "expense");
 }
@@ -976,10 +1784,21 @@ async fn update_transaction_changes_category(pool: PgPool) {
 #[sqlx::test]
 async fn update_transaction_rejects_unknown_category_id(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    let id = create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    let id = create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "12.34",
+    )
+    .await;
 
     let req = test::TestRequest::patch()
         .uri(&format!("/transactions/{id}"))
+        .insert_header(("Cookie", cookie))
         .set_json(serde_json::json!({ "category_id": 999999 }))
         .to_request();
     let resp = test::call_service(&app, req).await;
@@ -992,9 +1811,38 @@ async fn update_transaction_rejects_unknown_category_id(pool: PgPool) {
 #[sqlx::test]
 async fn update_transaction_not_found(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+
     let req = test::TestRequest::patch()
         .uri("/transactions/999999")
+        .insert_header(("Cookie", cookie))
         .set_json(serde_json::json!({ "amount": "20.00" }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 404);
+}
+
+#[sqlx::test]
+async fn update_transaction_from_another_household_is_not_found(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie_a = sign_in_with_household(&app, "a@example.com").await;
+    let cookie_b = sign_in_with_household(&app, "b@example.com").await;
+    let category_a = create_other_category(&app, &cookie_a).await;
+    let id = create_via_api(
+        &app,
+        &cookie_a,
+        category_a,
+        "2024-01-15",
+        "ONLY A'S",
+        "12.34",
+    )
+    .await;
+
+    let req = test::TestRequest::patch()
+        .uri(&format!("/transactions/{id}"))
+        .insert_header(("Cookie", cookie_b))
+        .set_json(serde_json::json!({ "amount": "999.00" }))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -1004,10 +1852,21 @@ async fn update_transaction_not_found(pool: PgPool) {
 #[sqlx::test]
 async fn update_transaction_with_empty_body_leaves_row_unchanged(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    let id = create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    let id = create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "12.34",
+    )
+    .await;
 
     let req = test::TestRequest::patch()
         .uri(&format!("/transactions/{id}"))
+        .insert_header(("Cookie", cookie))
         .set_json(serde_json::json!({}))
         .to_request();
     let resp = test::call_service(&app, req).await;
@@ -1022,10 +1881,21 @@ async fn update_transaction_with_empty_body_leaves_row_unchanged(pool: PgPool) {
 #[sqlx::test]
 async fn update_transaction_rejects_malformed_body(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    let id = create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    let id = create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "12.34",
+    )
+    .await;
 
     let req = test::TestRequest::patch()
         .uri(&format!("/transactions/{id}"))
+        .insert_header(("Cookie", cookie))
         .set_json(serde_json::json!({ "amount": true }))
         .to_request();
     let resp = test::call_service(&app, req).await;
@@ -1038,19 +1908,56 @@ async fn update_transaction_rejects_malformed_body(pool: PgPool) {
 #[sqlx::test]
 async fn delete_transaction_removes_row(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    let id = create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    let id = create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "12.34",
+    )
+    .await;
 
     let delete_req = test::TestRequest::delete()
         .uri(&format!("/transactions/{id}"))
+        .insert_header(("Cookie", cookie.clone()))
         .to_request();
     let delete_resp = test::call_service(&app, delete_req).await;
     assert_eq!(delete_resp.status(), 204);
 
     let get_req = test::TestRequest::get()
         .uri(&format!("/transactions/{id}"))
+        .insert_header(("Cookie", cookie))
         .to_request();
     let get_resp = test::call_service(&app, get_req).await;
     assert_eq!(get_resp.status(), 404);
+}
+
+#[sqlx::test]
+async fn delete_transaction_from_another_household_is_not_found(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie_a = sign_in_with_household(&app, "a@example.com").await;
+    let cookie_b = sign_in_with_household(&app, "b@example.com").await;
+    let category_a = create_other_category(&app, &cookie_a).await;
+    let id = create_via_api(
+        &app,
+        &cookie_a,
+        category_a,
+        "2024-01-15",
+        "ONLY A'S",
+        "12.34",
+    )
+    .await;
+
+    let delete_req = test::TestRequest::delete()
+        .uri(&format!("/transactions/{id}"))
+        .insert_header(("Cookie", cookie_b))
+        .to_request();
+    let delete_resp = test::call_service(&app, delete_req).await;
+
+    assert_eq!(delete_resp.status(), 404);
 }
 
 // --- POST /transactions/import ---
@@ -1092,7 +1999,7 @@ async fn import_transactions_rejects_a_file_over_the_size_limit(pool: PgPool) {
 // `claude` subprocess, which has no place in an automated test suite.
 
 #[sqlx::test]
-async fn get_import_job_returns_404_for_unknown_id(pool: PgPool) {
+async fn get_import_job_requires_a_session(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
 
     let req = test::TestRequest::get()
@@ -1103,17 +2010,37 @@ async fn get_import_job_returns_404_for_unknown_id(pool: PgPool) {
         .to_request();
     let resp = test::call_service(&app, req).await;
 
+    assert_eq!(resp.status(), 401);
+}
+
+#[sqlx::test]
+async fn get_import_job_returns_404_for_unknown_id(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+
+    let req = test::TestRequest::get()
+        .uri(&format!(
+            "/transactions/import/jobs/{}",
+            uuid::Uuid::new_v4()
+        ))
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
     assert_eq!(resp.status(), 404);
 }
 
 #[sqlx::test]
 async fn get_import_job_returns_a_freshly_created_job_as_pending(pool: PgPool) {
     let job_store = web::Data::new(JobStore::default());
-    let job = job_store.create("statement.csv".to_string());
-    let app = test::init_service(app_with_jobs(pool, job_store)).await;
+    let app = test::init_service(app_with_jobs(pool, job_store.clone())).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let household_id = own_household_id(&app, &cookie).await;
+    let job = job_store.create("statement.csv".to_string(), household_id);
 
     let req = test::TestRequest::get()
         .uri(&format!("/transactions/import/jobs/{}", job.id))
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -1124,13 +2051,31 @@ async fn get_import_job_returns_a_freshly_created_job_as_pending(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn report_import_job_updates_status_and_get_reflects_it(pool: PgPool) {
+async fn report_import_job_requires_a_session(pool: PgPool) {
     let job_store = web::Data::new(JobStore::default());
-    let job = job_store.create("statement.csv".to_string());
+    let job = job_store.create("statement.csv".to_string(), 1);
     let app = test::init_service(app_with_jobs(pool, job_store)).await;
 
     let patch_req = test::TestRequest::patch()
         .uri(&format!("/transactions/import/jobs/{}", job.id))
+        .set_json(serde_json::json!({ "status": "succeeded" }))
+        .to_request();
+    let patch_resp = test::call_service(&app, patch_req).await;
+
+    assert_eq!(patch_resp.status(), 401);
+}
+
+#[sqlx::test]
+async fn report_import_job_updates_status_and_get_reflects_it(pool: PgPool) {
+    let job_store = web::Data::new(JobStore::default());
+    let app = test::init_service(app_with_jobs(pool, job_store.clone())).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let household_id = own_household_id(&app, &cookie).await;
+    let job = job_store.create("statement.csv".to_string(), household_id);
+
+    let patch_req = test::TestRequest::patch()
+        .uri(&format!("/transactions/import/jobs/{}", job.id))
+        .insert_header(("Cookie", cookie.clone()))
         .set_json(serde_json::json!({
             "status": "succeeded",
             "created_count": 3,
@@ -1143,6 +2088,7 @@ async fn report_import_job_updates_status_and_get_reflects_it(pool: PgPool) {
 
     let get_req = test::TestRequest::get()
         .uri(&format!("/transactions/import/jobs/{}", job.id))
+        .insert_header(("Cookie", cookie))
         .to_request();
     let get_resp = test::call_service(&app, get_req).await;
 
@@ -1154,10 +2100,50 @@ async fn report_import_job_updates_status_and_get_reflects_it(pool: PgPool) {
 }
 
 #[sqlx::test]
+async fn get_import_job_does_not_leak_another_households_job(pool: PgPool) {
+    let job_store = web::Data::new(JobStore::default());
+    let app = test::init_service(app_with_jobs(pool, job_store.clone())).await;
+    let cookie_a = sign_in_with_household(&app, "a@example.com").await;
+    let household_a = own_household_id(&app, &cookie_a).await;
+    let job = job_store.create("statement.csv".to_string(), household_a);
+    let cookie_b = sign_in_with_household(&app, "b@example.com").await;
+
+    let req = test::TestRequest::get()
+        .uri(&format!("/transactions/import/jobs/{}", job.id))
+        .insert_header(("Cookie", cookie_b))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 404);
+}
+
+#[sqlx::test]
+async fn report_import_job_rejects_another_households_job(pool: PgPool) {
+    let job_store = web::Data::new(JobStore::default());
+    let app = test::init_service(app_with_jobs(pool, job_store.clone())).await;
+    let cookie_a = sign_in_with_household(&app, "a@example.com").await;
+    let household_a = own_household_id(&app, &cookie_a).await;
+    let job = job_store.create("statement.csv".to_string(), household_a);
+    let cookie_b = sign_in_with_household(&app, "b@example.com").await;
+
+    let patch_req = test::TestRequest::patch()
+        .uri(&format!("/transactions/import/jobs/{}", job.id))
+        .insert_header(("Cookie", cookie_b))
+        .set_json(serde_json::json!({ "status": "succeeded" }))
+        .to_request();
+    let patch_resp = test::call_service(&app, patch_req).await;
+
+    assert_eq!(patch_resp.status(), 404);
+}
+
+#[sqlx::test]
 async fn delete_transaction_not_found(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+
     let req = test::TestRequest::delete()
         .uri("/transactions/999999")
+        .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -1167,16 +2153,28 @@ async fn delete_transaction_not_found(pool: PgPool) {
 #[sqlx::test]
 async fn delete_transaction_twice_returns_not_found_second_time(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    let id = create_via_api(&app, "2024-01-15", "STARBUCKS", "12.34").await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    let id = create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "12.34",
+    )
+    .await;
 
     let first_req = test::TestRequest::delete()
         .uri(&format!("/transactions/{id}"))
+        .insert_header(("Cookie", cookie.clone()))
         .to_request();
     let first_resp = test::call_service(&app, first_req).await;
     assert_eq!(first_resp.status(), 204);
 
     let second_req = test::TestRequest::delete()
         .uri(&format!("/transactions/{id}"))
+        .insert_header(("Cookie", cookie))
         .to_request();
     let second_resp = test::call_service(&app, second_req).await;
     assert_eq!(second_resp.status(), 404);

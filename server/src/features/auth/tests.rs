@@ -141,7 +141,7 @@ async fn request_login_signs_in_directly_when_email_is_skipped(pool: PgPool) {
     assert_eq!(body["status"], "signed_in");
     // Normalized on the way in, so "Sam@Example.com" and "sam@example.com" are one account.
     assert_eq!(body["session"]["user"]["email"], "sam@example.com");
-    assert_eq!(body["session"]["households"].as_array().unwrap().len(), 0);
+    assert!(body["session"]["household"].is_null());
 }
 
 #[sqlx::test]
@@ -398,11 +398,10 @@ async fn onboarding_creates_a_household_and_makes_the_caller_its_manager(pool: P
 
     assert_eq!(resp.status(), 201);
     let body: serde_json::Value = test::read_body_json(resp).await;
-    let households = body["households"].as_array().unwrap();
-    assert_eq!(households.len(), 1);
-    assert_eq!(households[0]["type"], "family_manager");
+    let household = &body["household"];
+    assert_eq!(household["type"], "family_manager");
     assert_eq!(
-        households[0]["join_code"].as_str().unwrap().len(),
+        household["join_code"].as_str().unwrap().len(),
         8,
         "a join code is generated for the new household"
     );
@@ -419,7 +418,7 @@ async fn onboarding_joins_an_existing_household_by_join_code(pool: PgPool) {
         .set_json(serde_json::json!({}))
         .to_request();
     let created: serde_json::Value = test::call_and_read_body_json(&app, create_req).await;
-    let join_code = created["households"][0]["join_code"].as_str().unwrap();
+    let join_code = created["household"]["join_code"].as_str().unwrap();
 
     let member_cookie = sign_in(&app, "member@example.com").await;
     let join_req = test::TestRequest::post()
@@ -431,11 +430,9 @@ async fn onboarding_joins_an_existing_household_by_join_code(pool: PgPool) {
 
     assert_eq!(join_resp.status(), 201);
     let body: serde_json::Value = test::read_body_json(join_resp).await;
-    let households = body["households"].as_array().unwrap();
-    assert_eq!(households.len(), 1);
-    assert_eq!(households[0]["type"], "family_member");
+    assert_eq!(body["household"]["type"], "family_member");
     assert_eq!(
-        households[0]["household_id"], created["households"][0]["household_id"],
+        body["household"]["household_id"], created["household"]["household_id"],
         "joined the manager's household, not a new one"
     );
 }
@@ -451,7 +448,7 @@ async fn onboarding_accepts_a_lowercase_join_code(pool: PgPool) {
         .set_json(serde_json::json!({}))
         .to_request();
     let created: serde_json::Value = test::call_and_read_body_json(&app, create_req).await;
-    let join_code = created["households"][0]["join_code"]
+    let join_code = created["household"]["join_code"]
         .as_str()
         .unwrap()
         .to_lowercase();
@@ -510,7 +507,7 @@ async fn onboarding_rejects_joining_the_same_household_twice(pool: PgPool) {
         .set_json(serde_json::json!({}))
         .to_request();
     let created: serde_json::Value = test::call_and_read_body_json(&app, create_req).await;
-    let join_code = created["households"][0]["join_code"].as_str().unwrap();
+    let join_code = created["household"]["join_code"].as_str().unwrap();
 
     let rejoin_req = test::TestRequest::post()
         .uri("/auth/onboarding")
@@ -520,6 +517,39 @@ async fn onboarding_rejects_joining_the_same_household_twice(pool: PgPool) {
     let rejoin_resp = test::call_service(&app, rejoin_req).await;
 
     assert_eq!(rejoin_resp.status(), 409);
+}
+
+#[sqlx::test]
+async fn onboarding_rejects_joining_a_second_different_household(pool: PgPool) {
+    // A user belongs to exactly one household ever, not "one per household" — joining any other
+    // household once already connected to one must be rejected the same way.
+    let app = test::init_service(app_with(pool)).await;
+
+    let first_cookie = sign_in(&app, "sam@example.com").await;
+    let create_first = test::TestRequest::post()
+        .uri("/auth/onboarding")
+        .insert_header(("Cookie", first_cookie.clone()))
+        .set_json(serde_json::json!({}))
+        .to_request();
+    assert_eq!(test::call_service(&app, create_first).await.status(), 201);
+
+    let other_cookie = sign_in(&app, "other@example.com").await;
+    let create_other = test::TestRequest::post()
+        .uri("/auth/onboarding")
+        .insert_header(("Cookie", other_cookie))
+        .set_json(serde_json::json!({}))
+        .to_request();
+    let other: serde_json::Value = test::call_and_read_body_json(&app, create_other).await;
+    let other_join_code = other["household"]["join_code"].as_str().unwrap();
+
+    let join_other_req = test::TestRequest::post()
+        .uri("/auth/onboarding")
+        .insert_header(("Cookie", first_cookie))
+        .set_json(serde_json::json!({ "join_code": other_join_code }))
+        .to_request();
+    let join_other_resp = test::call_service(&app, join_other_req).await;
+
+    assert_eq!(join_other_resp.status(), 409);
 }
 
 #[sqlx::test]

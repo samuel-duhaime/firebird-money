@@ -8,6 +8,11 @@ use uuid::Uuid;
 #[derive(Debug, Serialize, FromRow)]
 pub struct Transaction {
     pub id: i64,
+    pub household_id: i32,
+    /// Which household member this transaction is attributed to — the `household_members` row of
+    /// whoever created it, not the free-text `account` column (a placeholder for a future *bank*
+    /// account concept).
+    pub household_member_id: i32,
     pub date: NaiveDate,
     pub merchant: String,
     pub amount: Decimal,
@@ -20,8 +25,10 @@ pub struct Transaction {
     pub created_at: DateTime<Utc>,
 }
 
-/// Body for `POST /transactions`. `id` and `created_at` are generated. `reviewed` defaults to
-/// `true` when absent; automated imports set it to `false` so they can be found later.
+/// Body for `POST /transactions`. `id` and `created_at` are generated; `household_id` and
+/// `household_member_id` are never read from the body — they're always the caller's own household
+/// and membership, from `CurrentUser`. `reviewed` defaults to `true` when absent; automated
+/// imports set it to `false` so they can be found later.
 #[derive(Debug, Deserialize)]
 pub struct NewTransaction {
     pub date: NaiveDate,
@@ -38,6 +45,10 @@ pub struct NewTransaction {
 #[derive(Debug, Clone, Serialize)]
 pub struct ImportJob {
     pub id: Uuid,
+    /// Whoever kicked off the import — checked on every later read so one household can't poll or
+    /// complete another's job by guessing its (random, but not secret-strength) UUID.
+    #[serde(skip_serializing)]
+    pub household_id: i32,
     pub status: ImportJobStatus,
     pub file_name: String,
     pub created_count: Option<i32>,

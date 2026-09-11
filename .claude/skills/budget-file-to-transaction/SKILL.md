@@ -15,6 +15,11 @@ anything and no session persistence — there is exactly one chance to get it ri
 chance to report the result back. Only `Read` and the three `curl` prefixes below are pre-approved;
 anything else is denied automatically, so stick to the calls shown here exactly.
 
+**Every call below requires authentication** — the server treats these the same as any other
+route. The subprocess is given the caller's own session cookie in the `SESSION_COOKIE` environment
+variable; every `curl` command must include `-b "session=$SESSION_COOKIE"` exactly as shown, or the
+server answers `401` instead of doing anything.
+
 The invocation gives a file path and a `job_id`.
 
 - If `job_id` is missing, there's no id to build the report URL from — stop immediately without
@@ -41,7 +46,7 @@ The invocation gives a file path and a `job_id`.
 - `date` — `YYYY-MM-DD`.
 - `merchant` — payee, one line, trimmed.
 - `amount` — always positive, no currency symbol. Expenses and income (deposits, paycheck, e-transfers) are both positive; direction is shown by category, not sign.
-- `category_id` — id of the best-matching row from `GET http://127.0.0.1:3055/categories` (see Steps). Use the `Unknown` category's id if nothing fits.
+- `category_id` — id of the best-matching row from `GET http://127.0.0.1:3055/categories` (see Steps). Use the `Uncategorized` category's id if nothing fits.
 - `account` — `User 1` unless the source says otherwise.
 - `reviewed` — always `false`. No human confirmed these rows; this flags them for later review.
 
@@ -50,11 +55,11 @@ The invocation gives a file path and a `job_id`.
 1. Fetch categories once, using exactly this command (matches the pre-approved allowlist —
    don't add flags like `-s`, they can cause the call to be denied):
    ```bash
-   curl http://127.0.0.1:3055/categories
+   curl -b "session=$SESSION_COOKIE" http://127.0.0.1:3055/categories
    ```
-   Keep the returned `id`/`name_en`/`name_fr`/`type` list for matching.
+   Keep the returned `id`/`name_en`/`name_fr` list for matching.
 2. Read and parse the source file: detect format, skip headers/totals/blanks, map columns, normalize dates/amounts/merchant.
-3. For each row, match its best-guess category name against the fetched list (by `name_en` or `name_fr`); fall back to `Unknown` if nothing fits.
+3. For each row, match its best-guess category name against the fetched list (by `name_en` or `name_fr`); fall back to `Uncategorized` if nothing fits.
 4. `POST` each row with `"reviewed": false`; track successes/failures/skips. No preview, no confirmation step — go straight from matching to posting.
 
    **Values come from an untrusted file — escape them before building the `-d` payload,** or a
@@ -70,6 +75,7 @@ The invocation gives a file path and a `job_id`.
 
    ```bash
    curl -X POST http://127.0.0.1:3055/transactions \
+     -b "session=$SESSION_COOKIE" \
      -H "Content-Type: application/json" \
      -d '{"date":"2024-01-15","merchant":"O'\''Brien'\''s \"General Store\"","amount":"12.34","category_id":12,"account":"User 1","reviewed":false}'
    ```
@@ -77,11 +83,13 @@ The invocation gives a file path and a `job_id`.
 5. Report the result with exactly one final call, matching one of:
    ```bash
    curl -X PATCH http://127.0.0.1:3055/transactions/import/jobs/{job_id} \
+     -b "session=$SESSION_COOKIE" \
      -H "Content-Type: application/json" \
      -d '{"status":"succeeded","created_count":N,"failed_count":M,"skipped_count":K}'
    ```
    ```bash
    curl -X PATCH http://127.0.0.1:3055/transactions/import/jobs/{job_id} \
+     -b "session=$SESSION_COOKIE" \
      -H "Content-Type: application/json" \
      -d '{"status":"failed","error_message":"<what went wrong>"}'
    ```
@@ -96,6 +104,7 @@ The invocation gives a file path and a `job_id`.
 
 ```bash
 curl -X POST http://127.0.0.1:3055/transactions \
+  -b "session=$SESSION_COOKIE" \
   -H "Content-Type: application/json" \
   -d '{"date":"2024-01-15","merchant":"STARBUCKS","amount":"12.34","category_id":12,"account":"User 1","reviewed":false}'
 ```

@@ -2,6 +2,9 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use super::model::Household;
+use crate::features::category_groups::repository as category_groups_repository;
+use crate::features::household_members::model::NewHouseholdMember;
+use crate::features::household_members::repository as household_members_repository;
 use crate::shared::http_error::is_unique_violation;
 
 const SELECT_COLUMNS: &str = "id, join_code, created_at";
@@ -15,23 +18,76 @@ fn generate_join_code() -> String {
     Uuid::new_v4().simple().to_string()[..8].to_uppercase()
 }
 
-/// Creates a new household with a freshly generated `join_code` and returns it.
+/// Creates a new household with a freshly generated `join_code`, seeds its starter category groups
+/// and categories, and returns the household. Everything happens in one transaction, so a
+/// household is never left half-seeded if a later step fails.
 pub async fn create(pool: &PgPool) -> Result<Household, sqlx::Error> {
     let mut last_error = None;
 
     for _ in 0..JOIN_CODE_ATTEMPTS {
+        let mut tx = pool.begin().await?;
+
         let result = sqlx::query_as::<_, Household>(&format!(
             "INSERT INTO households (join_code) VALUES ($1) RETURNING {SELECT_COLUMNS}"
         ))
         .bind(generate_join_code())
-        .fetch_one(pool)
+        .fetch_one(&mut *tx)
         .await;
 
-        match result {
-            Ok(household) => return Ok(household),
-            Err(e) if is_unique_violation(&e) => last_error = Some(e),
+        let household = match result {
+            Ok(household) => household,
+            Err(e) if is_unique_violation(&e) => {
+                last_error = Some(e);
+                continue;
+            }
             Err(e) => return Err(e),
-        }
+        };
+
+        category_groups_repository::seed_defaults(&mut tx, household.id).await?;
+        tx.commit().await?;
+        return Ok(household);
+    }
+
+    Err(last_error.expect("loop only exits early on success"))
+}
+
+/// Like `create`, but also connects `user_id` as the new household's `family_manager`, in the
+/// same transaction as the household's creation and starter-data seeding — used by
+/// `POST /auth/onboarding`'s no-`join_code` branch, so a failure at any step (including a
+/// concurrent onboarding request on the same account racing the `household_members.user_id`
+/// unique constraint) never leaves an orphaned, unowned household behind.
+pub async fn create_with_manager(pool: &PgPool, user_id: i32) -> Result<Household, sqlx::Error> {
+    let mut last_error = None;
+
+    for _ in 0..JOIN_CODE_ATTEMPTS {
+        let mut tx = pool.begin().await?;
+
+        let result = sqlx::query_as::<_, Household>(&format!(
+            "INSERT INTO households (join_code) VALUES ($1) RETURNING {SELECT_COLUMNS}"
+        ))
+        .bind(generate_join_code())
+        .fetch_one(&mut *tx)
+        .await;
+
+        let household = match result {
+            Ok(household) => household,
+            Err(e) if is_unique_violation(&e) => {
+                last_error = Some(e);
+                continue;
+            }
+            Err(e) => return Err(e),
+        };
+
+        category_groups_repository::seed_defaults(&mut tx, household.id).await?;
+
+        let new_member = NewHouseholdMember {
+            user_id,
+            r#type: "family_manager".to_string(),
+        };
+        household_members_repository::create(&mut *tx, household.id, &new_member).await?;
+
+        tx.commit().await?;
+        return Ok(household);
     }
 
     Err(last_error.expect("loop only exits early on success"))

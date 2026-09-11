@@ -12,10 +12,10 @@ pub struct HouseholdMember {
     pub created_at: DateTime<Utc>,
 }
 
-/// Body for `POST /household-members`. `id` and `created_at` are generated.
+/// Body for `POST /household-members`. `id` and `created_at` are generated; `household_id` is
+/// never read from the body — it's always the caller's own household, from `CurrentUser`.
 #[derive(Debug, Deserialize)]
 pub struct NewHouseholdMember {
-    pub household_id: i32,
     pub user_id: i32,
     pub r#type: String,
 }
@@ -27,9 +27,9 @@ pub struct HouseholdMemberPatch {
     pub r#type: Option<String>,
 }
 
-/// Optional query params for `GET /household-members`. Absent fields mean "no filter".
+/// Optional query params for `GET /household-members`. Absent fields mean "no filter". Always
+/// further scoped to the caller's own household — see `CurrentUser`.
 #[derive(Debug, Deserialize)]
 pub struct HouseholdMemberFilter {
-    pub household_id: Option<i32>,
     pub user_id: Option<i32>,
 }

@@ -14,11 +14,14 @@ use super::model::{ImportJob, ImportJobStatus};
 pub struct JobStore(Mutex<HashMap<Uuid, ImportJob>>);
 
 impl JobStore {
-    /// Creates a new job in `pending` status.
-    pub fn create(&self, file_name: String) -> ImportJob {
+    /// Creates a new job in `pending` status, attributed to `household_id` — checked back against
+    /// every subsequent read, so one household can't poll or complete another's import job by
+    /// guessing (jobs are keyed by UUID, but UUID unpredictability alone isn't authorization).
+    pub fn create(&self, file_name: String, household_id: i32) -> ImportJob {
         let now = Utc::now();
         let job = ImportJob {
             id: Uuid::new_v4(),
+            household_id,
             status: ImportJobStatus::Pending,
             file_name,
             created_count: None,
@@ -32,9 +35,15 @@ impl JobStore {
         job
     }
 
-    /// Fetches a job by id, or `None` if it doesn't exist (or the server has since restarted).
-    pub fn get(&self, id: Uuid) -> Option<ImportJob> {
-        self.0.lock().unwrap().get(&id).cloned()
+    /// Fetches a job by id, scoped to `household_id`. `None` if it doesn't exist, belongs to a
+    /// different household, or the server has since restarted.
+    pub fn get(&self, id: Uuid, household_id: i32) -> Option<ImportJob> {
+        self.0
+            .lock()
+            .unwrap()
+            .get(&id)
+            .filter(|job| job.household_id == household_id)
+            .cloned()
     }
 
     /// Marks a job `running`. No-op if the job is unknown.
@@ -84,32 +93,46 @@ mod tests {
     #[test]
     fn get_returns_none_for_unknown_id() {
         let store = JobStore::default();
-        assert!(store.get(Uuid::new_v4()).is_none());
+        assert!(store.get(Uuid::new_v4(), 1).is_none());
     }
 
     #[test]
     fn create_then_get_round_trips() {
         let store = JobStore::default();
-        let job = store.create("statement.csv".to_string());
+        let job = store.create("statement.csv".to_string(), 1);
 
         assert_eq!(job.status, ImportJobStatus::Pending);
-        assert_eq!(store.get(job.id).unwrap().status, ImportJobStatus::Pending);
+        assert_eq!(
+            store.get(job.id, 1).unwrap().status,
+            ImportJobStatus::Pending
+        );
+    }
+
+    #[test]
+    fn get_does_not_leak_another_households_job() {
+        let store = JobStore::default();
+        let job = store.create("statement.csv".to_string(), 1);
+
+        assert!(store.get(job.id, 2).is_none());
     }
 
     #[test]
     fn mark_running_updates_status() {
         let store = JobStore::default();
-        let job = store.create("statement.csv".to_string());
+        let job = store.create("statement.csv".to_string(), 1);
 
         store.mark_running(job.id);
 
-        assert_eq!(store.get(job.id).unwrap().status, ImportJobStatus::Running);
+        assert_eq!(
+            store.get(job.id, 1).unwrap().status,
+            ImportJobStatus::Running
+        );
     }
 
     #[test]
     fn complete_sets_terminal_status_and_counts() {
         let store = JobStore::default();
-        let job = store.create("statement.csv".to_string());
+        let job = store.create("statement.csv".to_string(), 1);
 
         store.complete(
             job.id,
@@ -120,7 +143,7 @@ mod tests {
             None,
         );
 
-        let updated = store.get(job.id).unwrap();
+        let updated = store.get(job.id, 1).unwrap();
         assert_eq!(updated.status, ImportJobStatus::Succeeded);
         assert_eq!(updated.created_count, Some(3));
         assert_eq!(updated.failed_count, Some(1));
@@ -130,7 +153,7 @@ mod tests {
     #[test]
     fn complete_does_not_overwrite_a_terminal_job() {
         let store = JobStore::default();
-        let job = store.create("statement.csv".to_string());
+        let job = store.create("statement.csv".to_string(), 1);
         store.complete(
             job.id,
             ImportJobStatus::Succeeded,
@@ -151,7 +174,7 @@ mod tests {
             Some("subprocess exited".to_string()),
         );
 
-        let updated = store.get(job.id).unwrap();
+        let updated = store.get(job.id, 1).unwrap();
         assert_eq!(updated.status, ImportJobStatus::Succeeded);
         assert_eq!(updated.created_count, Some(3));
     }

@@ -2,8 +2,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
-/// A single row in the `users` table. How a user relates to a household lives in
-/// `household_members`, not here — a user can belong to more than one.
+/// A single row in the `users` table. How a user relates to their (at most one) household lives
+/// in `household_members`, not here.
 #[derive(Debug, Serialize, FromRow)]
 pub struct User {
     pub id: i32,

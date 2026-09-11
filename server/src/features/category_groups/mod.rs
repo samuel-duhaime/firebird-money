@@ -1,4 +1,4 @@
-pub mod defaults;
+mod defaults;
 mod handlers;
 mod model;
 pub mod repository;

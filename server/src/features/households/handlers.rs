@@ -11,6 +11,7 @@ use sqlx::PgPool;
 
 use super::model::PublicHousehold;
 use super::repository;
+use crate::features::auth::CurrentUser;
 use crate::shared::http_error::{
     error_response_with_n, internal_error_response, is_foreign_key_violation, not_found_response,
 };
@@ -23,7 +24,11 @@ struct HouseholdIdPath {
 }
 
 /// `POST /households` — create a new, empty household.
-async fn create_household(pool: web::Data<PgPool>, l10n: web::Data<L10n>) -> impl Responder {
+async fn create_household(
+    _current_user: CurrentUser,
+    pool: web::Data<PgPool>,
+    l10n: web::Data<L10n>,
+) -> impl Responder {
     match repository::create(&pool).await {
         Ok(household) => HttpResponse::Created()
             .insert_header(("Location", format!("/households/{}", household.id)))
@@ -35,14 +40,22 @@ async fn create_household(pool: web::Data<PgPool>, l10n: web::Data<L10n>) -> imp
     }
 }
 
-/// `GET /households/{id}` — fetch a single household, without its `join_code` (see `PublicHousehold`).
+/// `GET /households/{id}` — fetch the caller's own household, without its `join_code` (see
+/// `PublicHousehold`).
 async fn get_household(
     path: web::Path<HouseholdIdPath>,
+    current_user: CurrentUser,
     pool: web::Data<PgPool>,
     l10n: web::Data<L10n>,
 ) -> impl Responder {
     let locale = l10n.locale();
     let id = path.id;
+
+    // Scoped to the caller's own household rather than any id they can guess — matches every
+    // other household-scoped resource in this API.
+    if current_user.household_id() != Some(id as i32) {
+        return not_found_response(&l10n, &locale, "household-not-found", id);
+    }
 
     match repository::get(&pool, id as i32).await {
         Ok(Some(household)) => HttpResponse::Ok().json(PublicHousehold::from(household)),
@@ -55,8 +68,16 @@ async fn get_household(
 }
 
 /// `DELETE /households/{id}` — delete a household.
+///
+/// Deliberately *not* scoped to `current_user.household_id()` the way `get_household` is: a
+/// household's own membership row is what grants "own household" access in the first place, so a
+/// caller who removed their last membership specifically to clear the way for this delete would
+/// simultaneously lose the standing to call it at all — the two checks can never both pass at
+/// once. The pre-existing `household-in-use` guard below still blocks deleting any household that
+/// still has members (or categories, or transactions), which is the case that actually matters.
 async fn delete_household(
     path: web::Path<HouseholdIdPath>,
+    _current_user: CurrentUser,
     pool: web::Data<PgPool>,
     l10n: web::Data<L10n>,
 ) -> impl Responder {
