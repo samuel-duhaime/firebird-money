@@ -16,6 +16,7 @@ use super::import;
 use super::jobs::JobStore;
 use super::model::{ImportJobReport, NewTransaction, TransactionFilter, TransactionPatch};
 use super::repository;
+use crate::features::auth::CurrentUser;
 use crate::shared::http_error::{
     error_response, error_response_with_n, internal_error_response, is_foreign_key_violation,
     not_found_response,
@@ -59,11 +60,21 @@ struct DownloadFormatQuery {
 /// `POST /transactions` — create a transaction.
 async fn create_transaction(
     new_transaction: web::Json<NewTransaction>,
+    current_user: CurrentUser,
     pool: web::Data<PgPool>,
     l10n: web::Data<L10n>,
 ) -> impl Responder {
     let locale = l10n.locale();
-    match repository::create(&pool, &new_transaction).await {
+    let household_id = match current_user.require_household_id(&l10n, &locale) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
+    let household_member_id = match current_user.require_household_member_id(&l10n, &locale) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
+
+    match repository::create(&pool, household_id, household_member_id, &new_transaction).await {
         Ok(transaction) => HttpResponse::Created()
             .insert_header(("Location", format!("/transactions/{}", transaction.id)))
             .json(transaction),
@@ -87,14 +98,21 @@ async fn create_transaction(
 /// sort order.
 async fn list_transactions(
     filter: web::Query<TransactionFilter>,
+    current_user: CurrentUser,
     pool: web::Data<PgPool>,
     l10n: web::Data<L10n>,
 ) -> impl Responder {
-    match repository::list(&pool, &filter).await {
+    let locale = l10n.locale();
+    let household_id = match current_user.require_household_id(&l10n, &locale) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
+
+    match repository::list(&pool, household_id, &filter).await {
         Ok(transactions) => HttpResponse::Ok().json(transactions),
         Err(e) => {
             error!("failed to list transactions error={e}");
-            internal_error_response(&l10n, &l10n.locale())
+            internal_error_response(&l10n, &locale)
         }
     }
 }
@@ -105,12 +123,17 @@ async fn list_transactions(
 async fn download_transactions(
     filter: web::Query<TransactionFilter>,
     format: web::Query<DownloadFormatQuery>,
+    current_user: CurrentUser,
     pool: web::Data<PgPool>,
     l10n: web::Data<L10n>,
 ) -> impl Responder {
     let locale = l10n.locale();
+    let household_id = match current_user.require_household_id(&l10n, &locale) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
 
-    let transactions = match repository::list(&pool, &filter).await {
+    let transactions = match repository::list(&pool, household_id, &filter).await {
         Ok(transactions) => transactions,
         Err(e) => {
             error!("failed to list transactions for download error={e}");
@@ -259,13 +282,18 @@ async fn report_import_job(
 /// `GET /transactions/{id}` — fetch a single transaction.
 async fn get_transaction(
     path: web::Path<TransactionIdPath>,
+    current_user: CurrentUser,
     pool: web::Data<PgPool>,
     l10n: web::Data<L10n>,
 ) -> impl Responder {
     let locale = l10n.locale();
     let id = path.id;
+    let household_id = match current_user.require_household_id(&l10n, &locale) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
 
-    match repository::get(&pool, i64::from(id)).await {
+    match repository::get(&pool, household_id, i64::from(id)).await {
         Ok(Some(transaction)) => HttpResponse::Ok().json(transaction),
         Ok(None) => not_found_response(&l10n, &locale, "transaction-not-found", id),
         Err(e) => {
@@ -279,13 +307,18 @@ async fn get_transaction(
 async fn update_transaction(
     path: web::Path<TransactionIdPath>,
     patch: web::Json<TransactionPatch>,
+    current_user: CurrentUser,
     pool: web::Data<PgPool>,
     l10n: web::Data<L10n>,
 ) -> impl Responder {
     let locale = l10n.locale();
     let id = path.id;
+    let household_id = match current_user.require_household_id(&l10n, &locale) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
 
-    match repository::update(&pool, i64::from(id), &patch).await {
+    match repository::update(&pool, household_id, i64::from(id), &patch).await {
         Ok(Some(transaction)) => HttpResponse::Ok().json(transaction),
         Ok(None) => not_found_response(&l10n, &locale, "transaction-not-found", id),
         Err(e) if is_foreign_key_violation(&e) => error_response_with_n(
@@ -305,13 +338,18 @@ async fn update_transaction(
 /// `DELETE /transactions/{id}` — delete a transaction.
 async fn delete_transaction(
     path: web::Path<TransactionIdPath>,
+    current_user: CurrentUser,
     pool: web::Data<PgPool>,
     l10n: web::Data<L10n>,
 ) -> impl Responder {
     let locale = l10n.locale();
     let id = path.id;
+    let household_id = match current_user.require_household_id(&l10n, &locale) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
 
-    match repository::delete(&pool, i64::from(id)).await {
+    match repository::delete(&pool, household_id, i64::from(id)).await {
         Ok(true) => HttpResponse::NoContent().finish(),
         Ok(false) => not_found_response(&l10n, &locale, "transaction-not-found", id),
         Err(e) => {

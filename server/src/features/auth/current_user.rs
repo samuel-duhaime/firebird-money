@@ -34,8 +34,6 @@ impl CurrentUser {
 
     /// The `household_members` row this caller's writes should be attributed to, or `None` if
     /// they haven't onboarded.
-    // Not read yet: wired into `transactions` scoping in a follow-up commit.
-    #[allow(dead_code)]
     pub fn household_member_id(&self) -> Option<i32> {
         self.household.as_ref().map(|m| m.id)
     }
@@ -48,6 +46,17 @@ impl CurrentUser {
         locale: &LanguageIdentifier,
     ) -> Result<i32, HttpResponse> {
         self.household_id()
+            .ok_or_else(|| error_response(l10n, locale, StatusCode::FORBIDDEN, "auth-no-household"))
+    }
+
+    /// Same guard as [`Self::require_household_id`], for routes (just transaction creation, today)
+    /// that need to attribute a write to the caller's own membership row.
+    pub fn require_household_member_id(
+        &self,
+        l10n: &L10n,
+        locale: &LanguageIdentifier,
+    ) -> Result<i32, HttpResponse> {
+        self.household_member_id()
             .ok_or_else(|| error_response(l10n, locale, StatusCode::FORBIDDEN, "auth-no-household"))
     }
 }
