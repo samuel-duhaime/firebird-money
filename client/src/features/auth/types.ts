@@ -8,17 +8,20 @@ export interface AuthUser {
   created_at: string;
 }
 
-/** One household the signed-in user belongs to, with the role they hold in it. */
+/** The household a user belongs to (at most one, ever), with the role they hold in it. `id` is
+ * the `household_members` row's own id. */
 export interface Membership {
+  id: number;
   household_id: number;
   join_code: string;
   type: 'family_manager' | 'family_member';
 }
 
-/** Payload of `GET /auth/me`, and of anything that signs the user in. */
+/** Payload of `GET /auth/me`, and of anything that signs the user in. `household` is `null`
+ * before onboarding. */
 export interface CurrentUser {
   user: AuthUser;
-  households: Membership[];
+  household: Membership | null;
 }
 
 /**

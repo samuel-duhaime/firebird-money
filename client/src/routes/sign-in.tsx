@@ -29,10 +29,7 @@ const SignInPage = () => {
       if (response.status === 'signed_in') {
         setCurrentUser(response.session);
         navigate({
-          to:
-            response.session.households.length > 0
-              ? '/dashboard'
-              : '/onboarding',
+          to: response.session.household !== null ? '/dashboard' : '/onboarding',
         });
         return;
       }

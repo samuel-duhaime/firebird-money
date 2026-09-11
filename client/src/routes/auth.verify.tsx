@@ -39,7 +39,7 @@ const VerifyPage = () => {
 
     setCurrentUser(session);
     navigate({
-      to: session.households.length > 0 ? '/dashboard' : '/onboarding',
+      to: session.household !== null ? '/dashboard' : '/onboarding',
     });
   }, [session, setCurrentUser, navigate]);
 
