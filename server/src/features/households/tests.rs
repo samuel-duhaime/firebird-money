@@ -176,6 +176,32 @@ async fn create_household_returns_its_join_code(pool: PgPool) {
 }
 
 #[sqlx::test]
+async fn create_household_seeds_default_categories(pool: PgPool) {
+    let app = test::init_service(app_with(pool.clone())).await;
+    let cookie = sign_in(&app, "sam@example.com").await;
+    let id = create_via_api(&app, &cookie).await;
+
+    let rows: Vec<(String, String)> =
+        sqlx::query_as("SELECT name_en, type FROM categories WHERE household_id = $1")
+            .bind(id)
+            .fetch_all(&pool)
+            .await
+            .expect("query seeded categories");
+
+    assert_eq!(
+        rows.len(),
+        33,
+        "every household starts with the same starter set"
+    );
+    assert!(rows
+        .iter()
+        .any(|(name, kind)| name == "Groceries" && kind == "expense"));
+    assert!(rows
+        .iter()
+        .any(|(name, kind)| name == "Salary" && kind == "income"));
+}
+
+#[sqlx::test]
 async fn get_household_not_found(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
     let cookie = sign_in(&app, "sam@example.com").await;
@@ -195,9 +221,18 @@ async fn get_household_not_found(pool: PgPool) {
 
 #[sqlx::test]
 async fn delete_household_removes_row(pool: PgPool) {
-    let app = test::init_service(app_with(pool)).await;
+    let app = test::init_service(app_with(pool.clone())).await;
     let cookie = sign_in(&app, "sam@example.com").await;
     let id = create_via_api(&app, &cookie).await;
+
+    // A household gets its starter categories seeded at creation, which would otherwise block
+    // this delete (see `delete_household_rejects_when_referenced_by_member`) — clear them
+    // directly so this test isolates "deleting an otherwise-unreferenced household succeeds".
+    sqlx::query("DELETE FROM categories WHERE household_id = $1")
+        .bind(id)
+        .execute(&pool)
+        .await
+        .expect("clear seeded categories");
 
     let delete_req = test::TestRequest::delete()
         .uri(&format!("/households/{id}"))

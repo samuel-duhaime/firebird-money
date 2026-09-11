@@ -1,8 +1,28 @@
 use sqlx::PgPool;
 
+use super::defaults::DEFAULT_CATEGORIES;
 use super::model::{Category, CategoryPatch, NewCategory};
 
 const SELECT_COLUMNS: &str = "id, name_en, name_fr, type, created_at";
+
+/// Seeds the standard starter categories for a newly created household. Takes any `PgExecutor` —
+/// in practice a transaction handle — so `households::repository::create` can run this alongside
+/// the household's own insert and commit both together, never leaving a household without them.
+pub async fn seed_defaults<'e, E>(executor: E, household_id: i32) -> Result<(), sqlx::Error>
+where
+    E: sqlx::PgExecutor<'e>,
+{
+    let mut query_builder =
+        sqlx::QueryBuilder::new("INSERT INTO categories (household_id, name_en, name_fr, type) ");
+    query_builder.push_values(DEFAULT_CATEGORIES, |mut row, category| {
+        row.push_bind(household_id)
+            .push_bind(category.name_en)
+            .push_bind(category.name_fr)
+            .push_bind(category.r#type);
+    });
+    query_builder.build().execute(executor).await?;
+    Ok(())
+}
 
 /// Inserts a new category and returns the created row.
 pub async fn create(pool: &PgPool, new_category: &NewCategory) -> Result<Category, sqlx::Error> {

@@ -2,6 +2,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use super::model::Household;
+use crate::features::categories::repository as categories_repository;
 use crate::shared::http_error::is_unique_violation;
 
 const SELECT_COLUMNS: &str = "id, join_code, created_at";
@@ -15,23 +16,34 @@ fn generate_join_code() -> String {
     Uuid::new_v4().simple().to_string()[..8].to_uppercase()
 }
 
-/// Creates a new household with a freshly generated `join_code` and returns it.
+/// Creates a new household with a freshly generated `join_code`, seeds its starter categories, and
+/// returns the household. Both inserts happen in one transaction, so a household is never left
+/// without its default categories (or vice versa) if either step fails.
 pub async fn create(pool: &PgPool) -> Result<Household, sqlx::Error> {
     let mut last_error = None;
 
     for _ in 0..JOIN_CODE_ATTEMPTS {
+        let mut tx = pool.begin().await?;
+
         let result = sqlx::query_as::<_, Household>(&format!(
             "INSERT INTO households (join_code) VALUES ($1) RETURNING {SELECT_COLUMNS}"
         ))
         .bind(generate_join_code())
-        .fetch_one(pool)
+        .fetch_one(&mut *tx)
         .await;
 
-        match result {
-            Ok(household) => return Ok(household),
-            Err(e) if is_unique_violation(&e) => last_error = Some(e),
+        let household = match result {
+            Ok(household) => household,
+            Err(e) if is_unique_violation(&e) => {
+                last_error = Some(e);
+                continue;
+            }
             Err(e) => return Err(e),
-        }
+        };
+
+        categories_repository::seed_defaults(&mut *tx, household.id).await?;
+        tx.commit().await?;
+        return Ok(household);
     }
 
     Err(last_error.expect("loop only exits early on success"))
