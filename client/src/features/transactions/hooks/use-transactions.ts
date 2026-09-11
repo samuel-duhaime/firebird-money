@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { apiFetch } from '../../lib/api-client';
-import type { SortOrder, Transaction } from './types';
+import { apiFetch } from '../../../lib/api-client';
+import type { SortOrder, Transaction } from '../utils/types';
 
 export const useTransactions = (
   search?: string,

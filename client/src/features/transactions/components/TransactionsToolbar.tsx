@@ -1,7 +1,7 @@
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { useTranslation } from 'react-i18next';
 import { faChevronDown, faSquareCheck, faTableColumns } from '@fortawesome/free-solid-svg-icons';
-import { notImplementedToast } from '../../lib/toast';
+import { notImplementedToast } from '../../../lib/toast';
 import { SortButton } from './SortButton';
 import './TransactionsToolbar.css';
 

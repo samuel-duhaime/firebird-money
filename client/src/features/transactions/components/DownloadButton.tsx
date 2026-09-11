@@ -3,12 +3,12 @@ import { createPortal } from 'react-dom';
 import { getRouteApi } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { faDownload } from '@fortawesome/free-solid-svg-icons';
-import { TopMenuButton } from '../../components/TopMenuButton';
-import { useAnchoredPopover } from '../../lib/use-anchored-popover';
-import { downloadFailedToast } from '../../lib/toast';
-import { downloadTransactions } from './download';
-import type { DownloadFormat } from './download';
-import '../../components/Popover.css';
+import { TopMenuButton } from '../../../components/TopMenuButton';
+import { useAnchoredPopover } from '../../../lib/use-anchored-popover';
+import { downloadFailedToast } from '../../../lib/toast';
+import { downloadTransactions } from '../utils/download';
+import type { DownloadFormat } from '../utils/download';
+import '../../../components/Popover.css';
 import './DownloadButton.css';
 
 const routeApi = getRouteApi('/_app/transactions');

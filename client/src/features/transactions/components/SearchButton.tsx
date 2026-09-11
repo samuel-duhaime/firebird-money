@@ -3,9 +3,9 @@ import { createPortal } from 'react-dom';
 import { getRouteApi } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { faMagnifyingGlass } from '@fortawesome/free-solid-svg-icons';
-import { TopMenuButton } from '../../components/TopMenuButton';
-import { useAnchoredPopover } from '../../lib/use-anchored-popover';
-import '../../components/Popover.css';
+import { TopMenuButton } from '../../../components/TopMenuButton';
+import { useAnchoredPopover } from '../../../lib/use-anchored-popover';
+import '../../../components/Popover.css';
 import './SearchButton.css';
 
 const routeApi = getRouteApi('/_app/transactions');

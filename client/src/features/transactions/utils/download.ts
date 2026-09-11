@@ -1,5 +1,5 @@
-import { apiFetchFile } from '../../lib/api-client';
-import { downloadBlob } from '../../lib/download-file';
+import { apiFetchFile } from '../../../lib/api-client';
+import { downloadBlob } from '../../../lib/download-file';
 import type { SortOrder } from './types';
 
 export type DownloadFormat = 'csv' | 'xlsx';

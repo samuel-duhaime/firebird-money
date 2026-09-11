@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { getImportJob } from './import';
+import { getImportJob } from '../utils/import';
 
 const isTerminal = (status?: string) =>
   status === 'succeeded' || status === 'failed';
