@@ -4,9 +4,9 @@ import { useMutation } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPaperPlane } from '@fortawesome/free-solid-svg-icons';
-import { requestLogin } from '../features/auth/api';
-import { useSetCurrentUser } from '../features/auth/use-current-user';
-import { redirectIfAuthenticated } from '../features/auth/require-auth';
+import { requestLogin } from '../features/auth/utils/api';
+import { useSetCurrentUser } from '../features/auth/hooks/use-current-user';
+import { redirectIfAuthenticated } from '../features/auth/utils/require-auth';
 import { signInFailedToast } from '../lib/toast';
 import './auth.css';
 

@@ -7,8 +7,8 @@ import {
   faCircleNotch,
   faTriangleExclamation,
 } from '@fortawesome/free-solid-svg-icons';
-import { verifyLogin } from '../features/auth/api';
-import { useSetCurrentUser } from '../features/auth/use-current-user';
+import { verifyLogin } from '../features/auth/utils/api';
+import { useSetCurrentUser } from '../features/auth/hooks/use-current-user';
 import './auth.css';
 
 /**

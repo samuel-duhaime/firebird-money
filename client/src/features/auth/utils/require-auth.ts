@@ -1,8 +1,8 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { redirect } from '@tanstack/react-router';
-import { ApiError } from '../../lib/api-client';
+import { ApiError } from '../../../lib/api-client';
 import { fetchCurrentUser } from './api';
-import { currentUserQueryKey } from './use-current-user';
+import { currentUserQueryKey } from '../hooks/use-current-user';
 
 const isUnauthorized = (error: unknown) => error instanceof ApiError && error.status === 401;
 

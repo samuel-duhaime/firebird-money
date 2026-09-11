@@ -3,9 +3,9 @@ import { getRouteApi } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faChevronDown } from '@fortawesome/free-solid-svg-icons';
-import { useAnchoredPopover } from '../../lib/use-anchored-popover';
-import type { SortOrder } from './types';
-import '../../components/Popover.css';
+import { useAnchoredPopover } from '../../../lib/use-anchored-popover';
+import type { SortOrder } from '../utils/types';
+import '../../../components/Popover.css';
 import './SortButton.css';
 
 const routeApi = getRouteApi('/_app/transactions');

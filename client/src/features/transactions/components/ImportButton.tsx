@@ -3,15 +3,15 @@ import type { ChangeEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { faFileImport, faSpinner } from '@fortawesome/free-solid-svg-icons';
-import { TopMenuButton } from '../../components/TopMenuButton';
-import { useImportJob } from './use-import-job';
-import { startImport } from './import';
+import { TopMenuButton } from '../../../components/TopMenuButton';
+import { useImportJob } from '../hooks/use-import-job';
+import { startImport } from '../utils/import';
 import {
   importFailedToast,
   importPartialToast,
   importStartedToast,
   importSucceededToast,
-} from '../../lib/toast';
+} from '../../../lib/toast';
 
 export const ImportButton = () => {
   const { t } = useTranslation();

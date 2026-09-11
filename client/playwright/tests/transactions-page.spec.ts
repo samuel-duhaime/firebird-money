@@ -3,12 +3,12 @@ import { test, expect } from '../fixtures';
 import {
   DATE_RANGE_PRESETS,
   resolvePreset,
-} from '../../src/features/transactions/date-range';
-import type { DateRangePreset } from '../../src/features/transactions/date-range';
+} from '../../src/features/transactions/utils/date-range';
+import type { DateRangePreset } from '../../src/features/transactions/utils/date-range';
 import {
   formatAmount,
   formatDateHeading,
-} from '../../src/features/transactions/format';
+} from '../../src/features/transactions/utils/format';
 
 // TODO: The import-budget-file flow (ImportButton.tsx, POST /transactions/import) isn't covered
 // here — it shells out to a `claude` CLI subprocess server-side (see

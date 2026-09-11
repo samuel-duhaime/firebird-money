@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
-import { useCategories } from '../features/categories/use-categories';
+import { useCategories } from '../features/categories/hooks/use-categories';
 
 const Dashboard = () => {
   const { t } = useTranslation();

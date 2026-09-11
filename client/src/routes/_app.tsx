@@ -1,7 +1,7 @@
 import { createFileRoute, Outlet } from '@tanstack/react-router';
 import { TopMenu } from '../components/TopMenu';
 import { LeftMenu } from '../components/LeftMenu';
-import { requireAuth } from '../features/auth/require-auth';
+import { requireAuth } from '../features/auth/utils/require-auth';
 import './_app.css';
 
 const AppLayout = () => (

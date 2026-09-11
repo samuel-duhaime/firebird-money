@@ -13,7 +13,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { useAnchoredPopover } from '../lib/use-anchored-popover';
-import { useSignOut } from '../features/auth/use-sign-out';
+import { useSignOut } from '../features/auth/hooks/use-sign-out';
 import { notImplementedToast } from '../lib/toast';
 import './Popover.css';
 import './LeftMenu.css';

@@ -3,8 +3,8 @@ import type { ChangeEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faChevronDown } from '@fortawesome/free-solid-svg-icons';
-import { useCategories } from '../categories/use-categories';
-import { useCreateTransaction } from './use-create-transaction';
+import { useCategories } from '../../categories/hooks/use-categories';
+import { useCreateTransaction } from '../hooks/use-create-transaction';
 import './AddTransactionModal.css';
 
 /**
