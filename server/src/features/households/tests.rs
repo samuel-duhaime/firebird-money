@@ -176,29 +176,47 @@ async fn create_household_returns_its_join_code(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn create_household_seeds_default_categories(pool: PgPool) {
+async fn create_household_seeds_default_category_groups_and_categories(pool: PgPool) {
     let app = test::init_service(app_with(pool.clone())).await;
     let cookie = sign_in(&app, "sam@example.com").await;
     let id = create_via_api(&app, &cookie).await;
 
-    let rows: Vec<(String, String)> =
-        sqlx::query_as("SELECT name_en, type FROM categories WHERE household_id = $1")
+    let group_count: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM category_groups WHERE household_id = $1")
             .bind(id)
-            .fetch_all(&pool)
+            .fetch_one(&pool)
             .await
-            .expect("query seeded categories");
+            .expect("query seeded category groups");
+    assert_eq!(
+        group_count.0, 16,
+        "every household starts with the same starter groups"
+    );
+
+    let rows: Vec<(String, String)> = sqlx::query_as(
+        "SELECT c.name_en, g.type
+         FROM categories c
+         JOIN category_groups g ON g.id = c.group_id
+         WHERE c.household_id = $1",
+    )
+    .bind(id)
+    .fetch_all(&pool)
+    .await
+    .expect("query seeded categories");
 
     assert_eq!(
         rows.len(),
-        33,
-        "every household starts with the same starter set"
+        65,
+        "every household starts with the same starter categories"
     );
     assert!(rows
         .iter()
         .any(|(name, kind)| name == "Groceries" && kind == "expense"));
     assert!(rows
         .iter()
-        .any(|(name, kind)| name == "Salary" && kind == "income"));
+        .any(|(name, kind)| name == "Paychecks" && kind == "income"));
+    assert!(rows
+        .iter()
+        .any(|(name, kind)| name == "TFSA" && kind == "transfer"));
 }
 
 #[sqlx::test]
@@ -225,14 +243,21 @@ async fn delete_household_removes_row(pool: PgPool) {
     let cookie = sign_in(&app, "sam@example.com").await;
     let id = create_via_api(&app, &cookie).await;
 
-    // A household gets its starter categories seeded at creation, which would otherwise block
-    // this delete (see `delete_household_rejects_when_referenced_by_member`) — clear them
-    // directly so this test isolates "deleting an otherwise-unreferenced household succeeds".
+    // A household gets its starter category groups (and categories inside them) seeded at
+    // creation, which would otherwise block this delete (see
+    // `delete_household_rejects_when_referenced_by_member`) — clear them directly, categories
+    // first per the FK, so this test isolates "deleting an otherwise-unreferenced household
+    // succeeds".
     sqlx::query("DELETE FROM categories WHERE household_id = $1")
         .bind(id)
         .execute(&pool)
         .await
         .expect("clear seeded categories");
+    sqlx::query("DELETE FROM category_groups WHERE household_id = $1")
+        .bind(id)
+        .execute(&pool)
+        .await
+        .expect("clear seeded category groups");
 
     let delete_req = test::TestRequest::delete()
         .uri(&format!("/households/{id}"))

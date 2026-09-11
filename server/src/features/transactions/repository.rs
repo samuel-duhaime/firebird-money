@@ -4,10 +4,12 @@ use super::model::{NewTransaction, SortOrder, Transaction, TransactionFilter, Tr
 
 const SELECT_COLUMNS: &str = "
     t.id, t.date, t.merchant, t.amount, t.category_id,
-    c.name_en AS category_name_en, c.name_fr AS category_name_fr, c.type AS category_type,
+    c.name_en AS category_name_en, c.name_fr AS category_name_fr, g.type AS category_type,
     t.account, t.reviewed, t.created_at";
 
-const FROM_JOIN: &str = "FROM transactions t JOIN categories c ON c.id = t.category_id";
+const FROM_JOIN: &str = "FROM transactions t
+    JOIN categories c ON c.id = t.category_id
+    JOIN category_groups g ON g.id = c.group_id";
 
 /// Escapes `\`, `%`, and `_` so a search term is matched as a literal substring by `ILIKE ...
 /// ESCAPE E'\\'`, rather than having `%`/`_` act as wildcards. Backslashes must be escaped first,
@@ -30,7 +32,9 @@ pub async fn create(
             RETURNING *
          )
          SELECT {SELECT_COLUMNS}
-         FROM inserted t JOIN categories c ON c.id = t.category_id"
+         FROM inserted t
+         JOIN categories c ON c.id = t.category_id
+         JOIN category_groups g ON g.id = c.group_id"
     ))
     .bind(new_transaction.date)
     .bind(&new_transaction.merchant)
@@ -111,7 +115,9 @@ pub async fn update(
             RETURNING *
          )
          SELECT {SELECT_COLUMNS}
-         FROM updated t JOIN categories c ON c.id = t.category_id"
+         FROM updated t
+         JOIN categories c ON c.id = t.category_id
+         JOIN category_groups g ON g.id = c.group_id"
     ))
     .bind(id)
     .bind(patch.date)

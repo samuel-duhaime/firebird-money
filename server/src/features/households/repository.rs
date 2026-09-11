@@ -2,7 +2,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use super::model::Household;
-use crate::features::categories::repository as categories_repository;
+use crate::features::category_groups::repository as category_groups_repository;
 use crate::shared::http_error::is_unique_violation;
 
 const SELECT_COLUMNS: &str = "id, join_code, created_at";
@@ -16,9 +16,9 @@ fn generate_join_code() -> String {
     Uuid::new_v4().simple().to_string()[..8].to_uppercase()
 }
 
-/// Creates a new household with a freshly generated `join_code`, seeds its starter categories, and
-/// returns the household. Both inserts happen in one transaction, so a household is never left
-/// without its default categories (or vice versa) if either step fails.
+/// Creates a new household with a freshly generated `join_code`, seeds its starter category groups
+/// and categories, and returns the household. Everything happens in one transaction, so a
+/// household is never left half-seeded if a later step fails.
 pub async fn create(pool: &PgPool) -> Result<Household, sqlx::Error> {
     let mut last_error = None;
 
@@ -41,7 +41,7 @@ pub async fn create(pool: &PgPool) -> Result<Household, sqlx::Error> {
             Err(e) => return Err(e),
         };
 
-        categories_repository::seed_defaults(&mut *tx, household.id).await?;
+        category_groups_repository::seed_defaults(&mut tx, household.id).await?;
         tx.commit().await?;
         return Ok(household);
     }

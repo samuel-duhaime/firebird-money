@@ -86,6 +86,7 @@ async fn main() -> std::io::Result<()> {
             .configure(features::auth::configure)
             .configure(features::transactions::configure)
             .configure(features::categories::configure)
+            .configure(features::category_groups::configure)
             .configure(features::households::configure)
             .configure(features::users::configure)
             .configure(features::household_members::configure)

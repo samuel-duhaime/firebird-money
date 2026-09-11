@@ -9,8 +9,8 @@ use sqlx::PgPool;
 use super::model::{CategoryPatch, NewCategory};
 use super::repository;
 use crate::shared::http_error::{
-    error_response, error_response_with_n, internal_error_response, is_check_violation,
-    is_foreign_key_violation, is_unique_violation, not_found_response,
+    error_response, error_response_with_n, internal_error_response, is_foreign_key_violation,
+    is_unique_violation, not_found_response,
 };
 use crate::shared::l10n::L10n;
 
@@ -37,11 +37,12 @@ async fn create_category(
             StatusCode::CONFLICT,
             "category-duplicate-name",
         ),
-        Err(e) if is_check_violation(&e) => error_response(
+        Err(e) if is_foreign_key_violation(&e) => error_response_with_n(
             &l10n,
             &locale,
             StatusCode::BAD_REQUEST,
-            "category-invalid-type",
+            "category-group-not-found",
+            new_category.group_id as u32,
         ),
         Err(e) => {
             error!("failed to create category error={e}");
@@ -99,11 +100,12 @@ async fn update_category(
             StatusCode::CONFLICT,
             "category-duplicate-name",
         ),
-        Err(e) if is_check_violation(&e) => error_response(
+        Err(e) if is_foreign_key_violation(&e) => error_response_with_n(
             &l10n,
             &locale,
             StatusCode::BAD_REQUEST,
-            "category-invalid-type",
+            "category-group-not-found",
+            patch.group_id.unwrap_or_default() as u32,
         ),
         Err(e) => {
             error!("failed to update category id={id} error={e}");

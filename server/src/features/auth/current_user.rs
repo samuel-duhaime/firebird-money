@@ -9,9 +9,10 @@ use std::pin::Pin;
 use actix_web::dev::Payload;
 use actix_web::error::InternalError;
 use actix_web::http::StatusCode;
-use actix_web::{web, FromRequest, HttpRequest};
+use actix_web::{web, FromRequest, HttpRequest, HttpResponse};
 use log::error;
 use sqlx::PgPool;
+use unic_langid::LanguageIdentifier;
 
 use super::model::Membership;
 use super::{repository, session};
@@ -27,8 +28,6 @@ pub struct CurrentUser {
 
 impl CurrentUser {
     /// The household this caller belongs to, or `None` if they haven't onboarded.
-    // Not read yet: wired into `categories`/`transactions` scoping in a follow-up commit.
-    #[allow(dead_code)]
     pub fn household_id(&self) -> Option<i32> {
         self.household.as_ref().map(|m| m.household_id)
     }
@@ -39,6 +38,17 @@ impl CurrentUser {
     #[allow(dead_code)]
     pub fn household_member_id(&self) -> Option<i32> {
         self.household.as_ref().map(|m| m.id)
+    }
+
+    /// The common guard every household-scoped route needs: the caller's household id, or a 403
+    /// `auth-no-household` response if they haven't onboarded yet.
+    pub fn require_household_id(
+        &self,
+        l10n: &L10n,
+        locale: &LanguageIdentifier,
+    ) -> Result<i32, HttpResponse> {
+        self.household_id()
+            .ok_or_else(|| error_response(l10n, locale, StatusCode::FORBIDDEN, "auth-no-household"))
     }
 }
 
