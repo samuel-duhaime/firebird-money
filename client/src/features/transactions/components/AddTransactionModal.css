@@ -68,7 +68,7 @@
 }
 
 .modal-body input,
-.modal-body select {
+.modal-category-trigger {
   width: 100%;
   box-sizing: border-box;
   padding: 11px 14px;
@@ -86,30 +86,17 @@
 }
 
 .modal-body input:focus,
-.modal-body select:focus {
+.modal-category-trigger:focus-visible {
   border-color: var(--color-primary);
 }
 
-.category-select-wrapper {
-  position: relative;
-}
-
-.modal-body select {
+.modal-category-trigger {
   cursor: pointer;
-  appearance: none;
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  padding-right: 40px;
+  text-align: left;
 }
 
-.category-select-arrow {
-  position: absolute;
-  right: 14px;
-  top: 50%;
-  transform: translateY(-50%);
+.modal-category-trigger--placeholder .category-picker-trigger-label {
   color: var(--color-lightest);
-  font-size: 12px;
-  pointer-events: none;
 }
 
 .modal-body input[type='date']::-webkit-calendar-picker-indicator {

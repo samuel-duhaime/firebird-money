@@ -23,6 +23,12 @@ export const downloadFailedToast = () =>
 export const addTransactionSucceededToast = () =>
   toast.success(i18n.t('toast.addTransactionSucceeded'));
 
+export const updateTransactionFailedToast = () =>
+  toast.error(i18n.t('toast.updateTransactionFailed'));
+
+export const invalidAmountToast = () =>
+  toast.error(i18n.t('transactions.add.invalidAmount'));
+
 export const importStartedToast = () => toast(i18n.t('toast.importStarted'));
 
 export const importFailedToast = () =>

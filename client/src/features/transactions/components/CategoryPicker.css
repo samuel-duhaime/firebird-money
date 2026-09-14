@@ -1,0 +1,144 @@
+.category-picker-popover {
+  width: 280px;
+  max-height: calc(100vh - 32px);
+  padding: var(--spacing-xs);
+  gap: var(--spacing-xs);
+}
+
+.category-picker-trigger {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.category-picker-trigger-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.category-picker-trigger-chevron {
+  flex: none;
+  margin-left: var(--spacing-xs);
+  color: var(--color-lightest);
+  font-size: 12px;
+}
+
+/* In the transactions list, the chevron is part of the row's "hover to edit" affordance rather
+ * than a permanent select-style arrow — it only shows up once the cell itself signals it's
+ * editable. */
+.transactions-row-cell--editable .category-picker-trigger-chevron {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.transactions-row-cell--editable:hover .category-picker-trigger-chevron,
+.transactions-row-cell--editable:focus-visible
+  .category-picker-trigger-chevron {
+  opacity: 1;
+}
+
+.category-picker-search {
+  padding: var(--spacing-xs) var(--spacing-s);
+  border: 1px solid var(--color-light);
+  border-radius: var(--spacing-xs);
+  background: var(--color-background);
+  color: var(--color-white);
+  font:
+    400 15px/1.5 Quicksand,
+    sans-serif;
+}
+
+.category-picker-search:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.category-picker-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.category-picker-empty {
+  margin: var(--spacing-xs) 0;
+  padding: 0 var(--spacing-s);
+  color: var(--color-lightest);
+  font-size: 14px;
+}
+
+.category-picker-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.category-picker-group:not(:first-child) {
+  margin-top: 4px;
+  border-top: 1px solid var(--color-medium);
+}
+
+.category-picker-group-name {
+  padding: var(--spacing-s) var(--spacing-s) 4px;
+  color: var(--color-lightest);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.category-picker-option {
+  display: block;
+  width: 100%;
+  padding: var(--spacing-xs) var(--spacing-s);
+  border: none;
+  border-radius: var(--spacing-xs);
+  background: none;
+  color: var(--color-white);
+  font:
+    400 15px/1.5 Quicksand,
+    sans-serif;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.category-picker-option:hover,
+.category-picker-option:focus-visible,
+.category-picker-option--highlighted {
+  background: var(--color-medium);
+}
+
+.category-picker-option--selected,
+.category-picker-option--selected:hover,
+.category-picker-option--selected:focus-visible,
+.category-picker-option--selected.category-picker-option--highlighted {
+  background: color-mix(in srgb, var(--color-primary) 30%, var(--color-dark));
+}
+
+.category-picker-create {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-s);
+  border: none;
+  border-top: 1px solid var(--color-medium);
+  border-radius: 0;
+  background: none;
+  color: var(--color-primary);
+  font:
+    700 15px/1.5 Quicksand,
+    sans-serif;
+  text-align: left;
+  cursor: pointer;
+}
+
+.category-picker-create:hover,
+.category-picker-create:focus-visible,
+.category-picker-create--highlighted {
+  color: var(--color-white);
+  background: var(--color-medium);
+}
