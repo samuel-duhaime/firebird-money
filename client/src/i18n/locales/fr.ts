@@ -144,9 +144,15 @@ export const fr: typeof en = {
       error: 'Échec du chargement des transactions.',
       empty: 'Aucune transaction pour le moment.',
     },
+    edit: {
+      categorySearchPlaceholder: 'Rechercher des catégories...',
+      noCategoriesFound: 'Aucune catégorie trouvée.',
+      createCategory: 'Créer une nouvelle catégorie',
+    },
   },
   toast: {
     notImplemented: "Cette fonctionnalité n'est pas encore disponible.",
+    updateTransactionFailed: 'Impossible de modifier la transaction. Réessaie.',
     signInFailed: 'Impossible d’envoyer le lien de connexion. Réessaie.',
     signOutFailed: 'Impossible de te déconnecter. Réessaie.',
     onboardingFailed: 'Impossible de configurer ton ménage. Réessaie.',

@@ -1,4 +1,4 @@
-import type { APIRequestContext } from '@playwright/test';
+import type { APIRequestContext, Page } from '@playwright/test';
 import { test, expect } from '../fixtures';
 import {
   DATE_RANGE_PRESETS,
@@ -40,13 +40,28 @@ const shiftDateKey = (dateKey: string, days: number): string => {
 const getCategoryId = async (
   request: APIRequestContext,
   apiOrigin: string,
-  nameEn: 'Groceries' | 'Paychecks' | 'Transfer',
+  nameEn: 'Groceries' | 'Coffee Shops' | 'Paychecks' | 'Transfer',
 ): Promise<number> => {
   const response = await request.get(`${apiOrigin}/categories`);
   const categories: { id: number; name_en: string }[] = await response.json();
   const match = categories.find((category) => category.name_en === nameEn);
   if (!match) throw new Error(`category not seeded: ${nameEn}`);
   return match.id;
+};
+
+/** The add-transaction form's category field is the same searchable `CategoryPicker` popover as
+ * the transactions-list inline edit, portaled to `document.body` rather than nested in the
+ * dialog — so it's queried against `page`, not the dialog locator. */
+const selectCategory = async (
+  page: Page,
+  triggerName: string,
+  optionName: string,
+): Promise<void> => {
+  await page.getByRole('button', { name: triggerName, exact: true }).click();
+  await page
+    .locator('.category-picker-popover')
+    .getByRole('button', { name: optionName, exact: true })
+    .click();
 };
 
 type SeedTransaction = {
@@ -93,9 +108,7 @@ test.describe('list, grouping, and daily subtotal', () => {
     );
 
     await authedPage.goto('/transactions');
-    await expect(
-      authedPage.getByText('Loading transactions…'),
-    ).toBeVisible();
+    await expect(authedPage.getByText('Loading transactions…')).toBeVisible();
     await expect(authedPage.getByText('No transactions yet.')).toBeVisible();
   });
 
@@ -255,7 +268,7 @@ test.describe('add transaction', () => {
     await dialog.getByLabel('Amount').fill('12.50');
     await dialog.getByLabel('Merchant').fill('Corner Store');
     await dialog.getByLabel('Date').fill('2023-03-01');
-    await dialog.getByLabel('Category').selectOption({ label: 'Groceries' });
+    await selectCategory(authedPage, 'Select category', 'Groceries');
     await dialog
       .getByRole('button', { name: 'Add transaction', exact: true })
       .click();
@@ -304,7 +317,7 @@ test.describe('add transaction', () => {
     await dialog.getByLabel('Amount').fill('12.50');
     await dialog.getByLabel('Merchant').fill('Corner Store');
     await dialog.getByLabel('Date').fill('2023-03-01');
-    await dialog.getByLabel('Category').selectOption({ label: 'Groceries' });
+    await selectCategory(authedPage, 'Select category', 'Groceries');
     await dialog
       .getByRole('button', { name: 'Add transaction', exact: true })
       .click();
@@ -327,7 +340,7 @@ test.describe('add transaction', () => {
       await dialog.getByLabel('Amount').fill(rawAmount);
       await dialog.getByLabel('Merchant').fill('Normalization Check');
       await dialog.getByLabel('Date').fill('2023-03-01');
-      await dialog.getByLabel('Category').selectOption({ label: 'Groceries' });
+      await selectCategory(page, 'Select category', 'Groceries');
       await dialog
         .getByRole('button', { name: 'Add transaction', exact: true })
         .click();
@@ -387,6 +400,42 @@ test.describe('add transaction', () => {
       await dialog.getByLabel('Amount').fill('12.50abc$');
       await expect(dialog.getByLabel('Amount')).toHaveValue('12.50');
     });
+
+    test('strips a minus sign as it is typed, so amounts can never go negative', async ({
+      authedPage,
+    }) => {
+      await authedPage.goto('/transactions');
+      await authedPage
+        .getByRole('button', { name: 'Add', exact: true })
+        .click();
+      const dialog = authedPage.getByRole('dialog', {
+        name: 'Add transaction',
+      });
+      await dialog.getByLabel('Amount').fill('-12.50');
+      await expect(dialog.getByLabel('Amount')).toHaveValue('12.50');
+    });
+  });
+
+  test('uses the same searchable, grouped category popover as the transactions list', async ({
+    authedPage,
+  }) => {
+    await authedPage.goto('/transactions');
+    await authedPage.getByRole('button', { name: 'Add', exact: true }).click();
+
+    await authedPage
+      .getByRole('button', { name: 'Select category', exact: true })
+      .click();
+    const popover = authedPage.locator('.category-picker-popover');
+    await expect(popover).toBeVisible();
+    await expect(popover.getByText('Food & Dining')).toBeVisible();
+    await popover.getByPlaceholder('Search categories...').fill('groceries');
+    await popover
+      .getByRole('button', { name: 'Groceries', exact: true })
+      .click();
+
+    await expect(
+      authedPage.getByRole('button', { name: 'Groceries', exact: true }),
+    ).toBeVisible();
   });
 });
 
@@ -418,9 +467,7 @@ test.describe('search', () => {
     await authedPage
       .getByRole('button', { name: 'Search', exact: true })
       .click();
-    await authedPage
-      .getByPlaceholder('Enter a search term...')
-      .fill('foods');
+    await authedPage.getByPlaceholder('Enter a search term...').fill('foods');
     await authedPage.getByPlaceholder('Enter a search term...').press('Enter');
 
     await expect(
@@ -921,5 +968,523 @@ test.describe('clear all', () => {
     expect(authedPage.url()).not.toContain('search=');
     expect(authedPage.url()).not.toContain('order=');
     expect(authedPage.url()).not.toContain('start_date=');
+  });
+});
+
+test.describe('edit 1 field directly', () => {
+  const seedCornerStore = async (
+    request: APIRequestContext,
+    apiOrigin: string,
+    categoryName: 'Groceries' | 'Coffee Shops' = 'Groceries',
+  ): Promise<void> => {
+    const categoryId = await getCategoryId(request, apiOrigin, categoryName);
+    await seedTransaction(request, apiOrigin, {
+      date: '2023-04-01',
+      merchant: 'Corner Store',
+      amount: '20.00',
+      categoryId,
+    });
+  };
+
+  test('rewrites the merchant on Enter', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedCornerStore(context.request, workerInfra.apiOrigin);
+    await authedPage.goto('/transactions');
+
+    const row = authedPage.locator('li.transactions-row', {
+      hasText: 'Corner Store',
+    });
+    await row
+      .getByRole('button', { name: 'Corner Store', exact: true })
+      .click();
+    const input = authedPage.locator('.transactions-row-input');
+    await input.fill('Uptown Store');
+    await input.press('Enter');
+
+    const updatedRow = authedPage.locator('li.transactions-row', {
+      hasText: 'Uptown Store',
+    });
+    await expect(
+      updatedRow.getByRole('button', { name: 'Uptown Store', exact: true }),
+    ).toBeVisible();
+  });
+
+  test('rewrites the account on blur', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedCornerStore(context.request, workerInfra.apiOrigin);
+    await authedPage.goto('/transactions');
+
+    const row = authedPage.locator('li.transactions-row', {
+      hasText: 'Corner Store',
+    });
+    await row.getByRole('button', { name: 'Seed', exact: true }).click();
+    const input = authedPage.locator('.transactions-row-input');
+    await input.fill('Chequing');
+    // Clicking elsewhere blurs the input without pressing Enter.
+    await authedPage.locator('.top-menu-title').click();
+
+    await expect(
+      row.getByRole('button', { name: 'Chequing', exact: true }),
+    ).toBeVisible();
+  });
+
+  test('rewrites the amount', async ({ authedPage, context, workerInfra }) => {
+    await seedCornerStore(context.request, workerInfra.apiOrigin);
+    await authedPage.goto('/transactions');
+
+    const row = authedPage.locator('li.transactions-row', {
+      hasText: 'Corner Store',
+    });
+    await row.locator('.transactions-row-amount').click();
+    const input = authedPage.locator('.transactions-row-input--amount');
+    await input.fill('35.50');
+    await input.press('Enter');
+
+    await expect(row.locator('.transactions-row-amount')).toContainText(
+      money(35.5),
+    );
+  });
+
+  test('strips a minus sign as it is typed, so amounts can never go negative', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedCornerStore(context.request, workerInfra.apiOrigin);
+    await authedPage.goto('/transactions');
+
+    const row = authedPage.locator('li.transactions-row', {
+      hasText: 'Corner Store',
+    });
+    await row.locator('.transactions-row-amount').click();
+    const input = authedPage.locator('.transactions-row-input--amount');
+    await input.fill('-35.50');
+
+    await expect(input).toHaveValue('35.50');
+  });
+
+  test('cancels an edit on Escape without saving', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedCornerStore(context.request, workerInfra.apiOrigin);
+    await authedPage.goto('/transactions');
+
+    const row = authedPage.locator('li.transactions-row', {
+      hasText: 'Corner Store',
+    });
+    await row
+      .getByRole('button', { name: 'Corner Store', exact: true })
+      .click();
+    const input = authedPage.locator('.transactions-row-input');
+    await input.fill('Should Not Save');
+    await authedPage.keyboard.press('Escape');
+
+    await expect(
+      row.getByRole('button', { name: 'Corner Store', exact: true }),
+    ).toBeVisible();
+    await expect(authedPage.getByText('Should Not Save')).not.toBeVisible();
+  });
+
+  test('cancels an account edit on Escape without saving', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedCornerStore(context.request, workerInfra.apiOrigin);
+    await authedPage.goto('/transactions');
+
+    const row = authedPage.locator('li.transactions-row', {
+      hasText: 'Corner Store',
+    });
+    await row.getByRole('button', { name: 'Seed', exact: true }).click();
+    const input = authedPage.locator('.transactions-row-input');
+    await input.fill('Should Not Save');
+    await authedPage.keyboard.press('Escape');
+
+    await expect(
+      row.getByRole('button', { name: 'Seed', exact: true }),
+    ).toBeVisible();
+    await expect(authedPage.getByText('Should Not Save')).not.toBeVisible();
+  });
+
+  test('cancels an amount edit on Escape without saving', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedCornerStore(context.request, workerInfra.apiOrigin);
+    await authedPage.goto('/transactions');
+
+    const row = authedPage.locator('li.transactions-row', {
+      hasText: 'Corner Store',
+    });
+    await row.locator('.transactions-row-amount').click();
+    const input = authedPage.locator('.transactions-row-input--amount');
+    await input.fill('999.99');
+    await authedPage.keyboard.press('Escape');
+
+    await expect(row.locator('.transactions-row-amount')).toContainText(
+      money(20),
+    );
+    await expect(authedPage.getByText('999.99')).not.toBeVisible();
+  });
+
+  test('shows an error and keeps editing when the amount cannot be parsed', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedCornerStore(context.request, workerInfra.apiOrigin);
+    await authedPage.goto('/transactions');
+
+    const row = authedPage.locator('li.transactions-row', {
+      hasText: 'Corner Store',
+    });
+    await row.locator('.transactions-row-amount').click();
+    const input = authedPage.locator('.transactions-row-input--amount');
+    await input.fill('1,234');
+    await input.press('Enter');
+
+    await expect(
+      authedPage.getByText(
+        'Enter a plain amount, e.g. 12.50, without thousands separators.',
+      ),
+    ).toBeVisible();
+    await expect(input).toBeVisible();
+    await expect(input).toHaveValue('1,234');
+  });
+
+  test.describe('when the update request fails', () => {
+    const routeAllPatchesToFail = (page: Page) =>
+      page.route('**/transactions/*', async (route) => {
+        if (route.request().method() === 'PATCH') {
+          await route.fulfill({
+            status: 500,
+            contentType: 'application/json',
+            body: '{}',
+          });
+        } else {
+          await route.continue();
+        }
+      });
+
+    test('shows a toast and keeps the old merchant', async ({
+      authedPage,
+      context,
+      workerInfra,
+    }) => {
+      await seedCornerStore(context.request, workerInfra.apiOrigin);
+      await authedPage.goto('/transactions');
+      await routeAllPatchesToFail(authedPage);
+
+      const row = authedPage.locator('li.transactions-row', {
+        hasText: 'Corner Store',
+      });
+      await row
+        .getByRole('button', { name: 'Corner Store', exact: true })
+        .click();
+      const input = authedPage.locator('.transactions-row-input');
+      await input.fill('Uptown Store');
+      await input.press('Enter');
+
+      await expect(
+        authedPage.getByText(
+          'Failed to update the transaction. Please try again.',
+        ),
+      ).toBeVisible();
+      await expect(
+        row.getByRole('button', { name: 'Corner Store', exact: true }),
+      ).toBeVisible();
+    });
+
+    test('shows a toast and keeps the old account', async ({
+      authedPage,
+      context,
+      workerInfra,
+    }) => {
+      await seedCornerStore(context.request, workerInfra.apiOrigin);
+      await authedPage.goto('/transactions');
+      await routeAllPatchesToFail(authedPage);
+
+      const row = authedPage.locator('li.transactions-row', {
+        hasText: 'Corner Store',
+      });
+      await row.getByRole('button', { name: 'Seed', exact: true }).click();
+      const input = authedPage.locator('.transactions-row-input');
+      await input.fill('Chequing');
+      await input.press('Enter');
+
+      await expect(
+        authedPage.getByText(
+          'Failed to update the transaction. Please try again.',
+        ),
+      ).toBeVisible();
+      await expect(
+        row.getByRole('button', { name: 'Seed', exact: true }),
+      ).toBeVisible();
+    });
+
+    test('shows a toast and keeps the old amount', async ({
+      authedPage,
+      context,
+      workerInfra,
+    }) => {
+      await seedCornerStore(context.request, workerInfra.apiOrigin);
+      await authedPage.goto('/transactions');
+      await routeAllPatchesToFail(authedPage);
+
+      const row = authedPage.locator('li.transactions-row', {
+        hasText: 'Corner Store',
+      });
+      await row.locator('.transactions-row-amount').click();
+      const input = authedPage.locator('.transactions-row-input--amount');
+      await input.fill('35.50');
+      await input.press('Enter');
+
+      await expect(
+        authedPage.getByText(
+          'Failed to update the transaction. Please try again.',
+        ),
+      ).toBeVisible();
+      await expect(row.locator('.transactions-row-amount')).toContainText(
+        money(20),
+      );
+    });
+
+    test('shows a toast and keeps the old category', async ({
+      authedPage,
+      context,
+      workerInfra,
+    }) => {
+      await seedCornerStore(
+        context.request,
+        workerInfra.apiOrigin,
+        'Groceries',
+      );
+      await authedPage.goto('/transactions');
+      await routeAllPatchesToFail(authedPage);
+
+      const row = authedPage.locator('li.transactions-row', {
+        hasText: 'Corner Store',
+      });
+      await row.getByRole('button', { name: 'Groceries', exact: true }).click();
+      await authedPage
+        .locator('.category-picker-popover')
+        .getByRole('button', { name: 'Coffee Shops', exact: true })
+        .click();
+
+      await expect(
+        authedPage.getByText(
+          'Failed to update the transaction. Please try again.',
+        ),
+      ).toBeVisible();
+      await expect(
+        row.getByRole('button', { name: 'Groceries', exact: true }),
+      ).toBeVisible();
+    });
+  });
+
+  test.describe('category', () => {
+    test('opens a searchable list grouped by category group', async ({
+      authedPage,
+      context,
+      workerInfra,
+    }) => {
+      await seedCornerStore(
+        context.request,
+        workerInfra.apiOrigin,
+        'Groceries',
+      );
+      await authedPage.goto('/transactions');
+
+      const row = authedPage.locator('li.transactions-row', {
+        hasText: 'Corner Store',
+      });
+      await row.getByRole('button', { name: 'Groceries', exact: true }).click();
+
+      const popover = authedPage.locator('.category-picker-popover');
+      await expect(popover).toBeVisible();
+      await expect(popover.getByText('Food & Dining')).toBeVisible();
+      await expect(
+        popover.getByRole('button', { name: 'Groceries', exact: true }),
+      ).toBeVisible();
+      await expect(
+        popover.getByRole('button', { name: 'Coffee Shops', exact: true }),
+      ).toBeVisible();
+    });
+
+    test('filters the list as you search', async ({
+      authedPage,
+      context,
+      workerInfra,
+    }) => {
+      await seedCornerStore(
+        context.request,
+        workerInfra.apiOrigin,
+        'Groceries',
+      );
+      await authedPage.goto('/transactions');
+
+      const row = authedPage.locator('li.transactions-row', {
+        hasText: 'Corner Store',
+      });
+      await row.getByRole('button', { name: 'Groceries', exact: true }).click();
+
+      const popover = authedPage.locator('.category-picker-popover');
+      await popover.getByPlaceholder('Search categories...').fill('coffee');
+
+      await expect(
+        popover.getByRole('button', { name: 'Coffee Shops', exact: true }),
+      ).toBeVisible();
+      await expect(
+        popover.getByRole('button', { name: 'Groceries', exact: true }),
+      ).not.toBeVisible();
+    });
+
+    test('selects a new category from the list', async ({
+      authedPage,
+      context,
+      workerInfra,
+    }) => {
+      await seedCornerStore(
+        context.request,
+        workerInfra.apiOrigin,
+        'Groceries',
+      );
+      await authedPage.goto('/transactions');
+
+      const row = authedPage.locator('li.transactions-row', {
+        hasText: 'Corner Store',
+      });
+      await row.getByRole('button', { name: 'Groceries', exact: true }).click();
+      await authedPage
+        .locator('.category-picker-popover')
+        .getByRole('button', { name: 'Coffee Shops', exact: true })
+        .click();
+
+      await expect(
+        row.getByRole('button', { name: 'Coffee Shops', exact: true }),
+      ).toBeVisible();
+    });
+
+    test('shows a not-available-yet message for "Create new category"', async ({
+      authedPage,
+      context,
+      workerInfra,
+    }) => {
+      await seedCornerStore(
+        context.request,
+        workerInfra.apiOrigin,
+        'Groceries',
+      );
+      await authedPage.goto('/transactions');
+
+      const row = authedPage.locator('li.transactions-row', {
+        hasText: 'Corner Store',
+      });
+      await row.getByRole('button', { name: 'Groceries', exact: true }).click();
+      await authedPage
+        .locator('.category-picker-popover')
+        .getByRole('button', { name: 'Create new category', exact: true })
+        .click();
+
+      await expect(
+        authedPage.getByText('This feature is not available yet.'),
+      ).toBeVisible();
+      await expect(
+        authedPage.locator('.category-picker-popover'),
+      ).not.toBeVisible();
+    });
+
+    test.describe('keyboard navigation', () => {
+      // Both default categories contain "income" (Business Income, Other Income), giving a
+      // short, deterministic list — plus "Create new category" — to arrow through.
+      const openFilteredToIncome = async (
+        authedPage: Page,
+        context: { request: APIRequestContext },
+        workerInfra: { apiOrigin: string },
+      ) => {
+        await seedCornerStore(
+          context.request,
+          workerInfra.apiOrigin,
+          'Groceries',
+        );
+        await authedPage.goto('/transactions');
+
+        const row = authedPage.locator('li.transactions-row', {
+          hasText: 'Corner Store',
+        });
+        await row
+          .getByRole('button', { name: 'Groceries', exact: true })
+          .click();
+        await authedPage
+          .locator('.category-picker-popover')
+          .getByPlaceholder('Search categories...')
+          .fill('income');
+      };
+
+      test('moves the highlight down with ArrowDown and selects with Enter', async ({
+        authedPage,
+        context,
+        workerInfra,
+      }) => {
+        await openFilteredToIncome(authedPage, context, workerInfra);
+
+        // Index 0 (Business Income) is highlighted as soon as the list narrows; one ArrowDown
+        // moves to index 1 (Other Income).
+        await authedPage.keyboard.press('ArrowDown');
+        await authedPage.keyboard.press('Enter');
+
+        await expect(
+          authedPage.getByRole('button', { name: 'Other Income', exact: true }),
+        ).toBeVisible();
+      });
+
+      test('does not move past the top with ArrowUp', async ({
+        authedPage,
+        context,
+        workerInfra,
+      }) => {
+        await openFilteredToIncome(authedPage, context, workerInfra);
+
+        await authedPage.keyboard.press('ArrowUp');
+        await authedPage.keyboard.press('ArrowUp');
+        await authedPage.keyboard.press('Enter');
+
+        await expect(
+          authedPage.getByRole('button', {
+            name: 'Business Income',
+            exact: true,
+          }),
+        ).toBeVisible();
+      });
+
+      test('moves past the last category to "Create new category" and can select it with Enter', async ({
+        authedPage,
+        context,
+        workerInfra,
+      }) => {
+        await openFilteredToIncome(authedPage, context, workerInfra);
+
+        // Only 2 categories match "income"; 3 ArrowDown presses overshoots onto (and clamps at)
+        // "Create new category".
+        await authedPage.keyboard.press('ArrowDown');
+        await authedPage.keyboard.press('ArrowDown');
+        await authedPage.keyboard.press('ArrowDown');
+        await authedPage.keyboard.press('Enter');
+
+        await expect(
+          authedPage.getByText('This feature is not available yet.'),
+        ).toBeVisible();
+      });
+    });
   });
 });
