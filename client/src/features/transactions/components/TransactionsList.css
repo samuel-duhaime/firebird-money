@@ -30,7 +30,9 @@
 
 .transactions-row {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1.5fr) minmax(0, 1.5fr) 110px 16px;
+  grid-template-columns:
+    minmax(0, 2fr) minmax(0, 1.5fr) minmax(0, 1.5fr)
+    110px 16px;
   align-items: center;
   gap: var(--spacing-s);
   padding: var(--spacing-s);
@@ -46,6 +48,50 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.transactions-row-cell--editable {
+  width: 100%;
+  margin: 0;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: var(--spacing-xs);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.transactions-row-cell--editable:hover,
+.transactions-row-cell--editable:focus-visible {
+  border-color: var(--color-light);
+  background: var(--color-medium);
+}
+
+.transactions-row-cell--editable:focus-visible {
+  outline: none;
+}
+
+.transactions-row-amount.transactions-row-cell--editable {
+  text-align: right;
+}
+
+.transactions-row-input {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 4px 6px;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--spacing-xs);
+  background: var(--color-background);
+  color: var(--color-white);
+  font: inherit;
+  outline: none;
+}
+
+.transactions-row-input--amount {
+  text-align: right;
 }
 
 .transactions-row-account {

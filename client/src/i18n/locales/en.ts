@@ -141,9 +141,15 @@ export const en = {
       error: 'Failed to load transactions.',
       empty: 'No transactions yet.',
     },
+    edit: {
+      categorySearchPlaceholder: 'Search categories...',
+      noCategoriesFound: 'No categories found.',
+      createCategory: 'Create new category',
+    },
   },
   toast: {
     notImplemented: 'This feature is not available yet.',
+    updateTransactionFailed: 'Failed to update the transaction. Please try again.',
     signInFailed: 'Could not send the sign-in link. Please try again.',
     signOutFailed: 'Could not sign out. Please try again.',
     onboardingFailed: 'Could not set up your household. Please try again.',

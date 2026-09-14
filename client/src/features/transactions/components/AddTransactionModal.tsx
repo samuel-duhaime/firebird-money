@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faChevronDown } from '@fortawesome/free-solid-svg-icons';
 import { useCategories } from '../../categories/hooks/use-categories';
 import { useCreateTransaction } from '../hooks/use-create-transaction';
+import { normalizeAmount, sanitizeAmountInput } from '../utils/amount';
+import { CategoryPicker } from './CategoryPicker';
 import './AddTransactionModal.css';
 
 /**
@@ -12,23 +12,6 @@ import './AddTransactionModal.css';
  * one — this is the value manually-added transactions carry until accounts exist.
  */
 const MANUAL_ACCOUNT = 'Manual entry';
-
-/**
- * The amount input accepts a comma or a period as the decimal separator (French keyboards
- * produce a comma), but a value with both — e.g. "1,234.56" — or a single separator followed by
- * 3+ digits — e.g. "1,234" — reads as thousands-grouped. Guessing which separator was meant would
- * silently change the amount rather than fail loudly, so both are rejected instead. Returns the
- * amount as a server-compatible decimal string ("1234.56"), or null if it's ambiguous.
- */
-const normalizeAmount = (rawAmount: string): string | null => {
-  const separators = rawAmount.match(/[.,]/g) ?? [];
-  if (separators.length > 1) return null;
-
-  const [wholePart, fractionPart] = rawAmount.split(/[.,]/);
-  if (fractionPart !== undefined && fractionPart.length > 2) return null;
-
-  return fractionPart === undefined ? wholePart : `${wholePart}.${fractionPart}`;
-};
 
 type AddTransactionModalProps = {
   open: boolean;
@@ -47,7 +30,7 @@ export const AddTransactionModal = ({
   const [amount, setAmount] = useState('');
   const [merchant, setMerchant] = useState('');
   const [date, setDate] = useState('');
-  const [category, setCategory] = useState('');
+  const [categoryId, setCategoryId] = useState<number | null>(null);
   const [error, setError] = useState('');
   const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -56,9 +39,8 @@ export const AddTransactionModal = ({
   useEffect(() => {
     if (!open) return;
 
-    const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
-      FOCUSABLE_SELECTOR,
-    );
+    const focusable =
+      dialogRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
     focusable?.[0]?.focus();
   }, [open]);
 
@@ -72,9 +54,8 @@ export const AddTransactionModal = ({
 
     if (e.key !== 'Tab') return;
 
-    const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
-      FOCUSABLE_SELECTOR,
-    );
+    const focusable =
+      dialogRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
     if (!focusable || focusable.length === 0) return;
 
     const first = focusable[0];
@@ -91,7 +72,7 @@ export const AddTransactionModal = ({
 
   const handleAmountChange = (e: ChangeEvent<HTMLInputElement>) => {
     setError('');
-    setAmount(e.target.value.replace(/[^0-9.,]/g, ''));
+    setAmount(sanitizeAmountInput(e.target.value));
   };
 
   const handleMerchantChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -104,13 +85,18 @@ export const AddTransactionModal = ({
     setDate(e.target.value);
   };
 
-  const handleCategoryChange = (e: ChangeEvent<HTMLSelectElement>) => {
+  const handleCategorySelect = (id: number) => {
     setError('');
-    setCategory(e.target.value);
+    setCategoryId(id);
   };
 
   const handleSubmit = () => {
-    if (!amount.trim() || !merchant.trim() || !date.trim() || !category.trim()) {
+    if (
+      !amount.trim() ||
+      !merchant.trim() ||
+      !date.trim() ||
+      categoryId === null
+    ) {
       setError(t('transactions.add.required', 'All fields are required.'));
       return;
     }
@@ -132,7 +118,7 @@ export const AddTransactionModal = ({
         date,
         merchant: merchant.trim(),
         amount: normalizedAmount,
-        category_id: Number(category),
+        category_id: categoryId,
         account: MANUAL_ACCOUNT,
       },
       {
@@ -140,7 +126,7 @@ export const AddTransactionModal = ({
           setAmount('');
           setMerchant('');
           setDate('');
-          setCategory('');
+          setCategoryId(null);
           onClose();
         },
         onError: () => {
@@ -154,6 +140,13 @@ export const AddTransactionModal = ({
       },
     );
   };
+
+  const selectedCategory = categories?.find((c) => c.id === categoryId);
+  const categoryLabel = selectedCategory
+    ? i18n.language === 'fr'
+      ? selectedCategory.name_fr
+      : selectedCategory.name_en
+    : t('transactions.add.selectCategory', 'Select category');
 
   return (
     <div className="modal-overlay">
@@ -212,9 +205,7 @@ export const AddTransactionModal = ({
             onChange={handleMerchantChange}
           />
 
-          <label htmlFor="date">
-            {t('transactions.add.date', 'Date')}
-          </label>
+          <label htmlFor="date">{t('transactions.add.date', 'Date')}</label>
           <input
             id="date"
             type="date"
@@ -222,32 +213,17 @@ export const AddTransactionModal = ({
             onChange={handleDateChange}
           />
 
-          <label htmlFor="category">
-            {t('transactions.add.category', 'Category')}
-          </label>
-          <div className="category-select-wrapper">
-            <select
-              id="category"
-              value={category}
-              onChange={handleCategoryChange}
-            >
-              <option value="">
-                {t('transactions.add.selectCategory', 'Select a category')}
-              </option>
-
-              {categories?.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {i18n.language === 'fr'
-                    ? category.name_fr
-                    : category.name_en}
-                </option>
-              ))}
-            </select>
-            <FontAwesomeIcon
-              icon={faChevronDown}
-              className="category-select-arrow"
-            />
-          </div>
+          <label>{t('transactions.add.category', 'Category')}</label>
+          <CategoryPicker
+            categoryId={categoryId}
+            label={categoryLabel}
+            className={
+              selectedCategory
+                ? 'modal-category-trigger'
+                : 'modal-category-trigger modal-category-trigger--placeholder'
+            }
+            onSelect={handleCategorySelect}
+          />
 
           {error && (
             <p className="modal-error" role="alert">

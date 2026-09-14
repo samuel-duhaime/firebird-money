@@ -1,13 +1,19 @@
-import { Fragment } from 'react';
+import { Fragment, useRef, useState } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { getRouteApi } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faChevronRight } from '@fortawesome/free-solid-svg-icons';
 import { useTransactions } from '../hooks/use-transactions';
+import { useUpdateTransaction } from '../hooks/use-update-transaction';
 import { TransactionsToolbar } from './TransactionsToolbar';
+import { CategoryPicker } from './CategoryPicker';
 import { formatAmount, formatDateHeading } from '../utils/format';
+import { normalizeAmount, sanitizeAmountInput } from '../utils/amount';
 import { toIntlLocale } from '../../../i18n/locale';
+import { invalidAmountToast, updateTransactionFailedToast } from '../../../lib/toast';
 import type { Transaction } from '../utils/types';
+import type { TransactionPatch } from '../utils/api';
 import './TransactionsList.css';
 
 /** Groups transactions by date, assuming they already arrive sorted with same-date rows adjacent. */
@@ -32,6 +38,10 @@ const dailyTotal = (transactions: Transaction[]): number =>
     .filter((transaction) => transaction.category_type === 'expense')
     .reduce((sum, transaction) => sum + Number(transaction.amount), 0);
 
+/** The row's directly-editable text fields. Category is
+ * edited through `CategoryPicker` instead, since it's a pick-from-a-list field, not free text. */
+type EditableField = 'merchant' | 'account' | 'amount';
+
 const TransactionRow = ({
   transaction,
   language,
@@ -45,27 +55,146 @@ const TransactionRow = ({
   const categoryName =
     language === 'fr' ? transaction.category_name_fr : transaction.category_name_en;
 
+  const updateTransactionMutation = useUpdateTransaction();
+  const [editingField, setEditingField] = useState<EditableField | null>(null);
+  const [draft, setDraft] = useState('');
+  // Guards against the field's input firing a second, native blur-on-unmount once editing has
+  // already been closed by an explicit Enter/Escape in the same tick (see handleKeyDown).
+  const commitInFlightRef = useRef(false);
+  const cancelledRef = useRef(false);
+
+  const startEdit = (field: EditableField, value: string) => {
+    setDraft(value);
+    setEditingField(field);
+  };
+
+  const save = (patch: TransactionPatch) => {
+    updateTransactionMutation.mutate(
+      { id: transaction.id, patch },
+      { onError: () => updateTransactionFailedToast() },
+    );
+  };
+
+  const commit = () => {
+    if (commitInFlightRef.current) return;
+    if (cancelledRef.current) {
+      cancelledRef.current = false;
+      return;
+    }
+
+    const field = editingField;
+    if (!field) return;
+    commitInFlightRef.current = true;
+    queueMicrotask(() => {
+      commitInFlightRef.current = false;
+    });
+
+    const trimmed = draft.trim();
+
+    if (field === 'amount') {
+      const normalized = normalizeAmount(trimmed);
+      if (normalized === null) {
+        invalidAmountToast();
+        return;
+      }
+      setEditingField(null);
+      if (normalized !== transaction.amount) save({ amount: normalized });
+      return;
+    }
+
+    setEditingField(null);
+    if (trimmed !== '' && trimmed !== transaction[field]) {
+      save({ [field]: trimmed });
+    }
+  };
+
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      commit();
+    } else if (event.key === 'Escape') {
+      cancelledRef.current = true;
+      setEditingField(null);
+    }
+  };
+
+  const handleCategorySelect = (categoryId: number) => {
+    if (categoryId === transaction.category_id) return;
+    save({ category_id: categoryId });
+  };
+
   return (
     <li className="transactions-row">
-      <div className="transactions-row-cell transactions-row-merchant">
-        {transaction.merchant}
-      </div>
-      <div className="transactions-row-cell transactions-row-category">
-        {categoryName}
-      </div>
-      <div className="transactions-row-cell transactions-row-account">
-        {transaction.account}
-      </div>
-      <div
-        className={
-          isCredit
-            ? 'transactions-row-amount transactions-row-amount--credit'
-            : 'transactions-row-amount'
-        }
-      >
-        {isCredit ? '+' : ''}
-        {formatAmount(Number(transaction.amount), locale)}
-      </div>
+      {editingField === 'merchant' ? (
+        <input
+          className="transactions-row-cell transactions-row-input"
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={handleKeyDown}
+          onBlur={commit}
+          autoFocus
+        />
+      ) : (
+        <button
+          type="button"
+          className="transactions-row-cell transactions-row-merchant transactions-row-cell--editable"
+          onClick={() => startEdit('merchant', transaction.merchant)}
+        >
+          {transaction.merchant}
+        </button>
+      )}
+
+      <CategoryPicker
+        categoryId={transaction.category_id}
+        label={categoryName}
+        className="transactions-row-cell transactions-row-category transactions-row-cell--editable"
+        onSelect={handleCategorySelect}
+      />
+
+      {editingField === 'account' ? (
+        <input
+          className="transactions-row-cell transactions-row-input"
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={handleKeyDown}
+          onBlur={commit}
+          autoFocus
+        />
+      ) : (
+        <button
+          type="button"
+          className="transactions-row-cell transactions-row-account transactions-row-cell--editable"
+          onClick={() => startEdit('account', transaction.account)}
+        >
+          {transaction.account}
+        </button>
+      )}
+
+      {editingField === 'amount' ? (
+        <input
+          className="transactions-row-input transactions-row-input--amount"
+          inputMode="decimal"
+          value={draft}
+          onChange={(event) => setDraft(sanitizeAmountInput(event.target.value))}
+          onKeyDown={handleKeyDown}
+          onBlur={commit}
+          autoFocus
+        />
+      ) : (
+        <button
+          type="button"
+          className={
+            isCredit
+              ? 'transactions-row-amount transactions-row-amount--credit transactions-row-cell--editable'
+              : 'transactions-row-amount transactions-row-cell--editable'
+          }
+          onClick={() => startEdit('amount', transaction.amount)}
+        >
+          {isCredit ? '+' : ''}
+          {formatAmount(Number(transaction.amount), locale)}
+        </button>
+      )}
+
       <FontAwesomeIcon
         icon={faChevronRight}
         className="transactions-row-chevron"
