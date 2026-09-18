@@ -12,6 +12,7 @@ import { formatAmount, formatDateHeading } from '../utils/format';
 import { normalizeAmount, sanitizeAmountInput } from '../utils/amount';
 import { toIntlLocale } from '../../../i18n/locale';
 import {
+  amountTooLongToast,
   invalidAmountToast,
   requiredFieldToast,
   updateTransactionFailedToast,
@@ -99,13 +100,14 @@ const TransactionRow = ({
     const trimmed = draft.trim();
 
     if (field === 'amount') {
-      const normalized = normalizeAmount(trimmed);
-      if (normalized === null) {
-        invalidAmountToast();
+      const result = normalizeAmount(trimmed);
+      if (!result.valid) {
+        if (result.error === 'tooLong') amountTooLongToast();
+        else invalidAmountToast();
         return;
       }
       setEditingField(null);
-      if (normalized !== transaction.amount) save({ amount: normalized });
+      if (result.value !== transaction.amount) save({ amount: result.value });
       return;
     }
 

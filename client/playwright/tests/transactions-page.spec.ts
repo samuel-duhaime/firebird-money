@@ -392,7 +392,7 @@ test.describe('add transaction', () => {
     }) => {
       const dialog = await fillAndSubmit(authedPage, '12345678901.50');
       await expect(dialog.getByRole('alert')).toHaveText(
-        'Enter a plain amount, e.g. 12.50, without thousands separators.',
+        'Enter an amount with at most 10 digits before the decimal point.',
       );
       await expect(dialog).toBeVisible();
     });
@@ -1170,6 +1170,31 @@ test.describe('edit 1 field directly', () => {
     ).toBeVisible();
     await expect(input).toBeVisible();
     await expect(input).toHaveValue('1,234');
+  });
+
+  test('shows a specific error and keeps editing when the amount is too long to store', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedCornerStore(context.request, workerInfra.apiOrigin);
+    await authedPage.goto('/transactions');
+
+    const row = authedPage.locator('li.transactions-row', {
+      hasText: 'Corner Store',
+    });
+    await row.locator('.transactions-row-amount').click();
+    const input = authedPage.locator('.transactions-row-input--amount');
+    await input.fill('12345678901.50');
+    await input.press('Enter');
+
+    await expect(
+      authedPage.getByText(
+        'Enter an amount with at most 10 digits before the decimal point.',
+      ),
+    ).toBeVisible();
+    await expect(input).toBeVisible();
+    await expect(input).toHaveValue('12345678901.50');
   });
 
   test.describe('when the update request fails', () => {

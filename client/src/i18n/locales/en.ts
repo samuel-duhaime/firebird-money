@@ -81,6 +81,8 @@ export const en = {
       required: 'All fields are required.',
       invalidAmount:
         'Enter a plain amount, e.g. 12.50, without thousands separators.',
+      amountTooLong:
+        'Enter an amount with at most 10 digits before the decimal point.',
       failed: 'Failed to add the transaction. Please try again.',
     },
 
