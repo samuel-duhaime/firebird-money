@@ -1,5 +1,6 @@
 import type { APIRequestContext, Page } from '@playwright/test';
 import { test, expect } from '../fixtures';
+import { getCategoryId, seedTransaction } from '../lib/seed';
 import {
   DATE_RANGE_PRESETS,
   resolvePreset,
@@ -37,18 +38,6 @@ const shiftDateKey = (dateKey: string, days: number): string => {
   return `${shifted.getFullYear()}-${String(shifted.getMonth() + 1).padStart(2, '0')}-${String(shifted.getDate()).padStart(2, '0')}`;
 };
 
-const getCategoryId = async (
-  request: APIRequestContext,
-  apiOrigin: string,
-  nameEn: 'Groceries' | 'Coffee Shops' | 'Paychecks' | 'Transfer',
-): Promise<number> => {
-  const response = await request.get(`${apiOrigin}/categories`);
-  const categories: { id: number; name_en: string }[] = await response.json();
-  const match = categories.find((category) => category.name_en === nameEn);
-  if (!match) throw new Error(`category not seeded: ${nameEn}`);
-  return match.id;
-};
-
 /** The add-transaction form's category field is the same searchable `CategoryPicker` popover as
  * the transactions-list inline edit, portaled to `document.body` rather than nested in the
  * dialog — so it's queried against `page`, not the dialog locator. */
@@ -62,28 +51,6 @@ const selectCategory = async (
     .locator('.category-picker-popover')
     .getByRole('button', { name: optionName, exact: true })
     .click();
-};
-
-type SeedTransaction = {
-  date: string;
-  merchant: string;
-  amount: string;
-  categoryId: number;
-};
-
-const seedTransaction = async (
-  request: APIRequestContext,
-  apiOrigin: string,
-  { date, merchant, amount, categoryId }: SeedTransaction,
-): Promise<void> => {
-  const response = await request.post(`${apiOrigin}/transactions`, {
-    data: { date, merchant, amount, category_id: categoryId, account: 'Seed' },
-  });
-  if (!response.ok()) {
-    throw new Error(
-      `failed to seed transaction "${merchant}": ${response.status()} ${await response.text()}`,
-    );
-  }
 };
 
 test.describe('list, grouping, and daily subtotal', () => {

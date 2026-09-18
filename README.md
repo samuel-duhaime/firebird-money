@@ -4,6 +4,7 @@
 
 ## Table of Contents
 
+- [Screenshots](#screenshots)
 - [Install](#install)
 - [Configuration](#configuration)
 - [How to run](#how-to-run)
@@ -12,6 +13,10 @@
 - [Tests](#tests)
 - [Lint & Format](#lint--format)
 - [License](#license)
+
+## Screenshots
+
+![Transactions page](docs/images/transactions-page.png)
 
 ## Install
 
@@ -202,6 +207,13 @@ npm run test:ui
 ```
 
 Each worker gets its own throwaway server, Vite instance, and Postgres database — same idea as the server tests above, just per Playwright worker instead of per test. Override `PLAYWRIGHT_PG_ADMIN_URL` if your local Postgres differs from `postgres://postgres:postgres@localhost:5432/postgres`.
+
+To regenerate the [Screenshots](#screenshots) images:
+
+```bash
+cd client
+npm run screenshot:readme
+```
 
 ## Lint & Format
 
