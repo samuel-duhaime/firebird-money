@@ -1,5 +1,12 @@
-.transactions-card {
-  border-radius: var(--spacing-s);
+/* `.transactions-card` itself paints no background: the toolbar and the body below jointly cover
+ * the whole shape, each with its own matching rounded corner. Painting the same dark color here
+ * too would backfill the corners they round off, squaring the card off again.
+ *
+ * Clipping (for the rounded bottom corners) lives on the body rather than on `.transactions-card`
+ * itself, so the toolbar's `position: sticky` sticks to the page's real scroll container instead
+ * of being trapped by an `overflow` ancestor. */
+.transactions-card-body {
+  border-radius: 0 0 var(--spacing-s) var(--spacing-s);
   overflow: hidden;
   background: var(--color-dark);
 }

@@ -237,37 +237,39 @@ export const TransactionsList = () => {
   return (
     <div className="transactions-card">
       <TransactionsToolbar />
-      {isPending && (
-        <p className="transactions-status">{t('transactions.list.loading')}</p>
-      )}
-      {isError && (
-        <p className="transactions-status">{t('transactions.list.error')}</p>
-      )}
-      {transactions && transactions.length === 0 && (
-        <p className="transactions-status">{t('transactions.list.empty')}</p>
-      )}
-      {transactions && transactions.length > 0 && (
-        <ul className="transactions-rows">
-          {groupByDate(transactions).map((group, index) => (
-            <Fragment key={`${group.date}-${index}`}>
-              <li className="transactions-date-header">
-                <span>{formatDateHeading(group.date, locale)}</span>
-                <span>
-                  {formatAmount(dailyTotal(group.transactions), locale)}
-                </span>
-              </li>
-              {group.transactions.map((transaction) => (
-                <TransactionRow
-                  key={transaction.id}
-                  transaction={transaction}
-                  language={language}
-                  locale={locale}
-                />
-              ))}
-            </Fragment>
-          ))}
-        </ul>
-      )}
+      <div className="transactions-card-body">
+        {isPending && (
+          <p className="transactions-status">{t('transactions.list.loading')}</p>
+        )}
+        {isError && (
+          <p className="transactions-status">{t('transactions.list.error')}</p>
+        )}
+        {transactions && transactions.length === 0 && (
+          <p className="transactions-status">{t('transactions.list.empty')}</p>
+        )}
+        {transactions && transactions.length > 0 && (
+          <ul className="transactions-rows">
+            {groupByDate(transactions).map((group, index) => (
+              <Fragment key={`${group.date}-${index}`}>
+                <li className="transactions-date-header">
+                  <span>{formatDateHeading(group.date, locale)}</span>
+                  <span>
+                    {formatAmount(dailyTotal(group.transactions), locale)}
+                  </span>
+                </li>
+                {group.transactions.map((transaction) => (
+                  <TransactionRow
+                    key={transaction.id}
+                    transaction={transaction}
+                    language={language}
+                    locale={locale}
+                  />
+                ))}
+              </Fragment>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 };
