@@ -29,6 +29,9 @@ export const updateTransactionFailedToast = () =>
 export const invalidAmountToast = () =>
   toast.error(i18n.t('transactions.add.invalidAmount'));
 
+export const amountTooLongToast = () =>
+  toast.error(i18n.t('transactions.add.amountTooLong'));
+
 export const requiredFieldToast = () =>
   toast.error(i18n.t('transactions.add.required'));
 

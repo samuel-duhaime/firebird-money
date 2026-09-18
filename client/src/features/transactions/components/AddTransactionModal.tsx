@@ -116,13 +116,18 @@ export const AddTransactionModal = ({
       return;
     }
 
-    const normalizedAmount = normalizeAmount(amount.trim());
-    if (normalizedAmount === null) {
+    const amountResult = normalizeAmount(amount.trim());
+    if (!amountResult.valid) {
       setError(
-        t(
-          'transactions.add.invalidAmount',
-          'Enter a plain amount, e.g. 12.50, without thousands separators.',
-        ),
+        amountResult.error === 'tooLong'
+          ? t(
+              'transactions.add.amountTooLong',
+              'Enter an amount with at most 10 digits before the decimal point.',
+            )
+          : t(
+              'transactions.add.invalidAmount',
+              'Enter a plain amount, e.g. 12.50, without thousands separators.',
+            ),
       );
       return;
     }
@@ -132,7 +137,7 @@ export const AddTransactionModal = ({
       {
         date,
         merchant: merchant.trim(),
-        amount: normalizedAmount,
+        amount: amountResult.value,
         category_id: categoryId,
         account: MANUAL_ACCOUNT,
       },

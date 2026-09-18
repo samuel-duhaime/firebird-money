@@ -83,6 +83,7 @@ export const fr: typeof en = {
       required: 'Tous les champs sont obligatoires.',
       invalidAmount:
         'Entre un montant simple, par exemple 12,50, sans séparateur de milliers.',
+      amountTooLong: 'Entre un montant d’au plus 10 chiffres avant la virgule.',
       failed: "Impossible d'ajouter la transaction. Réessaie.",
     },
 
