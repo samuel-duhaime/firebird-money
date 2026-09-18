@@ -387,6 +387,16 @@ test.describe('add transaction', () => {
       await expect(dialog).toBeVisible();
     });
 
+    test('rejects a whole-number part longer than the server can store (NUMERIC(12,2))', async ({
+      authedPage,
+    }) => {
+      const dialog = await fillAndSubmit(authedPage, '12345678901.50');
+      await expect(dialog.getByRole('alert')).toHaveText(
+        'Enter a plain amount, e.g. 12.50, without thousands separators.',
+      );
+      await expect(dialog).toBeVisible();
+    });
+
     test('strips non-numeric characters as they are typed', async ({
       authedPage,
     }) => {

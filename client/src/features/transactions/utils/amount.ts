@@ -28,6 +28,9 @@ export const normalizeAmount = (rawAmount: string): string | null => {
 
   const [wholePart, fractionPart] = rawAmount.split(/[.,]/);
   if (fractionPart !== undefined && fractionPart.length > 2) return null;
+  // The server stores amounts as NUMERIC(12, 2) — 12 significant digits, 2 of them after the
+  // separator — so more than 10 digits ahead of it can never be saved.
+  if (wholePart.length > 10) return null;
 
   return fractionPart === undefined
     ? wholePart
