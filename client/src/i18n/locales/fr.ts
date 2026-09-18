@@ -67,23 +67,24 @@ export const fr: typeof en = {
       filters: 'Filtres',
       add: 'Ajouter',
     },
-  
-  add: {
-    title: 'Ajouter une transaction',
-    amount: 'Montant',
-    merchant: 'Commerçant',
-    merchantPlaceholder: 'Nom du commerçant',
-    date: 'Date',
-    category: 'Catégorie',
-    selectCategory: 'Sélectionnez une catégorie',
-    submit: 'Ajouter la transaction',
-    cancel: 'Annuler',
-    close: 'Fermer',
-    required: 'Tous les champs sont obligatoires.',
-    invalidAmount:
-      'Entre un montant simple, par exemple 12,50, sans séparateur de milliers.',
-    failed: "Impossible d'ajouter la transaction. Réessaie.",
-  },
+
+    add: {
+      title: 'Ajouter une transaction',
+      amount: 'Montant',
+      merchant: 'Commerçant',
+      merchantPlaceholder: 'Nom du commerçant',
+      account: 'Compte',
+      date: 'Date',
+      category: 'Catégorie',
+      selectCategory: 'Sélectionnez une catégorie',
+      submit: 'Ajouter la transaction',
+      cancel: 'Annuler',
+      close: 'Fermer',
+      required: 'Tous les champs sont obligatoires.',
+      invalidAmount:
+        'Entre un montant simple, par exemple 12,50, sans séparateur de milliers.',
+      failed: "Impossible d'ajouter la transaction. Réessaie.",
+    },
 
     toolbar: {
       allTransactions: 'Toutes les transactions',
