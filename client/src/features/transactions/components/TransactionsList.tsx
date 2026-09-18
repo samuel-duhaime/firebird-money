@@ -11,7 +11,11 @@ import { CategoryPicker } from './CategoryPicker';
 import { formatAmount, formatDateHeading } from '../utils/format';
 import { normalizeAmount, sanitizeAmountInput } from '../utils/amount';
 import { toIntlLocale } from '../../../i18n/locale';
-import { invalidAmountToast, updateTransactionFailedToast } from '../../../lib/toast';
+import {
+  invalidAmountToast,
+  requiredFieldToast,
+  updateTransactionFailedToast,
+} from '../../../lib/toast';
 import type { Transaction } from '../utils/types';
 import type { TransactionPatch } from '../utils/api';
 import './TransactionsList.css';
@@ -51,9 +55,12 @@ const TransactionRow = ({
   language: string;
   locale: string;
 }) => {
+  const { t } = useTranslation();
   const isCredit = transaction.category_type !== 'expense';
   const categoryName =
-    language === 'fr' ? transaction.category_name_fr : transaction.category_name_en;
+    language === 'fr'
+      ? transaction.category_name_fr
+      : transaction.category_name_en;
 
   const updateTransactionMutation = useUpdateTransaction();
   const [editingField, setEditingField] = useState<EditableField | null>(null);
@@ -102,8 +109,12 @@ const TransactionRow = ({
       return;
     }
 
+    if (trimmed === '') {
+      requiredFieldToast();
+      return;
+    }
     setEditingField(null);
-    if (trimmed !== '' && trimmed !== transaction[field]) {
+    if (trimmed !== transaction[field]) {
       save({ [field]: trimmed });
     }
   };
@@ -128,6 +139,7 @@ const TransactionRow = ({
       {editingField === 'merchant' ? (
         <input
           className="transactions-row-cell transactions-row-input"
+          aria-label={t('transactions.add.merchant', 'Merchant')}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={handleKeyDown}
@@ -154,6 +166,7 @@ const TransactionRow = ({
       {editingField === 'account' ? (
         <input
           className="transactions-row-cell transactions-row-input"
+          aria-label={t('transactions.add.account', 'Account')}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={handleKeyDown}
@@ -173,9 +186,12 @@ const TransactionRow = ({
       {editingField === 'amount' ? (
         <input
           className="transactions-row-input transactions-row-input--amount"
+          aria-label={t('transactions.add.amount', 'Amount')}
           inputMode="decimal"
           value={draft}
-          onChange={(event) => setDraft(sanitizeAmountInput(event.target.value))}
+          onChange={(event) =>
+            setDraft(sanitizeAmountInput(event.target.value))
+          }
           onKeyDown={handleKeyDown}
           onBlur={commit}
           autoFocus
@@ -234,7 +250,9 @@ export const TransactionsList = () => {
             <Fragment key={`${group.date}-${index}`}>
               <li className="transactions-date-header">
                 <span>{formatDateHeading(group.date, locale)}</span>
-                <span>{formatAmount(dailyTotal(group.transactions), locale)}</span>
+                <span>
+                  {formatAmount(dailyTotal(group.transactions), locale)}
+                </span>
               </li>
               {group.transactions.map((transaction) => (
                 <TransactionRow

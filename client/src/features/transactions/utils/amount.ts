@@ -19,6 +19,9 @@ export const normalizeAmount = (rawAmount: string): string | null => {
   // the `categories` table) — so a sign (or any other stray character) makes the value invalid
   // rather than something to guess a meaning for.
   if (/[^0-9.,]/.test(rawAmount)) return null;
+  // Rejects "" and "." — a separator (or nothing) with no digits at all isn't an amount, even
+  // though neither trips the checks below.
+  if (!/[0-9]/.test(rawAmount)) return null;
 
   const separators = rawAmount.match(/[.,]/g) ?? [];
   if (separators.length > 1) return null;

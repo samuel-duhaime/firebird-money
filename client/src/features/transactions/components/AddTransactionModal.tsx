@@ -46,6 +46,22 @@ export const AddTransactionModal = ({
 
   if (!open) return null;
 
+  /** The dialog's own focusable controls, plus — while it's open — the category popover's,
+   * which portals to `document.body` and so isn't a DOM descendant of `dialogRef`. Without this,
+   * Tab from the popover's last control (or Shift+Tab from its first) would leak focus out of the
+   * modal instead of wrapping. */
+  const getTrapFocusable = (): HTMLElement[] => {
+    const dialogFocusable = Array.from(
+      dialogRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR) ??
+        [],
+    );
+    const popover = document.querySelector('.category-picker-popover');
+    const popoverFocusable = popover
+      ? Array.from(popover.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+      : [];
+    return [...dialogFocusable, ...popoverFocusable];
+  };
+
   const handleKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Escape') {
       onClose();
@@ -54,9 +70,8 @@ export const AddTransactionModal = ({
 
     if (e.key !== 'Tab') return;
 
-    const focusable =
-      dialogRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
-    if (!focusable || focusable.length === 0) return;
+    const focusable = getTrapFocusable();
+    if (focusable.length === 0) return;
 
     const first = focusable[0];
     const last = focusable[focusable.length - 1];
