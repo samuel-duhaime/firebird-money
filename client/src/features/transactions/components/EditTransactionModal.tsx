@@ -51,9 +51,20 @@ export const EditTransactionModal = ({
   // its stale closure and re-save it, undoing the revert it was meant to perform.
   const cancelledAmountRef = useRef(false);
   const cancelledMerchantRef = useRef(false);
+  // Captured once, synchronously, on first render — before the autofocus effect below moves
+  // focus into the dialog — so closing can return keyboard focus to whatever row/button opened
+  // it (the transactions list stays mounted underneath the whole time this panel is open).
+  const [returnFocusTarget] = useState<HTMLElement | null>(
+    () => document.activeElement as HTMLElement | null,
+  );
 
   const updateTransactionMutation = useUpdateTransaction();
   const deleteTransactionMutation = useDeleteTransaction();
+
+  const handleClose = () => {
+    onClose();
+    returnFocusTarget?.focus();
+  };
 
   useEffect(() => {
     if (!transaction) return;
@@ -99,7 +110,7 @@ export const EditTransactionModal = ({
 
   const handleKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Escape') {
-      onClose();
+      handleClose();
       return;
     }
 
@@ -214,7 +225,7 @@ export const EditTransactionModal = ({
     deleteTransactionMutation.mutate(transactionId, {
       onSuccess: () => {
         deleteTransactionSucceededToast();
-        onClose();
+        handleClose();
       },
       onError: () => {
         deleteTransactionFailedToast();
@@ -234,7 +245,7 @@ export const EditTransactionModal = ({
     <div
       className="edit-transaction-overlay"
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget) handleClose();
       }}
     >
       <div
@@ -249,7 +260,7 @@ export const EditTransactionModal = ({
           <button
             type="button"
             className="modal-close"
-            onClick={onClose}
+            onClick={handleClose}
             aria-label={t('transactions.add.close')}
           >
             ×
