@@ -26,6 +26,12 @@ export const addTransactionSucceededToast = () =>
 export const updateTransactionFailedToast = () =>
   toast.error(i18n.t('toast.updateTransactionFailed'));
 
+export const deleteTransactionSucceededToast = () =>
+  toast.success(i18n.t('toast.deleteTransactionSucceeded'));
+
+export const deleteTransactionFailedToast = () =>
+  toast.error(i18n.t('toast.deleteTransactionFailed'));
+
 export const invalidAmountToast = () =>
   toast.error(i18n.t('transactions.add.invalidAmount'));
 

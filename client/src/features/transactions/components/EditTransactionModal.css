@@ -1,0 +1,147 @@
+.edit-transaction-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  justify-content: flex-end;
+  z-index: 999;
+}
+
+.edit-transaction-panel {
+  width: 440px;
+  max-width: 100vw;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-dark);
+  color: var(--color-white);
+  box-shadow: -12px 0 30px rgba(0, 0, 0, 0.4);
+  animation: edit-transaction-slide-in 0.22s ease-out;
+}
+
+@keyframes edit-transaction-slide-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.edit-transaction-header {
+  display: flex;
+  justify-content: flex-end;
+  padding: 16px 20px 0;
+}
+
+.edit-transaction-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 28px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.edit-transaction-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.edit-transaction-field label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-lightest);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.edit-transaction-field input,
+.edit-transaction-field .modal-category-trigger {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 11px 14px;
+  border: 1px solid var(--color-medium);
+  border-radius: 8px;
+  background: var(--color-background);
+  color: var(--color-white);
+  font-size: 15px;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.edit-transaction-field input:focus,
+.edit-transaction-field .modal-category-trigger:focus-visible {
+  border-color: var(--color-primary);
+}
+
+/* Higher specificity than `.edit-transaction-field input` above, so the $ sign keeps its room
+ * regardless of CSS import order between this file and AddTransactionModal.css. */
+.edit-transaction-field .amount-input-wrapper input {
+  padding-left: 26px;
+}
+
+.edit-transaction-field .modal-category-trigger {
+  cursor: pointer;
+  text-align: left;
+}
+
+.edit-transaction-field
+  .modal-category-trigger--placeholder
+  .category-picker-trigger-label {
+  color: var(--color-lightest);
+}
+
+.modal-status {
+  margin: 0;
+  color: var(--color-lightest);
+  font-size: 14px;
+}
+
+.edit-transaction-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 22px;
+  border-top: 1px solid var(--color-medium);
+}
+
+.modal-footer-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.modal-button--delete {
+  background: transparent;
+  border: 1px solid var(--color-error);
+  color: var(--color-error);
+}
+
+.modal-button--delete:hover {
+  background: color-mix(in srgb, var(--color-error) 15%, transparent);
+}
+
+.modal-button--delete-confirm {
+  background: var(--color-error);
+  border: none;
+  color: var(--color-white);
+}
+
+.modal-button--delete-confirm:hover {
+  filter: brightness(1.1);
+}
+
+.delete-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+}
+
+.delete-confirm-text {
+  font-size: 13px;
+  color: var(--color-lightest);
+}
