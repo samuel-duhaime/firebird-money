@@ -480,8 +480,14 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             "/transactions/import/jobs/{id}",
             web::patch().to(report_import_job),
         )
-        .route("/transactions/bulk", web::patch().to(bulk_update_transactions))
-        .route("/transactions/bulk", web::delete().to(bulk_delete_transactions))
+        .route(
+            "/transactions/bulk",
+            web::patch().to(bulk_update_transactions),
+        )
+        .route(
+            "/transactions/bulk",
+            web::delete().to(bulk_delete_transactions),
+        )
         .route("/transactions/{id}", web::get().to(get_transaction))
         .route("/transactions/{id}", web::patch().to(update_transaction))
         .route("/transactions/{id}", web::delete().to(delete_transaction));
