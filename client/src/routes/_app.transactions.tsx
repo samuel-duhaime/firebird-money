@@ -1,4 +1,4 @@
-import { createFileRoute, getRouteApi } from '@tanstack/react-router';
+import { createFileRoute, getRouteApi, Outlet } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { faFilter, faPlus } from '@fortawesome/free-solid-svg-icons';
 import { TopMenuButton } from '../components/TopMenuButton';
@@ -91,7 +91,12 @@ const TransactionsTopMenuActions = () => {
   );
 };
 
-const Transactions = () => <TransactionsList />;
+const Transactions = () => (
+  <>
+    <TransactionsList />
+    <Outlet />
+  </>
+);
 
 export const Route = createFileRoute('/_app/transactions')({
   component: Transactions,

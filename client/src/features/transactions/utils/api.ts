@@ -34,3 +34,9 @@ export const updateTransaction = (
     method: 'PATCH',
     body: JSON.stringify(patch),
   });
+
+export const getTransaction = (id: number): Promise<Transaction> =>
+  apiFetch<Transaction>(`/transactions/${id}`);
+
+export const deleteTransaction = (id: number): Promise<void> =>
+  apiFetch<void>(`/transactions/${id}`, { method: 'DELETE' });

@@ -1,6 +1,6 @@
 import { Fragment, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { getRouteApi } from '@tanstack/react-router';
+import { getRouteApi, useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faChevronRight } from '@fortawesome/free-solid-svg-icons';
@@ -57,6 +57,7 @@ const TransactionRow = ({
   locale: string;
 }) => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const isCredit = transaction.category_type !== 'expense';
   const categoryName =
     language === 'fr'
@@ -213,10 +214,23 @@ const TransactionRow = ({
         </button>
       )}
 
-      <FontAwesomeIcon
-        icon={faChevronRight}
-        className="transactions-row-chevron"
-      />
+      <button
+        type="button"
+        className="transactions-row-chevron-button"
+        aria-label={t('transactions.edit.openTransaction')}
+        onClick={() =>
+          navigate({
+            to: '/transactions/$transactionId',
+            params: { transactionId: String(transaction.id) },
+            search: (prev) => prev,
+          })
+        }
+      >
+        <FontAwesomeIcon
+          icon={faChevronRight}
+          className="transactions-row-chevron"
+        />
+      </button>
     </li>
   );
 };

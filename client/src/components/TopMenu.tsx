@@ -15,9 +15,13 @@ declare module '@tanstack/react-router' {
 export const TopMenu = () => {
   const { t } = useTranslation();
   const matches = useMatches();
-  const leafMatch = matches.at(-1);
-  const titleKey = leafMatch?.staticData.topMenuTitle;
-  const Actions = leafMatch?.staticData.topMenuActions;
+  // A leaf route with no `staticData` of its own (e.g. a modal/panel route nested under a page)
+  // inherits the nearest ancestor's title and actions instead of leaving the top menu blank.
+  const activeMatch = [...matches]
+    .reverse()
+    .find((match) => match.staticData.topMenuTitle);
+  const titleKey = activeMatch?.staticData.topMenuTitle;
+  const Actions = activeMatch?.staticData.topMenuActions;
 
   return (
     <header className="top-menu">
