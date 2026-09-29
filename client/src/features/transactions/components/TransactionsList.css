@@ -51,6 +51,20 @@
   filter: brightness(1.2);
 }
 
+.transactions-row--selectable {
+  grid-template-columns:
+    20px minmax(0, 2fr) minmax(0, 1.5fr) minmax(0, 1.5fr)
+    110px 16px;
+  cursor: pointer;
+}
+
+.transactions-row-checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
 .transactions-row-cell {
   overflow: hidden;
   text-overflow: ellipsis;

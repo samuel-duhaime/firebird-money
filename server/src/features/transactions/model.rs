@@ -118,3 +118,26 @@ pub struct TransactionPatch {
     pub category_id: Option<i32>,
     pub account: Option<String>,
 }
+
+/// The subset of [`TransactionPatch`] fields the bulk "edit multiple" panel exposes — no `amount`
+/// or `account`, since setting one dollar amount or account across several different transactions
+/// isn't a sensible bulk operation.
+#[derive(Debug, Deserialize)]
+pub struct BulkTransactionPatch {
+    pub date: Option<NaiveDate>,
+    pub merchant: Option<String>,
+    pub category_id: Option<i32>,
+}
+
+/// Body for `PATCH /transactions/bulk`.
+#[derive(Debug, Deserialize)]
+pub struct BulkUpdateRequest {
+    pub ids: Vec<i64>,
+    pub patch: BulkTransactionPatch,
+}
+
+/// Body for `DELETE /transactions/bulk`.
+#[derive(Debug, Deserialize)]
+pub struct BulkDeleteRequest {
+    pub ids: Vec<i64>,
+}

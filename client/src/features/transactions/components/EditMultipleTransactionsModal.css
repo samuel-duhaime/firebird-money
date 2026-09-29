@@ -1,0 +1,59 @@
+.edit-multiple-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--color-white);
+}
+
+.edit-multiple-field-control {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.edit-multiple-field-control .modal-category-trigger,
+.edit-multiple-field-control input {
+  flex: 1;
+  min-width: 0;
+}
+
+.edit-multiple-field-trigger {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 11px 14px;
+  border: 1px dashed var(--color-medium);
+  border-radius: 8px;
+  background: none;
+  color: var(--color-lightest);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.edit-multiple-field-trigger:hover,
+.edit-multiple-field-trigger:focus-visible {
+  border-color: var(--color-light);
+  color: var(--color-white);
+}
+
+.edit-multiple-field-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--color-lightest);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.edit-multiple-field-clear:hover,
+.edit-multiple-field-clear:focus-visible {
+  background: var(--color-medium);
+  color: var(--color-white);
+}

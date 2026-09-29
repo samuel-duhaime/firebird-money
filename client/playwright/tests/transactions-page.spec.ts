@@ -909,6 +909,358 @@ test.describe('edit and delete transaction', () => {
   });
 });
 
+test.describe('edit multiple transactions', () => {
+  const seedTwo = async (
+    request: APIRequestContext,
+    apiOrigin: string,
+  ): Promise<void> => {
+    const groceriesId = await getCategoryId(request, apiOrigin, 'Groceries');
+    await seedTransaction(request, apiOrigin, {
+      date: '2023-04-01',
+      merchant: 'Corner Store',
+      amount: '20.00',
+      categoryId: groceriesId,
+    });
+    await seedTransaction(request, apiOrigin, {
+      date: '2023-04-02',
+      merchant: 'Downtown Store',
+      amount: '15.00',
+      categoryId: groceriesId,
+    });
+  };
+
+  const rowCheckbox = (authedPage: Page, merchant: string) =>
+    authedPage
+      .locator('li.transactions-row', { hasText: merchant })
+      .getByRole('checkbox', { name: `Select ${merchant}`, exact: true });
+
+  const enterSelectionMode = async (authedPage: Page): Promise<void> => {
+    await authedPage.goto('/transactions');
+    await authedPage
+      .getByRole('button', { name: 'Edit multiple', exact: true })
+      .click();
+  };
+
+  /** The dev-only React Query/Router devtools toggles render fixed over the bulk-edit panel's
+   * bottom-right corner and, given enough steps in a test, have time to mount there — hide them
+   * (by their own toggle-button label, unlike `readme-transactions.spec.ts`'s broader
+   * `:not(.app-layout)` rule, since that would also hide the toast container these tests still
+   * need to assert against) before clicking a footer button, since they'd otherwise intercept
+   * the click and they're never present in production anyway. */
+  const hideDevtools = (authedPage: Page) =>
+    authedPage.addStyleTag({
+      content: `
+        .tsqd-parent-container,
+        button[aria-label="Open TanStack Router Devtools"] {
+          display: none !important;
+        }
+      `,
+    });
+
+  test('entering selection mode shows a checkbox per row and an inactive "Edit 0" button', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedTwo(context.request, workerInfra.apiOrigin);
+    await enterSelectionMode(authedPage);
+
+    await expect(
+      authedPage.getByRole('checkbox', { name: 'All transactions (CTRL+A)' }),
+    ).toBeVisible();
+    await expect(rowCheckbox(authedPage, 'Corner Store')).toBeVisible();
+    await expect(rowCheckbox(authedPage, 'Downtown Store')).toBeVisible();
+    await expect(
+      authedPage.getByRole('button', { name: 'Edit 0', exact: true }),
+    ).toBeDisabled();
+  });
+
+  test('cancelling selection mode hides the row checkboxes and restores the normal toolbar', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedTwo(context.request, workerInfra.apiOrigin);
+    await enterSelectionMode(authedPage);
+    await rowCheckbox(authedPage, 'Corner Store').click();
+
+    await authedPage.getByRole('button', { name: 'Cancel', exact: true }).click();
+
+    await expect(
+      authedPage.getByRole('button', { name: 'Edit multiple', exact: true }),
+    ).toBeVisible();
+    await expect(rowCheckbox(authedPage, 'Corner Store')).toHaveCount(0);
+  });
+
+  test('Escape cancels the selection', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedTwo(context.request, workerInfra.apiOrigin);
+    await enterSelectionMode(authedPage);
+    await rowCheckbox(authedPage, 'Corner Store').click();
+
+    await authedPage.keyboard.press('Escape');
+
+    await expect(
+      authedPage.getByRole('button', { name: 'Edit multiple', exact: true }),
+    ).toBeVisible();
+  });
+
+  test('selecting rows updates the count and the Edit button label, in English and French', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedTwo(context.request, workerInfra.apiOrigin);
+    await enterSelectionMode(authedPage);
+
+    await rowCheckbox(authedPage, 'Corner Store').click();
+    await expect(
+      authedPage.getByText('1 transaction selected (ESC)'),
+    ).toBeVisible();
+    await expect(
+      authedPage.getByRole('button', { name: 'Edit 1', exact: true }),
+    ).toBeEnabled();
+
+    await rowCheckbox(authedPage, 'Downtown Store').click();
+    await expect(
+      authedPage.getByText('2 transactions selected (ESC)'),
+    ).toBeVisible();
+    await expect(
+      authedPage.getByRole('button', { name: 'Edit 2', exact: true }),
+    ).toBeEnabled();
+    await expect(
+      authedPage.getByRole('checkbox', {
+        name: '2 transactions selected (ESC)',
+      }),
+    ).toBeChecked();
+  });
+
+  test('the header checkbox selects and deselects every loaded row', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedTwo(context.request, workerInfra.apiOrigin);
+    await enterSelectionMode(authedPage);
+
+    await authedPage
+      .getByRole('checkbox', { name: 'All transactions (CTRL+A)' })
+      .click();
+    await expect(rowCheckbox(authedPage, 'Corner Store')).toBeChecked();
+    await expect(rowCheckbox(authedPage, 'Downtown Store')).toBeChecked();
+
+    await authedPage
+      .getByRole('checkbox', { name: '2 transactions selected (ESC)' })
+      .click();
+    await expect(rowCheckbox(authedPage, 'Corner Store')).not.toBeChecked();
+    await expect(rowCheckbox(authedPage, 'Downtown Store')).not.toBeChecked();
+  });
+
+  test('Ctrl+A selects every loaded transaction', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedTwo(context.request, workerInfra.apiOrigin);
+    await enterSelectionMode(authedPage);
+
+    await authedPage.keyboard.press('Control+a');
+
+    await expect(
+      authedPage.getByText('2 transactions selected (ESC)'),
+    ).toBeVisible();
+  });
+
+  test('opens a bulk-edit panel titled with the selected count', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedTwo(context.request, workerInfra.apiOrigin);
+    await enterSelectionMode(authedPage);
+    await rowCheckbox(authedPage, 'Corner Store').click();
+    await rowCheckbox(authedPage, 'Downtown Store').click();
+
+    await authedPage.getByRole('button', { name: 'Edit 2', exact: true }).click();
+
+    const dialog = authedPage.getByRole('dialog', {
+      name: 'Edit 2 transactions',
+    });
+    await expect(dialog).toBeVisible();
+    await expect(
+      dialog.getByRole('button', { name: 'Merchant', exact: true }),
+    ).toHaveText('No change');
+    await expect(
+      dialog.getByRole('button', { name: 'Date', exact: true }),
+    ).toHaveText('No change');
+    await expect(
+      dialog.getByRole('button', { name: 'Category', exact: true }),
+    ).toHaveText('No change');
+  });
+
+  test('Cancel inside the panel discards changes without saving', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedTwo(context.request, workerInfra.apiOrigin);
+    await enterSelectionMode(authedPage);
+    await rowCheckbox(authedPage, 'Corner Store').click();
+    await authedPage.getByRole('button', { name: 'Edit 1', exact: true }).click();
+
+    const dialog = authedPage.getByRole('dialog', {
+      name: 'Edit 1 transaction',
+    });
+    await dialog.getByRole('button', { name: 'Merchant', exact: true }).click();
+    await dialog.getByLabel('Merchant').fill('Should Not Save');
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+
+    await expect(dialog).not.toBeVisible();
+    await expect(
+      authedPage.locator('li.transactions-row', { hasText: 'Corner Store' }),
+    ).toBeVisible();
+    await expect(
+      authedPage.getByText('Should Not Save'),
+    ).not.toBeVisible();
+  });
+
+  test('saving with nothing changed shows a "select at least one change" error, not the add-form\'s generic one', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedTwo(context.request, workerInfra.apiOrigin);
+    await enterSelectionMode(authedPage);
+    await rowCheckbox(authedPage, 'Corner Store').click();
+    await authedPage.getByRole('button', { name: 'Edit 1', exact: true }).click();
+
+    const dialog = authedPage.getByRole('dialog', {
+      name: 'Edit 1 transaction',
+    });
+    await hideDevtools(authedPage);
+    await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+
+    await expect(
+      authedPage.getByText('Select at least one change before saving.'),
+    ).toBeVisible();
+    await expect(
+      authedPage.getByText('All fields are required.'),
+    ).not.toBeVisible();
+    await expect(dialog).toBeVisible();
+  });
+
+  test('activating a field but leaving it unset is still "no change" on Save', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedTwo(context.request, workerInfra.apiOrigin);
+    await enterSelectionMode(authedPage);
+    await rowCheckbox(authedPage, 'Corner Store').click();
+    await authedPage.getByRole('button', { name: 'Edit 1', exact: true }).click();
+
+    const dialog = authedPage.getByRole('dialog', {
+      name: 'Edit 1 transaction',
+    });
+    // Clicking "No change" reveals the date input, but leaving it unset (e.g. the user only
+    // meant to look) shouldn't count as an explicit change on Save.
+    await dialog.getByRole('button', { name: 'Date', exact: true }).click();
+    await hideDevtools(authedPage);
+    await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+
+    await expect(
+      authedPage.getByText('Select at least one change before saving.'),
+    ).toBeVisible();
+
+    await dialog.getByLabel('Date').fill('2023-05-10');
+    await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+
+    await expect(dialog).not.toBeVisible();
+    await expect(
+      authedPage.locator('li.transactions-row', { hasText: 'Corner Store' }),
+    ).toBeVisible();
+  });
+
+  test('saving a partial patch only changes the touched field, on every selected row', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedTwo(context.request, workerInfra.apiOrigin);
+    await enterSelectionMode(authedPage);
+    await rowCheckbox(authedPage, 'Corner Store').click();
+    await rowCheckbox(authedPage, 'Downtown Store').click();
+    await authedPage.getByRole('button', { name: 'Edit 2', exact: true }).click();
+
+    const dialog = authedPage.getByRole('dialog', {
+      name: 'Edit 2 transactions',
+    });
+    await selectCategory(authedPage, 'Category', 'Coffee Shops');
+    await hideDevtools(authedPage);
+    await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+
+    await expect(dialog).not.toBeVisible();
+    const cornerStoreRow = authedPage.locator('li.transactions-row', {
+      hasText: 'Corner Store',
+    });
+    const downtownStoreRow = authedPage.locator('li.transactions-row', {
+      hasText: 'Downtown Store',
+    });
+    await expect(cornerStoreRow).toContainText('Coffee Shops');
+    await expect(downtownStoreRow).toContainText('Coffee Shops');
+    // Date was left as "No change" — each row's date-group heading is untouched, and since the
+    // rows still match by their original merchant name, merchant wasn't touched either.
+    await expect(
+      authedPage.locator('li.transactions-date-header', {
+        hasText: dateHeading('2023-04-01'),
+      }),
+    ).toBeVisible();
+    await expect(
+      authedPage.locator('li.transactions-date-header', {
+        hasText: dateHeading('2023-04-02'),
+      }),
+    ).toBeVisible();
+  });
+
+  test('deletes every selected transaction after confirming, and leaves the rest untouched', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedTwo(context.request, workerInfra.apiOrigin);
+    await enterSelectionMode(authedPage);
+    await rowCheckbox(authedPage, 'Corner Store').click();
+    await authedPage.getByRole('button', { name: 'Edit 1', exact: true }).click();
+
+    const dialog = authedPage.getByRole('dialog', {
+      name: 'Edit 1 transaction',
+    });
+    await dialog
+      .getByRole('button', { name: 'Delete 1 transaction', exact: true })
+      .click();
+    await expect(
+      dialog.getByText("Delete 1 transaction? This can't be undone."),
+    ).toBeVisible();
+    await dialog.getByRole('button', { name: 'Delete', exact: true }).click();
+
+    await expect(dialog).not.toBeVisible();
+    await expect(authedPage.getByText('1 transaction deleted.')).toBeVisible();
+    await expect(
+      authedPage.locator('li.transactions-row', { hasText: 'Corner Store' }),
+    ).not.toBeVisible();
+    await expect(
+      authedPage.locator('li.transactions-row', { hasText: 'Downtown Store' }),
+    ).toBeVisible();
+    // Selection mode exits after a successful bulk action.
+    await expect(
+      authedPage.getByRole('button', { name: 'Edit multiple', exact: true }),
+    ).toBeVisible();
+  });
+});
+
 test.describe('search', () => {
   test('applies a search by pressing Enter in the input', async ({
     authedPage,

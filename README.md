@@ -131,6 +131,8 @@ Magic links last 15 minutes and work once. The session cookie is httpOnly and Sa
 - `POST /transactions` — create a transaction (`date`, `merchant`, `amount`, `category_id`, `account`). `household_id` and `household_member_id` are never read from the body — they're always the caller's own household and membership.
 - `PATCH /transactions/{id}` — partially update a transaction (only the fields you send change).
 - `DELETE /transactions/{id}` — delete a transaction.
+- `PATCH /transactions/bulk` — partially update several transactions at once (`ids`, `patch` — `patch` supports `date`, `merchant`, `category_id` only). Ids the household doesn't own are silently skipped.
+- `DELETE /transactions/bulk` — delete several transactions at once (`ids`). Ids the household doesn't own are silently skipped.
 - `GET /transactions/download` — download the same filtered/sorted transactions as `GET /transactions`, rendered as a file. Accepts the same query params plus `?format=` (`csv` or `xlsx`, required).
 - `POST /transactions/import` — upload a budget file (multipart, field `file`, 10 MB max) to import as transactions. Kicks off an async job and returns `202 Accepted` with a `Location` header pointing at the job. Requires the `claude` CLI (see [Install](#install)); the unattended subprocess it spawns authenticates as the caller via a forwarded session cookie.
 - `GET /transactions/import/jobs/{id}` — poll an import job's status (`pending`, `running`, `succeeded`, `failed`) and, once terminal, its `created_count`/`failed_count`/`skipped_count`/`error_message`.
