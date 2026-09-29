@@ -1,4 +1,9 @@
-import { createFileRoute, getRouteApi, Outlet } from '@tanstack/react-router';
+import {
+  createFileRoute,
+  getRouteApi,
+  Outlet,
+  useNavigate,
+} from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { faFilter, faPlus } from '@fortawesome/free-solid-svg-icons';
 import { TopMenuButton } from '../components/TopMenuButton';
@@ -11,8 +16,6 @@ import { ImportButton } from '../features/transactions/components/ImportButton';
 import { notImplementedToast } from '../lib/toast';
 import type { SortOrder } from '../features/transactions/utils/types';
 import '../components/TopMenu.css';
-import { useRef, useState } from 'react';
-import { AddTransactionModal } from '../features/transactions/components/AddTransactionModal';
 type TransactionsSearch = {
   search?: string;
   order?: SortOrder;
@@ -52,8 +55,7 @@ const ClearAllButton = () => {
 
 const TransactionsTopMenuActions = () => {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const addButtonRef = useRef<HTMLButtonElement>(null);
+  const navigate = useNavigate();
 
   return (
     <>
@@ -71,21 +73,16 @@ const TransactionsTopMenuActions = () => {
       <DownloadButton />
 
       <TopMenuButton
-        ref={addButtonRef}
         icon={faPlus}
         label={t('transactions.topMenu.add')}
         variant="primary"
         aria-haspopup="dialog"
-        aria-expanded={open}
-        onClick={() => setOpen(true)}
-      />
-
-      <AddTransactionModal
-        open={open}
-        onClose={() => {
-          setOpen(false);
-          addButtonRef.current?.focus();
-        }}
+        onClick={() =>
+          navigate({
+            to: '/transactions/add-transaction',
+            search: (prev) => prev,
+          })
+        }
       />
     </>
   );

@@ -14,7 +14,6 @@ import './AddTransactionModal.css';
 const MANUAL_ACCOUNT = 'Manual entry';
 
 type AddTransactionModalProps = {
-  open: boolean;
   onClose: () => void;
 };
 
@@ -22,7 +21,6 @@ const FOCUSABLE_SELECTOR =
   'input, select, button, [href], [tabindex]:not([tabindex="-1"])';
 
 export const AddTransactionModal = ({
-  open,
   onClose,
 }: AddTransactionModalProps) => {
   const { t, i18n } = useTranslation();
@@ -37,14 +35,10 @@ export const AddTransactionModal = ({
   const createTransactionMutation = useCreateTransaction();
 
   useEffect(() => {
-    if (!open) return;
-
     const focusable =
       dialogRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
     focusable?.[0]?.focus();
-  }, [open]);
-
-  if (!open) return null;
+  }, []);
 
   /** The dialog's own focusable controls, plus — while it's open — the category popover's,
    * which portals to `document.body` and so isn't a DOM descendant of `dialogRef`. Without this,
@@ -169,7 +163,12 @@ export const AddTransactionModal = ({
     : t('transactions.add.selectCategory', 'Select category');
 
   return (
-    <div className="modal-overlay">
+    <div
+      className="modal-overlay"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div
         ref={dialogRef}
         className="add-transaction-modal"
