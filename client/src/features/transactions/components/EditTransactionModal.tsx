@@ -45,6 +45,12 @@ export const EditTransactionModal = ({
   const [categoryId, setCategoryId] = useState<number | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const firstFieldRef = useRef<HTMLInputElement>(null);
+  // Escape reverts state, then blurs synchronously — before that state update has re-rendered.
+  // Without these, the blur-triggered commit* below would still read the pre-revert value from
+  // its stale closure and re-save it, undoing the revert it was meant to perform.
+  const cancelledAmountRef = useRef(false);
+  const cancelledMerchantRef = useRef(false);
 
   const updateTransactionMutation = useUpdateTransaction();
   const deleteTransactionMutation = useDeleteTransaction();
@@ -60,6 +66,12 @@ export const EditTransactionModal = ({
   useEffect(() => {
     if (isPending) return;
 
+    if (firstFieldRef.current) {
+      firstFieldRef.current.focus();
+      return;
+    }
+    // No transaction loaded (e.g. a 404) — the amount field never rendered, so fall back to
+    // whatever the dialog's first focusable control is (the close button).
     const focusable =
       dialogRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
     focusable?.[0]?.focus();
@@ -117,6 +129,10 @@ export const EditTransactionModal = ({
   };
 
   const commitAmount = () => {
+    if (cancelledAmountRef.current) {
+      cancelledAmountRef.current = false;
+      return;
+    }
     if (!transaction) return;
     const result = normalizeAmount(amount.trim());
     if (!result.valid) {
@@ -134,6 +150,7 @@ export const EditTransactionModal = ({
       e.currentTarget.blur();
     } else if (e.key === 'Escape') {
       e.stopPropagation();
+      cancelledAmountRef.current = true;
       setAmount(transaction?.amount ?? '');
       e.currentTarget.blur();
     }
@@ -144,6 +161,10 @@ export const EditTransactionModal = ({
   };
 
   const commitMerchant = () => {
+    if (cancelledMerchantRef.current) {
+      cancelledMerchantRef.current = false;
+      return;
+    }
     if (!transaction) return;
     const trimmed = merchant.trim();
     if (trimmed === '') {
@@ -160,6 +181,7 @@ export const EditTransactionModal = ({
       e.currentTarget.blur();
     } else if (e.key === 'Escape') {
       e.stopPropagation();
+      cancelledMerchantRef.current = true;
       setMerchant(transaction?.merchant ?? '');
       e.currentTarget.blur();
     }
@@ -250,6 +272,7 @@ export const EditTransactionModal = ({
                     $
                   </span>
                   <input
+                    ref={firstFieldRef}
                     id="edit-amount"
                     type="text"
                     inputMode="decimal"

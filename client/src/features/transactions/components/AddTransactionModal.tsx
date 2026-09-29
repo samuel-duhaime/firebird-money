@@ -31,13 +31,12 @@ export const AddTransactionModal = ({
   const [categoryId, setCategoryId] = useState<number | null>(null);
   const [error, setError] = useState('');
   const dialogRef = useRef<HTMLDivElement>(null);
+  const firstFieldRef = useRef<HTMLInputElement>(null);
 
   const createTransactionMutation = useCreateTransaction();
 
   useEffect(() => {
-    const focusable =
-      dialogRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
-    focusable?.[0]?.focus();
+    firstFieldRef.current?.focus();
   }, []);
 
   /** The dialog's own focusable controls, plus — while it's open — the category popover's,
@@ -201,6 +200,7 @@ export const AddTransactionModal = ({
               $
             </span>
             <input
+              ref={firstFieldRef}
               id="amount"
               type="text"
               inputMode="decimal"

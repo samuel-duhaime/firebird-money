@@ -11,6 +11,7 @@ type TopMenuButtonProps = {
   spin?: boolean;
   disabled?: boolean;
   onClick?: () => void;
+  id?: string;
   'aria-haspopup'?: AriaAttributes['aria-haspopup'];
   'aria-expanded'?: boolean;
 };
@@ -24,6 +25,7 @@ export const TopMenuButton = forwardRef<HTMLButtonElement, TopMenuButtonProps>(
       spin = false,
       disabled = false,
       onClick,
+      id,
       'aria-haspopup': ariaHasPopup,
       'aria-expanded': ariaExpanded,
     },
@@ -31,6 +33,7 @@ export const TopMenuButton = forwardRef<HTMLButtonElement, TopMenuButtonProps>(
   ) => (
     <button
       ref={ref}
+      id={id}
       type="button"
       className={
         variant === 'primary'

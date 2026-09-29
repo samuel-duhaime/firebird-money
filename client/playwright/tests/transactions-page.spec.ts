@@ -165,7 +165,17 @@ test.describe('list, grouping, and daily subtotal', () => {
 });
 
 test.describe('add transaction', () => {
-  test('closes via Escape, the close button, and Cancel', async ({
+  test('opens at /transactions/add-transaction', async ({ authedPage }) => {
+    await authedPage.goto('/transactions');
+    await authedPage.getByRole('button', { name: 'Add', exact: true }).click();
+
+    await expect(
+      authedPage.getByRole('dialog', { name: 'Add transaction' }),
+    ).toBeVisible();
+    await expect(authedPage).toHaveURL(/\/transactions\/add-transaction$/);
+  });
+
+  test('closes via Escape, the close button, and Cancel — each returning to /transactions', async ({
     authedPage,
   }) => {
     await authedPage.goto('/transactions');
@@ -179,16 +189,37 @@ test.describe('add transaction', () => {
     await expect(dialog).toBeVisible();
     await authedPage.keyboard.press('Escape');
     await expect(dialog).not.toBeVisible();
+    await expect(authedPage).toHaveURL(/\/transactions$/);
 
     await addButton.click();
     await expect(dialog).toBeVisible();
     await dialog.getByRole('button', { name: 'Close', exact: true }).click();
     await expect(dialog).not.toBeVisible();
+    await expect(authedPage).toHaveURL(/\/transactions$/);
 
     await addButton.click();
     await expect(dialog).toBeVisible();
     await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
     await expect(dialog).not.toBeVisible();
+    await expect(authedPage).toHaveURL(/\/transactions$/);
+  });
+
+  test('closes on an outside click, returning to /transactions', async ({
+    authedPage,
+  }) => {
+    await authedPage.goto('/transactions');
+    await authedPage.getByRole('button', { name: 'Add', exact: true }).click();
+
+    const dialog = authedPage.getByRole('dialog', { name: 'Add transaction' });
+    await expect(dialog).toBeVisible();
+
+    // The overlay covers the whole viewport; a corner is safely outside the centered dialog box.
+    await authedPage
+      .locator('.modal-overlay')
+      .click({ position: { x: 5, y: 5 } });
+
+    await expect(dialog).not.toBeVisible();
+    await expect(authedPage).toHaveURL(/\/transactions$/);
   });
 
   test('autofocuses on open, traps Tab within the dialog, and returns focus to Add on close', async ({
@@ -210,11 +241,17 @@ test.describe('add transaction', () => {
       name: 'Add transaction',
       exact: true,
     });
+    const amountInput = dialog.getByLabel('Amount');
 
-    // The × close button is the dialog's first focusable element.
+    // The amount field — not the × close button — is what gets focused on open.
+    await expect(amountInput).toBeFocused();
+
+    // Shift+Tab from the amount field moves back to the close button, its previous sibling in
+    // tab order.
+    await authedPage.keyboard.press('Shift+Tab');
     await expect(closeButton).toBeFocused();
 
-    // Shift+Tab from the first element wraps around to the last.
+    // Shift+Tab again from the close button — now the first element — wraps around to the last.
     await authedPage.keyboard.press('Shift+Tab');
     await expect(submitButton).toBeFocused();
 
@@ -413,6 +450,422 @@ test.describe('add transaction', () => {
     await expect(
       authedPage.getByRole('button', { name: 'Groceries', exact: true }),
     ).toBeVisible();
+  });
+});
+
+test.describe('edit and delete transaction', () => {
+  const seedCornerStore = async (
+    request: APIRequestContext,
+    apiOrigin: string,
+    categoryName: 'Groceries' | 'Coffee Shops' = 'Groceries',
+  ): Promise<void> => {
+    const categoryId = await getCategoryId(request, apiOrigin, categoryName);
+    await seedTransaction(request, apiOrigin, {
+      date: '2023-04-01',
+      merchant: 'Corner Store',
+      amount: '20.00',
+      categoryId,
+    });
+  };
+
+  const openEditPanel = async (authedPage: Page) => {
+    await authedPage.goto('/transactions');
+    await authedPage
+      .locator('li.transactions-row', { hasText: 'Corner Store' })
+      .getByRole('button', { name: 'Edit transaction', exact: true })
+      .click();
+    return authedPage.getByRole('dialog', { name: 'Edit transaction' });
+  };
+
+  test('opens via the row, updates the URL to /transactions/:id, and prefills every field', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedCornerStore(context.request, workerInfra.apiOrigin);
+    const dialog = await openEditPanel(authedPage);
+
+    await expect(dialog).toBeVisible();
+    await expect(authedPage).toHaveURL(/\/transactions\/\d+$/);
+    await expect(dialog.getByLabel('Amount')).toHaveValue('20.00');
+    await expect(dialog.getByLabel('Merchant')).toHaveValue('Corner Store');
+    await expect(dialog.getByLabel('Date')).toHaveValue('2023-04-01');
+    await expect(
+      dialog.getByRole('button', { name: 'Groceries', exact: true }),
+    ).toBeVisible();
+  });
+
+  test('keeps the top menu title and actions visible while the panel is open', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedCornerStore(context.request, workerInfra.apiOrigin);
+    await openEditPanel(authedPage);
+
+    await expect(authedPage.locator('.top-menu-title')).toHaveText(
+      'Transactions',
+    );
+    await expect(
+      authedPage.getByRole('button', { name: 'Add', exact: true }),
+    ).toBeVisible();
+  });
+
+  test('has no Save button — fields commit immediately', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedCornerStore(context.request, workerInfra.apiOrigin);
+    const dialog = await openEditPanel(authedPage);
+
+    await expect(
+      dialog.getByRole('button', { name: 'Save changes', exact: true }),
+    ).toHaveCount(0);
+  });
+
+  test('autofocuses the amount field on open', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedCornerStore(context.request, workerInfra.apiOrigin);
+    const dialog = await openEditPanel(authedPage);
+
+    await expect(dialog.getByLabel('Amount')).toBeFocused();
+  });
+
+  test('autosaves the merchant on blur', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedCornerStore(context.request, workerInfra.apiOrigin);
+    const dialog = await openEditPanel(authedPage);
+
+    await dialog.getByLabel('Merchant').fill('Uptown Store');
+    // Clicking another field blurs the merchant input without pressing Enter.
+    await dialog.getByLabel('Date').click();
+
+    await expect(
+      authedPage.locator('li.transactions-row', { hasText: 'Uptown Store' }),
+    ).toBeVisible();
+  });
+
+  test('autosaves the merchant on Enter', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedCornerStore(context.request, workerInfra.apiOrigin);
+    const dialog = await openEditPanel(authedPage);
+
+    await dialog.getByLabel('Merchant').fill('Uptown Store');
+    await dialog.getByLabel('Merchant').press('Enter');
+
+    await expect(dialog).toBeVisible();
+    await expect(
+      authedPage.locator('li.transactions-row', { hasText: 'Uptown Store' }),
+    ).toBeVisible();
+  });
+
+  test('reverts the merchant on Escape, without closing the panel or saving', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedCornerStore(context.request, workerInfra.apiOrigin);
+    const dialog = await openEditPanel(authedPage);
+
+    await dialog.getByLabel('Merchant').fill('Should Not Save');
+    await authedPage.keyboard.press('Escape');
+
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByLabel('Merchant')).toHaveValue('Corner Store');
+  });
+
+  test('requires a non-empty merchant, reverting and showing a toast', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedCornerStore(context.request, workerInfra.apiOrigin);
+    const dialog = await openEditPanel(authedPage);
+
+    await dialog.getByLabel('Merchant').fill('');
+    await dialog.getByLabel('Date').click();
+
+    await expect(authedPage.getByText('All fields are required.')).toBeVisible();
+    await expect(dialog.getByLabel('Merchant')).toHaveValue('Corner Store');
+  });
+
+  test('autosaves the amount on blur, normalizing a comma decimal separator', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedCornerStore(context.request, workerInfra.apiOrigin);
+    const dialog = await openEditPanel(authedPage);
+
+    await dialog.getByLabel('Amount').fill('35,50');
+    await dialog.getByLabel('Merchant').click();
+
+    await expect(dialog.getByLabel('Amount')).toHaveValue('35.50');
+    await expect(
+      authedPage
+        .locator('li.transactions-row', { hasText: 'Corner Store' })
+        .locator('.transactions-row-amount'),
+    ).toContainText(money(35.5));
+  });
+
+  test('reverts the amount on Escape, without closing the panel or saving', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedCornerStore(context.request, workerInfra.apiOrigin);
+    const dialog = await openEditPanel(authedPage);
+
+    await dialog.getByLabel('Amount').fill('999.99');
+    await authedPage.keyboard.press('Escape');
+
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByLabel('Amount')).toHaveValue('20.00');
+  });
+
+  test('rejects a value that reads as thousands-grouped, reverting and showing a toast', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedCornerStore(context.request, workerInfra.apiOrigin);
+    const dialog = await openEditPanel(authedPage);
+
+    await dialog.getByLabel('Amount').fill('1,234');
+    await dialog.getByLabel('Merchant').click();
+
+    await expect(
+      authedPage.getByText(
+        'Enter a plain amount, e.g. 12.50, without thousands separators.',
+      ),
+    ).toBeVisible();
+    await expect(dialog.getByLabel('Amount')).toHaveValue('20.00');
+  });
+
+  test('autosaves the date immediately on change', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedCornerStore(context.request, workerInfra.apiOrigin);
+    const dialog = await openEditPanel(authedPage);
+
+    await dialog.getByLabel('Date').fill('2023-05-15');
+
+    await expect(authedPage.locator('.transactions-date-header')).toContainText(
+      dateHeading('2023-05-15'),
+    );
+  });
+
+  test('autosaves the category immediately on selection', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedCornerStore(context.request, workerInfra.apiOrigin, 'Groceries');
+    const dialog = await openEditPanel(authedPage);
+
+    await dialog.getByRole('button', { name: 'Groceries', exact: true }).click();
+    await authedPage
+      .locator('.category-picker-popover')
+      .getByRole('button', { name: 'Coffee Shops', exact: true })
+      .click();
+
+    await expect(
+      dialog.getByRole('button', { name: 'Coffee Shops', exact: true }),
+    ).toBeVisible();
+    await expect(
+      authedPage
+        .locator('li.transactions-row', { hasText: 'Corner Store' })
+        .getByRole('button', { name: 'Coffee Shops', exact: true }),
+    ).toBeVisible();
+  });
+
+  test('shows a toast and keeps the old value when an autosave fails', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedCornerStore(context.request, workerInfra.apiOrigin);
+    const dialog = await openEditPanel(authedPage);
+
+    await authedPage.route('**/transactions/*', async (route) => {
+      if (route.request().method() === 'PATCH') {
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: '{}',
+        });
+      } else {
+        await route.continue();
+      }
+    });
+
+    await dialog.getByLabel('Merchant').fill('Uptown Store');
+    await dialog.getByLabel('Date').click();
+
+    await expect(
+      authedPage.getByText(
+        'Failed to update the transaction. Please try again.',
+      ),
+    ).toBeVisible();
+    await expect(
+      authedPage.locator('li.transactions-row', { hasText: 'Corner Store' }),
+    ).toBeVisible();
+  });
+
+  test('closes via the close button, returning to /transactions', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedCornerStore(context.request, workerInfra.apiOrigin);
+    const dialog = await openEditPanel(authedPage);
+
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+    await expect(dialog).not.toBeVisible();
+    await expect(authedPage).toHaveURL(/\/transactions$/);
+  });
+
+  test('closes on Escape when focus is not inside a field that reverts on Escape, returning to /transactions', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedCornerStore(context.request, workerInfra.apiOrigin);
+    const dialog = await openEditPanel(authedPage);
+
+    await expect(dialog).toBeVisible();
+    // The category trigger has no Escape handler of its own, so Escape bubbles up to the panel
+    // and closes it — unlike from the amount/merchant fields (see the per-field Escape tests).
+    await dialog.getByRole('button', { name: 'Groceries', exact: true }).focus();
+    await authedPage.keyboard.press('Escape');
+
+    await expect(dialog).not.toBeVisible();
+    await expect(authedPage).toHaveURL(/\/transactions$/);
+  });
+
+  test('closes on an outside click, returning to /transactions', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedCornerStore(context.request, workerInfra.apiOrigin);
+    const dialog = await openEditPanel(authedPage);
+
+    await expect(dialog).toBeVisible();
+    // The overlay covers the whole viewport; a corner is safely outside the panel itself, which
+    // is anchored to the right edge.
+    await authedPage
+      .locator('.edit-transaction-overlay')
+      .click({ position: { x: 5, y: 5 } });
+
+    await expect(dialog).not.toBeVisible();
+    await expect(authedPage).toHaveURL(/\/transactions$/);
+  });
+
+  test('cancelling delete keeps the transaction and restores the normal footer', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedCornerStore(context.request, workerInfra.apiOrigin);
+    const dialog = await openEditPanel(authedPage);
+
+    await dialog
+      .getByRole('button', { name: 'Delete transaction', exact: true })
+      .click();
+    await expect(
+      dialog.getByText("Delete this transaction? This can't be undone."),
+    ).toBeVisible();
+
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+
+    await expect(
+      dialog.getByRole('button', { name: 'Delete transaction', exact: true }),
+    ).toBeVisible();
+    await expect(dialog).toBeVisible();
+  });
+
+  test('deletes the transaction, shows a toast, removes the row, and returns to /transactions', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedCornerStore(context.request, workerInfra.apiOrigin);
+    const dialog = await openEditPanel(authedPage);
+
+    await dialog
+      .getByRole('button', { name: 'Delete transaction', exact: true })
+      .click();
+    await dialog.getByRole('button', { name: 'Delete', exact: true }).click();
+
+    await expect(dialog).not.toBeVisible();
+    await expect(authedPage.getByText('Transaction deleted.')).toBeVisible();
+    await expect(authedPage).toHaveURL(/\/transactions$/);
+    await expect(
+      authedPage.locator('li.transactions-row', { hasText: 'Corner Store' }),
+    ).not.toBeVisible();
+  });
+
+  test('shows a toast and keeps the transaction when delete fails', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedCornerStore(context.request, workerInfra.apiOrigin);
+    const dialog = await openEditPanel(authedPage);
+
+    await authedPage.route('**/transactions/*', async (route) => {
+      if (route.request().method() === 'DELETE') {
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: '{}',
+        });
+      } else {
+        await route.continue();
+      }
+    });
+
+    await dialog
+      .getByRole('button', { name: 'Delete transaction', exact: true })
+      .click();
+    await dialog.getByRole('button', { name: 'Delete', exact: true }).click();
+
+    await expect(
+      authedPage.getByText(
+        'Failed to delete the transaction. Please try again.',
+      ),
+    ).toBeVisible();
+    await expect(dialog).toBeVisible();
+    await expect(
+      dialog.getByRole('button', { name: 'Delete transaction', exact: true }),
+    ).toBeVisible();
+  });
+
+  test('shows "Transaction not found." for a nonexistent id, without hanging on the loading state', async ({
+    authedPage,
+  }) => {
+    await authedPage.goto('/transactions/999999999');
+
+    const dialog = authedPage.getByRole('dialog', { name: 'Edit transaction' });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText('Transaction not found.')).toBeVisible();
+    await expect(
+      dialog.getByText('Loading transaction…'),
+    ).not.toBeVisible();
   });
 });
 
