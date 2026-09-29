@@ -468,12 +468,14 @@ test.describe('edit and delete transaction', () => {
     });
   };
 
+  const editTriggerButton = (authedPage: Page) =>
+    authedPage
+      .locator('li.transactions-row', { hasText: 'Corner Store' })
+      .getByRole('button', { name: 'Edit transaction', exact: true });
+
   const openEditPanel = async (authedPage: Page) => {
     await authedPage.goto('/transactions');
-    await authedPage
-      .locator('li.transactions-row', { hasText: 'Corner Store' })
-      .getByRole('button', { name: 'Edit transaction', exact: true })
-      .click();
+    await editTriggerButton(authedPage).click();
     return authedPage.getByRole('dialog', { name: 'Edit transaction' });
   };
 
@@ -759,7 +761,7 @@ test.describe('edit and delete transaction', () => {
     ).toBeVisible();
   });
 
-  test('closes via the close button, returning to /transactions', async ({
+  test('closes via the close button, returning to /transactions and focus to the row', async ({
     authedPage,
     context,
     workerInfra,
@@ -771,9 +773,10 @@ test.describe('edit and delete transaction', () => {
     await dialog.getByRole('button', { name: 'Close', exact: true }).click();
     await expect(dialog).not.toBeVisible();
     await expect(authedPage).toHaveURL(/\/transactions$/);
+    await expect(editTriggerButton(authedPage)).toBeFocused();
   });
 
-  test('closes on Escape when focus is not inside a field that reverts on Escape, returning to /transactions', async ({
+  test('closes on Escape when focus is not inside a field that reverts on Escape, returning to /transactions and focus to the row', async ({
     authedPage,
     context,
     workerInfra,
@@ -789,9 +792,10 @@ test.describe('edit and delete transaction', () => {
 
     await expect(dialog).not.toBeVisible();
     await expect(authedPage).toHaveURL(/\/transactions$/);
+    await expect(editTriggerButton(authedPage)).toBeFocused();
   });
 
-  test('closes on an outside click, returning to /transactions', async ({
+  test('closes on an outside click, returning to /transactions and focus to the row', async ({
     authedPage,
     context,
     workerInfra,
@@ -808,6 +812,7 @@ test.describe('edit and delete transaction', () => {
 
     await expect(dialog).not.toBeVisible();
     await expect(authedPage).toHaveURL(/\/transactions$/);
+    await expect(editTriggerButton(authedPage)).toBeFocused();
   });
 
   test('cancelling delete keeps the transaction and restores the normal footer', async ({
