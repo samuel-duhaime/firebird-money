@@ -73,6 +73,7 @@ const TransactionsTopMenuActions = () => {
       <DownloadButton />
 
       <TopMenuButton
+        id="add-transaction-button"
         icon={faPlus}
         label={t('transactions.topMenu.add')}
         variant="primary"
