@@ -57,8 +57,12 @@ export const EditTransactionModal = ({
 
   useEffect(() => {
     if (!transaction) return;
-    setAmount(transaction.amount);
-    setMerchant(transaction.merchant);
+    // A refetch (e.g. the invalidation after saving another field) can land mid-keystroke in
+    // whichever field the user is still typing in — skip that one so its in-progress edit isn't
+    // overwritten with the pre-edit server value.
+    const activeElementId = document.activeElement?.id;
+    if (activeElementId !== 'edit-amount') setAmount(transaction.amount);
+    if (activeElementId !== 'edit-merchant') setMerchant(transaction.merchant);
     setDate(transaction.date);
     setCategoryId(transaction.category_id);
   }, [transaction]);
