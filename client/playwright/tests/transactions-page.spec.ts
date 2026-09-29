@@ -691,6 +691,41 @@ test.describe('edit and delete transaction', () => {
     ).toBeVisible();
   });
 
+  test('preserves an in-progress edit in one field while saving another triggers a refetch', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedCornerStore(context.request, workerInfra.apiOrigin);
+    const dialog = await openEditPanel(authedPage);
+
+    // Saving the amount invalidates the transaction query, which refetches it — delaying that GET
+    // opens a window to start editing the merchant field before the refetch's response would
+    // otherwise land mid-keystroke and overwrite it with the pre-edit server value.
+    await authedPage.route('**/transactions/*', async (route) => {
+      if (route.request().method() === 'GET') {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+      await route.continue();
+    });
+
+    await dialog.getByLabel('Amount').fill('35.50');
+    // Focusing the merchant field blurs the amount field, saving it and kicking off the
+    // (delayed) refetch above.
+    await dialog.getByLabel('Merchant').fill('Uptown Store');
+
+    // Give the delayed refetch time to resolve and re-render while merchant is still focused,
+    // unsaved — the exact window where a naive hydration effect would stomp the typed value back
+    // to the pre-edit server value.
+    await authedPage.waitForTimeout(700);
+    await expect(dialog.getByLabel('Merchant')).toHaveValue('Uptown Store');
+
+    await dialog.getByLabel('Date').click();
+    await expect(
+      authedPage.locator('li.transactions-row', { hasText: 'Uptown Store' }),
+    ).toBeVisible();
+  });
+
   test('shows a toast and keeps the old value when an autosave fails', async ({
     authedPage,
     context,
