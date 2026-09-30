@@ -303,6 +303,21 @@ export const TransactionsList = () => {
     [transactions],
   );
 
+  // The top menu's search/date-range controls stay reachable while selection mode is active, so
+  // the loaded transactions (and `allIds`) can change out from under an in-progress selection —
+  // drop any selected id that's no longer in the current list, so the toolbar count, the
+  // "select all" checkbox, and the bulk-edit panel never act on rows the user can't see anymore.
+  // Skipped while `transactions` is `undefined` (a new filter's query key is still loading,
+  // without `keepPreviousData`) — otherwise that transient empty state would wipe the whole
+  // selection right before the real, still-relevant results arrive.
+  useEffect(() => {
+    if (!transactions) return;
+    setSelectedIds((previous) => {
+      const next = new Set([...previous].filter((id) => allIds.includes(id)));
+      return next.size === previous.size ? previous : next;
+    });
+  }, [transactions, allIds]);
+
   const cancelSelection = () => {
     setSelectionMode(false);
     setSelectedIds(new Set());

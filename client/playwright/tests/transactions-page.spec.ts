@@ -1074,6 +1074,36 @@ test.describe('edit multiple transactions', () => {
     ).toBeVisible();
   });
 
+  test('narrowing the list with a search while selecting drops ids that fell out of view', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await seedTwo(context.request, workerInfra.apiOrigin);
+    await enterSelectionMode(authedPage);
+    await authedPage
+      .getByRole('checkbox', { name: 'All transactions (CTRL+A)' })
+      .click();
+    await expect(
+      authedPage.getByText('2 transactions selected (ESC)'),
+    ).toBeVisible();
+
+    // Search stays reachable from the top menu while selection mode is active — narrowing the
+    // list here must not leave "Downtown Store" (no longer loaded) counted as still selected.
+    await authedPage
+      .getByRole('button', { name: 'Search', exact: true })
+      .click();
+    await authedPage.getByPlaceholder('Enter a search term...').fill('corner');
+    await authedPage.getByPlaceholder('Enter a search term...').press('Enter');
+
+    await expect(
+      authedPage.getByText('1 transaction selected (ESC)'),
+    ).toBeVisible();
+    await expect(
+      authedPage.getByRole('button', { name: 'Edit 1', exact: true }),
+    ).toBeVisible();
+  });
+
   test('opens a bulk-edit panel titled with the selected count', async ({
     authedPage,
     context,
