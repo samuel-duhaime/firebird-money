@@ -1,6 +1,9 @@
 use sqlx::PgPool;
 
-use super::model::{NewTransaction, SortOrder, Transaction, TransactionFilter, TransactionPatch};
+use super::model::{
+    BulkTransactionPatch, NewTransaction, SortOrder, Transaction, TransactionFilter,
+    TransactionPatch,
+};
 
 const SELECT_COLUMNS: &str = "
     t.id, t.household_id, t.household_member_id, t.date, t.merchant, t.amount, t.category_id,
@@ -157,4 +160,51 @@ pub async fn delete(pool: &PgPool, household_id: i32, id: i64) -> Result<bool, s
         .execute(pool)
         .await?;
     Ok(result.rows_affected() > 0)
+}
+
+/// Applies a partial update (only `Some` fields change) to every id in `ids`, scoped to
+/// `household_id` — ids that don't exist or belong to a different household are silently skipped.
+/// Returns the updated rows (joined with their category).
+pub async fn bulk_update(
+    pool: &PgPool,
+    household_id: i32,
+    ids: &[i64],
+    patch: &BulkTransactionPatch,
+) -> Result<Vec<Transaction>, sqlx::Error> {
+    sqlx::query_as::<_, Transaction>(&format!(
+        "WITH updated AS (
+            UPDATE transactions
+            SET date = COALESCE($3, date),
+                merchant = COALESCE($4, merchant),
+                category_id = COALESCE($5, category_id)
+            WHERE id = ANY($1) AND household_id = $2
+            RETURNING *
+         )
+         SELECT {SELECT_COLUMNS}
+         FROM updated t
+         JOIN categories c ON c.id = t.category_id
+         JOIN category_groups g ON g.id = c.group_id"
+    ))
+    .bind(ids)
+    .bind(household_id)
+    .bind(patch.date)
+    .bind(&patch.merchant)
+    .bind(patch.category_id)
+    .fetch_all(pool)
+    .await
+}
+
+/// Deletes every id in `ids`, scoped to `household_id` — ids that don't exist or belong to a
+/// different household are silently skipped. Returns the number of rows deleted.
+pub async fn bulk_delete(
+    pool: &PgPool,
+    household_id: i32,
+    ids: &[i64],
+) -> Result<u64, sqlx::Error> {
+    let result = sqlx::query("DELETE FROM transactions WHERE id = ANY($1) AND household_id = $2")
+        .bind(ids)
+        .bind(household_id)
+        .execute(pool)
+        .await?;
+    Ok(result.rows_affected())
 }

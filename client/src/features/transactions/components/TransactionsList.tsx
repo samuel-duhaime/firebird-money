@@ -1,4 +1,4 @@
-import { Fragment, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { getRouteApi, useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
@@ -8,6 +8,7 @@ import { useTransactions } from '../hooks/use-transactions';
 import { useUpdateTransaction } from '../hooks/use-update-transaction';
 import { TransactionsToolbar } from './TransactionsToolbar';
 import { CategoryPicker } from './CategoryPicker';
+import { EditMultipleTransactionsModal } from './EditMultipleTransactionsModal';
 import { formatAmount, formatDateHeading } from '../utils/format';
 import { normalizeAmount, sanitizeAmountInput } from '../utils/amount';
 import { toIntlLocale } from '../../../i18n/locale';
@@ -51,10 +52,16 @@ const TransactionRow = ({
   transaction,
   language,
   locale,
+  selectionMode,
+  isSelected,
+  onToggleSelect,
 }: {
   transaction: Transaction;
   language: string;
   locale: string;
+  selectionMode: boolean;
+  isSelected: boolean;
+  onToggleSelect: (id: number) => void;
 }) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -136,6 +143,45 @@ const TransactionRow = ({
     if (categoryId === transaction.category_id) return;
     save({ category_id: categoryId });
   };
+
+  if (selectionMode) {
+    return (
+      <li
+        className="transactions-row transactions-row--selectable"
+        onClick={() => onToggleSelect(transaction.id)}
+      >
+        <input
+          type="checkbox"
+          className="transactions-row-checkbox"
+          checked={isSelected}
+          onChange={() => onToggleSelect(transaction.id)}
+          onClick={(event) => event.stopPropagation()}
+          aria-label={t('transactions.edit.selectTransaction', {
+            merchant: transaction.merchant,
+          })}
+        />
+        <span className="transactions-row-cell transactions-row-merchant">
+          {transaction.merchant}
+        </span>
+        <span className="transactions-row-cell transactions-row-category">
+          {categoryName}
+        </span>
+        <span className="transactions-row-cell transactions-row-account">
+          {transaction.account}
+        </span>
+        <span
+          className={
+            isCredit
+              ? 'transactions-row-amount transactions-row-amount--credit'
+              : 'transactions-row-amount'
+          }
+        >
+          {isCredit ? '+' : ''}
+          {formatAmount(Number(transaction.amount), locale)}
+        </span>
+      </li>
+    );
+  }
 
   return (
     <li className="transactions-row">
@@ -248,9 +294,92 @@ export const TransactionsList = () => {
     isError,
   } = useTransactions(search, order, start_date, end_date);
 
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkEditOpen, setBulkEditOpen] = useState(false);
+
+  const allIds = useMemo(
+    () => (transactions ?? []).map((transaction) => transaction.id),
+    [transactions],
+  );
+
+  // The top menu's search/date-range controls stay reachable while selection mode is active, so
+  // the loaded transactions (and `allIds`) can change out from under an in-progress selection —
+  // drop any selected id that's no longer in the current list, so the toolbar count, the
+  // "select all" checkbox, and the bulk-edit panel never act on rows the user can't see anymore.
+  // Skipped while `transactions` is `undefined` (a new filter's query key is still loading,
+  // without `keepPreviousData`) — otherwise that transient empty state would wipe the whole
+  // selection right before the real, still-relevant results arrive.
+  useEffect(() => {
+    if (!transactions) return;
+    setSelectedIds((previous) => {
+      const next = new Set([...previous].filter((id) => allIds.includes(id)));
+      return next.size === previous.size ? previous : next;
+    });
+  }, [transactions, allIds]);
+
+  const cancelSelection = () => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    setSelectedIds((previous) =>
+      previous.size === allIds.length ? new Set() : new Set(allIds),
+    );
+  };
+
+  const handleBulkSaved = () => {
+    setBulkEditOpen(false);
+    cancelSelection();
+  };
+
+  // Only active while in selection mode, and not while the bulk-edit panel is open — that panel
+  // handles its own Escape (close the panel, keep the selection underneath), same as the
+  // single-transaction edit panel.
+  useEffect(() => {
+    if (!selectionMode || bulkEditOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const isTyping = !!target && ['INPUT', 'TEXTAREA'].includes(target.tagName);
+
+      if (event.key === 'Escape') {
+        cancelSelection();
+      } else if (
+        !isTyping &&
+        (event.ctrlKey || event.metaKey) &&
+        event.key.toLowerCase() === 'a'
+      ) {
+        event.preventDefault();
+        setSelectedIds(new Set(allIds));
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectionMode, bulkEditOpen, allIds]);
+
   return (
     <div className="transactions-card">
-      <TransactionsToolbar />
+      <TransactionsToolbar
+        selectionMode={selectionMode}
+        selectedCount={selectedIds.size}
+        totalCount={allIds.length}
+        onEnterSelectionMode={() => setSelectionMode(true)}
+        onCancelSelection={cancelSelection}
+        onToggleSelectAll={toggleSelectAll}
+        onOpenBulkEdit={() => setBulkEditOpen(true)}
+      />
       <div className="transactions-card-body">
         {isPending && (
           <p className="transactions-status">{t('transactions.list.loading')}</p>
@@ -277,6 +406,9 @@ export const TransactionsList = () => {
                     transaction={transaction}
                     language={language}
                     locale={locale}
+                    selectionMode={selectionMode}
+                    isSelected={selectedIds.has(transaction.id)}
+                    onToggleSelect={toggleSelect}
                   />
                 ))}
               </Fragment>
@@ -284,6 +416,13 @@ export const TransactionsList = () => {
           </ul>
         )}
       </div>
+      {bulkEditOpen && (
+        <EditMultipleTransactionsModal
+          transactionIds={Array.from(selectedIds)}
+          onClose={() => setBulkEditOpen(false)}
+          onSaved={handleBulkSaved}
+        />
+      )}
     </div>
   );
 };

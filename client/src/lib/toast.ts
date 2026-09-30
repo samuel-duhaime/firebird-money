@@ -32,6 +32,18 @@ export const deleteTransactionSucceededToast = () =>
 export const deleteTransactionFailedToast = () =>
   toast.error(i18n.t('toast.deleteTransactionFailed'));
 
+export const bulkUpdateTransactionsFailedToast = () =>
+  toast.error(i18n.t('toast.bulkUpdateTransactionsFailed'));
+
+export const noBulkChangesToast = () =>
+  toast.error(i18n.t('transactions.editMultiple.noChangesError'));
+
+export const bulkDeleteTransactionsSucceededToast = (count: number) =>
+  toast.success(i18n.t('toast.bulkDeleteTransactionsSucceeded', { count }));
+
+export const bulkDeleteTransactionsFailedToast = () =>
+  toast.error(i18n.t('toast.bulkDeleteTransactionsFailed'));
+
 export const invalidAmountToast = () =>
   toast.error(i18n.t('transactions.add.invalidAmount'));
 

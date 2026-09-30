@@ -90,6 +90,11 @@ export const en = {
       allTransactions: 'All transactions',
       editMultiple: 'Edit multiple',
       columns: 'Columns',
+      cancel: 'Cancel',
+      selectAllHint: 'All transactions (CTRL+A)',
+      selected_one: '{{count}} transaction selected (ESC)',
+      selected_other: '{{count}} transactions selected (ESC)',
+      editCount: 'Edit {{count}}',
     },
     sort: {
       trigger: 'Sort',
@@ -151,6 +156,7 @@ export const en = {
       createCategory: 'Create new category',
       title: 'Edit transaction',
       openTransaction: 'Edit transaction',
+      selectTransaction: 'Select {{merchant}}',
       delete: 'Delete transaction',
       deleteConfirmTitle: 'Delete this transaction?',
       deleteConfirmDescription: "This can't be undone.",
@@ -158,6 +164,20 @@ export const en = {
       deleteFailed: 'Failed to delete the transaction. Please try again.',
       loading: 'Loading transaction…',
       notFound: 'Transaction not found.',
+    },
+    editMultiple: {
+      title_one: 'Edit {{count}} transaction',
+      title_other: 'Edit {{count}} transactions',
+      noChange: 'No change',
+      noChangesError: 'Select at least one change before saving.',
+      save: 'Save',
+      cancel: 'Cancel',
+      delete_one: 'Delete {{count}} transaction',
+      delete_other: 'Delete {{count}} transactions',
+      deleteConfirmTitle_one: 'Delete {{count}} transaction?',
+      deleteConfirmTitle_other: 'Delete {{count}} transactions?',
+      deleteConfirmDescription: "This can't be undone.",
+      deleteConfirmButton: 'Delete',
     },
   },
   toast: {
@@ -167,6 +187,12 @@ export const en = {
     deleteTransactionSucceeded: 'Transaction deleted.',
     deleteTransactionFailed:
       'Failed to delete the transaction. Please try again.',
+    bulkUpdateTransactionsFailed:
+      'Failed to update the transactions. Please try again.',
+    bulkDeleteTransactionsSucceeded_one: '{{count}} transaction deleted.',
+    bulkDeleteTransactionsSucceeded_other: '{{count}} transactions deleted.',
+    bulkDeleteTransactionsFailed:
+      'Failed to delete the transactions. Please try again.',
     signInFailed: 'Could not send the sign-in link. Please try again.',
     signOutFailed: 'Could not sign out. Please try again.',
     onboardingFailed: 'Could not set up your household. Please try again.',

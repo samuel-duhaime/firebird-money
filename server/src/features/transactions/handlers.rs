@@ -14,7 +14,10 @@ use uuid::Uuid;
 use super::download;
 use super::import;
 use super::jobs::JobStore;
-use super::model::{ImportJobReport, NewTransaction, TransactionFilter, TransactionPatch};
+use super::model::{
+    BulkDeleteRequest, BulkUpdateRequest, ImportJobReport, NewTransaction, Transaction,
+    TransactionFilter, TransactionPatch,
+};
 use super::repository;
 use crate::features::auth::{session_token, CurrentUser};
 use crate::shared::http_error::{
@@ -397,6 +400,68 @@ async fn delete_transaction(
     }
 }
 
+/// `PATCH /transactions/bulk` — partially update several transactions at once (only `Some` fields
+/// change, on every id); unset fields are left unchanged. Ids the household doesn't own are
+/// silently skipped rather than erroring the whole batch.
+async fn bulk_update_transactions(
+    body: web::Json<BulkUpdateRequest>,
+    current_user: CurrentUser,
+    pool: web::Data<PgPool>,
+    l10n: web::Data<L10n>,
+) -> impl Responder {
+    let locale = l10n.locale();
+    let household_id = match current_user.require_household_id(&l10n, &locale) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
+
+    if body.ids.is_empty() {
+        return HttpResponse::Ok().json(Vec::<Transaction>::new());
+    }
+
+    match repository::bulk_update(&pool, household_id, &body.ids, &body.patch).await {
+        Ok(transactions) => HttpResponse::Ok().json(transactions),
+        Err(e) if is_foreign_key_violation(&e) => error_response_with_n(
+            &l10n,
+            &locale,
+            StatusCode::BAD_REQUEST,
+            "category-not-found",
+            body.patch.category_id.unwrap_or_default() as u32,
+        ),
+        Err(e) => {
+            error!("failed to bulk update transactions error={e}");
+            internal_error_response(&l10n, &locale)
+        }
+    }
+}
+
+/// `DELETE /transactions/bulk` — delete several transactions at once. Ids the household doesn't
+/// own are silently skipped rather than erroring the whole batch.
+async fn bulk_delete_transactions(
+    body: web::Json<BulkDeleteRequest>,
+    current_user: CurrentUser,
+    pool: web::Data<PgPool>,
+    l10n: web::Data<L10n>,
+) -> impl Responder {
+    let locale = l10n.locale();
+    let household_id = match current_user.require_household_id(&l10n, &locale) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
+
+    if body.ids.is_empty() {
+        return HttpResponse::NoContent().finish();
+    }
+
+    match repository::bulk_delete(&pool, household_id, &body.ids).await {
+        Ok(_) => HttpResponse::NoContent().finish(),
+        Err(e) => {
+            error!("failed to bulk delete transactions error={e}");
+            internal_error_response(&l10n, &locale)
+        }
+    }
+}
+
 /// Registers the transactions feature's routes.
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.app_data(MultipartFormConfig::default().error_handler(import_upload_error_handler))
@@ -414,6 +479,14 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .route(
             "/transactions/import/jobs/{id}",
             web::patch().to(report_import_job),
+        )
+        .route(
+            "/transactions/bulk",
+            web::patch().to(bulk_update_transactions),
+        )
+        .route(
+            "/transactions/bulk",
+            web::delete().to(bulk_delete_transactions),
         )
         .route("/transactions/{id}", web::get().to(get_transaction))
         .route("/transactions/{id}", web::patch().to(update_transaction))

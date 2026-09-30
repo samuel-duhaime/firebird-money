@@ -40,3 +40,26 @@ export const getTransaction = (id: number): Promise<Transaction> =>
 
 export const deleteTransaction = (id: number): Promise<void> =>
   apiFetch<void>(`/transactions/${id}`, { method: 'DELETE' });
+
+/** Body for `PATCH /transactions/bulk` — the "edit multiple" panel's field set, a subset of
+ * `TransactionPatch`: no `amount`/`account`, since setting one value across several different
+ * transactions doesn't make sense for those fields. */
+export type BulkTransactionPatch = Pick<
+  TransactionPatch,
+  'date' | 'merchant' | 'category_id'
+>;
+
+export const bulkUpdateTransactions = (
+  ids: number[],
+  patch: BulkTransactionPatch,
+): Promise<Transaction[]> =>
+  apiFetch<Transaction[]>('/transactions/bulk', {
+    method: 'PATCH',
+    body: JSON.stringify({ ids, patch }),
+  });
+
+export const bulkDeleteTransactions = (ids: number[]): Promise<void> =>
+  apiFetch<void>('/transactions/bulk', {
+    method: 'DELETE',
+    body: JSON.stringify({ ids }),
+  });

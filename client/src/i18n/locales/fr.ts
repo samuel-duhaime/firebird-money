@@ -91,6 +91,11 @@ export const fr: typeof en = {
       allTransactions: 'Toutes les transactions',
       editMultiple: 'Modifier plusieurs',
       columns: 'Colonnes',
+      cancel: 'Annuler',
+      selectAllHint: 'Toutes les transactions (CTRL+A)',
+      selected_one: '{{count}} transaction sélectionnée (ESC)',
+      selected_other: '{{count}} transactions sélectionnées (ESC)',
+      editCount: 'Modifier {{count}}',
     },
     sort: {
       trigger: 'Trier',
@@ -152,6 +157,7 @@ export const fr: typeof en = {
       createCategory: 'Créer une nouvelle catégorie',
       title: 'Modifier la transaction',
       openTransaction: 'Modifier la transaction',
+      selectTransaction: 'Sélectionner {{merchant}}',
       delete: 'Supprimer la transaction',
       deleteConfirmTitle: 'Supprimer cette transaction?',
       deleteConfirmDescription: 'Cette action est irréversible.',
@@ -160,6 +166,20 @@ export const fr: typeof en = {
       loading: 'Chargement de la transaction…',
       notFound: 'Transaction introuvable.',
     },
+    editMultiple: {
+      title_one: 'Modifier {{count}} transaction',
+      title_other: 'Modifier {{count}} transactions',
+      noChange: 'Aucun changement',
+      noChangesError: 'Sélectionne au moins un changement avant d’enregistrer.',
+      save: 'Enregistrer',
+      cancel: 'Annuler',
+      delete_one: 'Supprimer {{count}} transaction',
+      delete_other: 'Supprimer {{count}} transactions',
+      deleteConfirmTitle_one: 'Supprimer {{count}} transaction?',
+      deleteConfirmTitle_other: 'Supprimer {{count}} transactions?',
+      deleteConfirmDescription: 'Cette action est irréversible.',
+      deleteConfirmButton: 'Supprimer',
+    },
   },
   toast: {
     notImplemented: "Cette fonctionnalité n'est pas encore disponible.",
@@ -167,6 +187,12 @@ export const fr: typeof en = {
     deleteTransactionSucceeded: 'Transaction supprimée.',
     deleteTransactionFailed:
       'Impossible de supprimer la transaction. Réessaie.',
+    bulkUpdateTransactionsFailed:
+      'Impossible de modifier les transactions. Réessaie.',
+    bulkDeleteTransactionsSucceeded_one: '{{count}} transaction supprimée.',
+    bulkDeleteTransactionsSucceeded_other: '{{count}} transactions supprimées.',
+    bulkDeleteTransactionsFailed:
+      'Impossible de supprimer les transactions. Réessaie.',
     signInFailed: 'Impossible d’envoyer le lien de connexion. Réessaie.',
     signOutFailed: 'Impossible de te déconnecter. Réessaie.',
     onboardingFailed: 'Impossible de configurer ton ménage. Réessaie.',

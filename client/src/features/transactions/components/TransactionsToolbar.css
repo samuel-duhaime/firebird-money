@@ -46,8 +46,42 @@
   outline-offset: 2px;
 }
 
+.transactions-toolbar-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.transactions-toolbar-button:disabled:hover,
+.transactions-toolbar-button:disabled:focus-visible {
+  filter: none;
+}
+
+.transactions-toolbar-button--primary {
+  background: var(--color-primary);
+}
+
 .transactions-toolbar-divider {
   width: 1px;
   height: 20px;
   background: var(--color-medium);
+}
+
+.transactions-toolbar-select-all {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  /* No horizontal padding: the checkbox needs to land at the same x position as the row
+   * checkboxes below, which sit flush against `.transactions-row`'s own left padding — adding
+   * padding here on top of the toolbar's own would push it further right than that. */
+  padding: var(--spacing-xs) 0;
+  color: var(--color-white);
+  font: 700 15px/normal Quicksand, sans-serif;
+  cursor: pointer;
+}
+
+.transactions-toolbar-select-all input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-primary);
+  cursor: pointer;
 }
