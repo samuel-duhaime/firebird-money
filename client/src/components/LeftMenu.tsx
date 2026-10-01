@@ -1,11 +1,11 @@
 import { createPortal } from 'react-dom';
-import { Link } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faHouse,
   faReceipt,
-  faRuler,
+  faPeopleRoof,
   faCircleUser,
   faChevronUp,
   faGear,
@@ -14,18 +14,20 @@ import {
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { useAnchoredPopover } from '../lib/use-anchored-popover';
 import { useSignOut } from '../features/auth/hooks/use-sign-out';
-import { notImplementedToast } from '../lib/toast';
 import './Popover.css';
 import './LeftMenu.css';
 
 const navItems = [
   { to: '/dashboard', labelKey: 'nav.dashboard', icon: faHouse },
   { to: '/transactions', labelKey: 'nav.transactions', icon: faReceipt },
-  { to: '/rules', labelKey: 'nav.rules', icon: faRuler },
+  // TODO: point this at '/settings/members' instead once the Household > Members settings page
+  // exists — Tags is just the first Household settings page that's actually built.
+  { to: '/settings/tags', labelKey: 'nav.household', icon: faPeopleRoof },
 ] as const;
 
 export const LeftMenu = () => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const signOut = useSignOut();
   const { isOpen, setIsOpen, position, triggerRef, popoverRef } =
     useAnchoredPopover<HTMLButtonElement>();
@@ -39,7 +41,9 @@ export const LeftMenu = () => {
               to={to}
               activeOptions={{ exact: to === '/dashboard' }}
               className="left-menu-link"
-              activeProps={{ className: 'left-menu-link left-menu-link--active' }}
+              activeProps={{
+                className: 'left-menu-link left-menu-link--active',
+              }}
             >
               <FontAwesomeIcon icon={icon} className="left-menu-link-icon" />
               <span>{t(labelKey)}</span>
@@ -56,9 +60,15 @@ export const LeftMenu = () => {
         aria-expanded={isOpen}
         onClick={() => setIsOpen((open) => !open)}
       >
-        <FontAwesomeIcon icon={faCircleUser} className="left-menu-profile-icon" />
+        <FontAwesomeIcon
+          icon={faCircleUser}
+          className="left-menu-profile-icon"
+        />
         <span className="left-menu-profile-name">{t('leftMenu.username')}</span>
-        <FontAwesomeIcon icon={faChevronUp} className="left-menu-profile-chevron" />
+        <FontAwesomeIcon
+          icon={faChevronUp}
+          className="left-menu-profile-chevron"
+        />
       </button>
       {isOpen &&
         position &&
@@ -75,7 +85,10 @@ export const LeftMenu = () => {
               className="left-menu-profile-popover-option"
               onClick={() => {
                 setIsOpen(false);
-                notImplementedToast();
+                // TODO: point this at '/settings/members' instead once the Household > Members
+                // settings page exists — Tags is just the first Household settings page that's
+                // actually built.
+                navigate({ to: '/settings/tags' });
               }}
             >
               <FontAwesomeIcon icon={faGear} />
