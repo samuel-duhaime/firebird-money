@@ -148,6 +148,14 @@ export const fr: typeof en = {
         inverse_amount: 'Montant (faible à élevé)',
       },
     },
+    columns: {
+      visibleCount: '{{visible}} sur {{total}} visibles',
+      labels: {
+        tags: 'Étiquettes',
+        category: 'Catégorie',
+        account: 'Compte',
+      },
+    },
     search: {
       trigger: 'Rechercher',
       title: 'Rechercher',

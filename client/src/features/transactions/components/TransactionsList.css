@@ -36,10 +36,9 @@
 }
 
 .transactions-row {
+  /* `grid-template-columns` is set inline per row — see `rowGridTemplateColumns` — since it
+   * depends on which optional columns (tags/category/account) the user currently has visible. */
   display: grid;
-  grid-template-columns:
-    minmax(0, 2fr) minmax(0, 1.3fr) minmax(0, 1.3fr) minmax(0, 1.3fr)
-    110px 16px;
   align-items: center;
   gap: var(--spacing-s);
   padding: var(--spacing-s);
@@ -52,9 +51,6 @@
 }
 
 .transactions-row--selectable {
-  grid-template-columns:
-    20px minmax(0, 2fr) minmax(0, 1.3fr) minmax(0, 1.3fr) minmax(0, 1.3fr)
-    110px 16px;
   cursor: pointer;
 }
 

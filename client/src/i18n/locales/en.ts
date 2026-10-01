@@ -147,6 +147,14 @@ export const en = {
         inverse_amount: 'Amount (low to high)',
       },
     },
+    columns: {
+      visibleCount: '{{visible}} of {{total}} visible',
+      labels: {
+        tags: 'Tags',
+        category: 'Category',
+        account: 'Account',
+      },
+    },
     search: {
       trigger: 'Search',
       title: 'Search',
