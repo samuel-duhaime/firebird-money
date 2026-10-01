@@ -26,3 +26,11 @@ export const updateTag = (id: number, patch: TagPatch): Promise<Tag> =>
 
 export const deleteTag = (id: number): Promise<void> =>
   apiFetch<void>(`/tags/${id}`, { method: 'DELETE' });
+
+/** Sets the household's tag display order to exactly `tagIds` and returns the tags in that new
+ * order. */
+export const reorderTags = (tagIds: number[]): Promise<Tag[]> =>
+  apiFetch<Tag[]>('/tags/reorder', {
+    method: 'PATCH',
+    body: JSON.stringify({ tag_ids: tagIds }),
+  });

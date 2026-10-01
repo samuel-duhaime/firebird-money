@@ -8,6 +8,7 @@ import { useTransactions } from '../hooks/use-transactions';
 import { useUpdateTransaction } from '../hooks/use-update-transaction';
 import { TransactionsToolbar } from './TransactionsToolbar';
 import { CategoryPicker } from './CategoryPicker';
+import { TagPicker } from '../../tags/components/TagPicker';
 import { EditMultipleTransactionsModal } from './EditMultipleTransactionsModal';
 import { formatAmount, formatDateHeading } from '../utils/format';
 import { normalizeAmount, sanitizeAmountInput } from '../utils/amount';
@@ -144,6 +145,14 @@ const TransactionRow = ({
     save({ category_id: categoryId });
   };
 
+  const tagIds = transaction.tags.map((tag) => tag.id);
+  const handleTagToggle = (tagId: number) => {
+    const next = tagIds.includes(tagId)
+      ? tagIds.filter((id) => id !== tagId)
+      : [...tagIds, tagId];
+    save({ tag_ids: next });
+  };
+
   if (selectionMode) {
     return (
       <li
@@ -165,6 +174,16 @@ const TransactionRow = ({
         </span>
         <span className="transactions-row-cell transactions-row-category">
           {categoryName}
+        </span>
+        <span className="transactions-row-cell transactions-row-tags">
+          {transaction.tags.map((tag) => (
+            <span
+              key={tag.id}
+              className="transactions-row-tag-dot"
+              style={{ backgroundColor: tag.color }}
+              title={tag.name}
+            />
+          ))}
         </span>
         <span className="transactions-row-cell transactions-row-account">
           {transaction.account}
@@ -210,6 +229,13 @@ const TransactionRow = ({
         label={categoryName}
         className="transactions-row-cell transactions-row-category transactions-row-cell--editable"
         onSelect={handleCategorySelect}
+      />
+
+      <TagPicker
+        selectedTagIds={tagIds}
+        onToggle={handleTagToggle}
+        triggerClassName="transactions-row-cell transactions-row-tags transactions-row-cell--editable"
+        ariaLabel={t('transactions.add.tags')}
       />
 
       {editingField === 'account' ? (
@@ -351,7 +377,8 @@ export const TransactionsList = () => {
 
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      const isTyping = !!target && ['INPUT', 'TEXTAREA'].includes(target.tagName);
+      const isTyping =
+        !!target && ['INPUT', 'TEXTAREA'].includes(target.tagName);
 
       if (event.key === 'Escape') {
         cancelSelection();
@@ -382,7 +409,9 @@ export const TransactionsList = () => {
       />
       <div className="transactions-card-body">
         {isPending && (
-          <p className="transactions-status">{t('transactions.list.loading')}</p>
+          <p className="transactions-status">
+            {t('transactions.list.loading')}
+          </p>
         )}
         {isError && (
           <p className="transactions-status">{t('transactions.list.error')}</p>

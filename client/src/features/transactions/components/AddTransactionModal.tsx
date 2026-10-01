@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCategories } from '../../categories/hooks/use-categories';
+import { TagPicker } from '../../tags/components/TagPicker';
 import { useCreateTransaction } from '../hooks/use-create-transaction';
 import { normalizeAmount, sanitizeAmountInput } from '../utils/amount';
 import { CategoryPicker } from './CategoryPicker';
@@ -20,15 +21,14 @@ type AddTransactionModalProps = {
 const FOCUSABLE_SELECTOR =
   'input, select, button, [href], [tabindex]:not([tabindex="-1"])';
 
-export const AddTransactionModal = ({
-  onClose,
-}: AddTransactionModalProps) => {
+export const AddTransactionModal = ({ onClose }: AddTransactionModalProps) => {
   const { t, i18n } = useTranslation();
   const { data: categories } = useCategories();
   const [amount, setAmount] = useState('');
   const [merchant, setMerchant] = useState('');
   const [date, setDate] = useState('');
   const [categoryId, setCategoryId] = useState<number | null>(null);
+  const [tagIds, setTagIds] = useState<number[]>([]);
   const [error, setError] = useState('');
   const dialogRef = useRef<HTMLDivElement>(null);
   const firstFieldRef = useRef<HTMLInputElement>(null);
@@ -48,10 +48,12 @@ export const AddTransactionModal = ({
       dialogRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR) ??
         [],
     );
-    const popover = document.querySelector('.category-picker-popover');
-    const popoverFocusable = popover
-      ? Array.from(popover.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
-      : [];
+    const popovers = document.querySelectorAll(
+      '.category-picker-popover, .tag-picker-popover',
+    );
+    const popoverFocusable = Array.from(popovers).flatMap((popover) =>
+      Array.from(popover.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)),
+    );
     return [...dialogFocusable, ...popoverFocusable];
   };
 
@@ -98,6 +100,14 @@ export const AddTransactionModal = ({
     setCategoryId(id);
   };
 
+  const handleTagToggle = (tagId: number) => {
+    setTagIds((previous) =>
+      previous.includes(tagId)
+        ? previous.filter((id) => id !== tagId)
+        : [...previous, tagId],
+    );
+  };
+
   const handleSubmit = () => {
     if (
       !amount.trim() ||
@@ -133,6 +143,7 @@ export const AddTransactionModal = ({
         amount: amountResult.value,
         category_id: categoryId,
         account: MANUAL_ACCOUNT,
+        tag_ids: tagIds,
       },
       {
         onSuccess: () => {
@@ -140,6 +151,7 @@ export const AddTransactionModal = ({
           setMerchant('');
           setDate('');
           setCategoryId(null);
+          setTagIds([]);
           onClose();
         },
         onError: () => {
@@ -242,6 +254,14 @@ export const AddTransactionModal = ({
                 : 'modal-category-trigger modal-category-trigger--placeholder'
             }
             onSelect={handleCategorySelect}
+          />
+
+          <label>{t('transactions.add.tags')}</label>
+          <TagPicker
+            selectedTagIds={tagIds}
+            onToggle={handleTagToggle}
+            triggerClassName="modal-category-trigger"
+            ariaLabel={t('transactions.add.tags')}
           />
 
           {error && (

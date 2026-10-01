@@ -131,8 +131,10 @@ const poolFor = (databaseUrl: string): Pool => {
 export const truncateTransactions = async (
   databaseUrl: string,
 ): Promise<void> => {
+  // CASCADE also clears `transaction_tags`, which has a foreign key on `transactions` and would
+  // otherwise make a plain TRUNCATE fail.
   await poolFor(databaseUrl).query(
-    'TRUNCATE TABLE transactions RESTART IDENTITY',
+    'TRUNCATE TABLE transactions RESTART IDENTITY CASCADE',
   );
 };
 

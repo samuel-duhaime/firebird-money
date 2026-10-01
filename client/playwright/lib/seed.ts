@@ -14,21 +14,50 @@ export const getCategoryId = async (
   return match.id;
 };
 
+/** Shared by the e2e suite — looks up a seeded household's starter tag id by name (see
+ * `server/src/features/tags/defaults.rs`), mirroring `getCategoryId` above. */
+export const getTagId = async (
+  request: APIRequestContext,
+  apiOrigin: string,
+  name: string,
+): Promise<number> => {
+  const response = await request.get(`${apiOrigin}/tags`);
+  const tags: { id: number; name: string }[] = await response.json();
+  const match = tags.find((tag) => tag.name === name);
+  if (!match) throw new Error(`tag not seeded: ${name}`);
+  return match.id;
+};
+
 export type SeedTransaction = {
   date: string;
   merchant: string;
   amount: string;
   categoryId: number;
   account?: string;
+  tagIds?: number[];
 };
 
 export const seedTransaction = async (
   request: APIRequestContext,
   apiOrigin: string,
-  { date, merchant, amount, categoryId, account = 'Seed' }: SeedTransaction,
+  {
+    date,
+    merchant,
+    amount,
+    categoryId,
+    account = 'Seed',
+    tagIds,
+  }: SeedTransaction,
 ): Promise<void> => {
   const response = await request.post(`${apiOrigin}/transactions`, {
-    data: { date, merchant, amount, category_id: categoryId, account },
+    data: {
+      date,
+      merchant,
+      amount,
+      category_id: categoryId,
+      account,
+      tag_ids: tagIds,
+    },
   });
   if (!response.ok()) {
     throw new Error(

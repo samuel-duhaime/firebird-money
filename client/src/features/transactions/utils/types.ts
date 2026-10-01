@@ -1,5 +1,12 @@
 export type SortOrder = 'date' | 'inverse_date' | 'amount' | 'inverse_amount';
 
+/** A tag attached to a transaction, as embedded in `Transaction.tags` — just enough to render it. */
+export interface TransactionTag {
+  id: number;
+  name: string;
+  color: string;
+}
+
 export interface Transaction {
   id: number;
   date: string;
@@ -12,6 +19,7 @@ export interface Transaction {
   account: string;
   reviewed: boolean;
   created_at: string;
+  tags: TransactionTag[];
 }
 
 export type ImportJobStatus = 'pending' | 'running' | 'succeeded' | 'failed';

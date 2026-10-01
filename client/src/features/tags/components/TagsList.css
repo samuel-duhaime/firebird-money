@@ -20,6 +20,22 @@
   border-top: 1px solid var(--color-medium);
 }
 
+.tags-list-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 16px;
+  color: var(--color-lightest);
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.tags-list-row:hover .tags-list-drag-handle {
+  opacity: 1;
+}
+
 .tags-list-color {
   flex-shrink: 0;
   width: 12px;

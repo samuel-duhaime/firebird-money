@@ -7,6 +7,8 @@ export interface NewTransaction {
   amount: string;
   category_id: number;
   account: string;
+  /** Optional; absent or `[]` means no tags. */
+  tag_ids?: number[];
 }
 
 export const createTransaction = (
@@ -17,13 +19,16 @@ export const createTransaction = (
     body: JSON.stringify(newTransaction),
   });
 
-/** Body for `PATCH /transactions/{id}`. Unset fields are left unchanged. */
+/** Body for `PATCH /transactions/{id}`. Unset fields are left unchanged. `tag_ids`, if given,
+ * *replaces* the full tag set (`[]` clears it) — unlike `BulkTransactionPatch.tag_ids`, which only
+ * adds. */
 export interface TransactionPatch {
   date?: string;
   merchant?: string;
   amount?: string;
   category_id?: number;
   account?: string;
+  tag_ids?: number[];
 }
 
 export const updateTransaction = (
@@ -43,10 +48,11 @@ export const deleteTransaction = (id: number): Promise<void> =>
 
 /** Body for `PATCH /transactions/bulk` — the "edit multiple" panel's field set, a subset of
  * `TransactionPatch`: no `amount`/`account`, since setting one value across several different
- * transactions doesn't make sense for those fields. */
+ * transactions doesn't make sense for those fields. `tag_ids` here *adds* to each transaction's
+ * existing tags rather than replacing them, unlike `TransactionPatch.tag_ids`. */
 export type BulkTransactionPatch = Pick<
   TransactionPatch,
-  'date' | 'merchant' | 'category_id'
+  'date' | 'merchant' | 'category_id' | 'tag_ids'
 >;
 
 export const bulkUpdateTransactions = (

@@ -1,8 +1,15 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { DragEvent } from 'react';
 import { useTranslation } from 'react-i18next';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faGripVertical } from '@fortawesome/free-solid-svg-icons';
 import { useTags } from '../hooks/use-tags';
 import { useDeleteTag } from '../hooks/use-delete-tag';
-import { deleteTagFailedToast } from '../../../lib/toast';
+import { useReorderTags } from '../hooks/use-reorder-tags';
+import {
+  deleteTagFailedToast,
+  reorderTagsFailedToast,
+} from '../../../lib/toast';
 import type { Tag } from '../utils/types';
 import './TagsList.css';
 
@@ -14,9 +21,22 @@ export const TagsList = ({ onEdit }: TagsListProps) => {
   const { t } = useTranslation();
   const { data: tags, isPending, isError } = useTags();
   const deleteTagMutation = useDeleteTag();
+  const reorderTagsMutation = useReorderTags();
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<number | null>(
     null,
   );
+
+  // A local copy the drag gesture reorders live, independent of the query cache until the drop
+  // lands and the server confirms it — kept in sync with `tags` the rest of the time (e.g. after
+  // a create/delete elsewhere), but never while `isDraggingRef` is true, so an in-flight gesture
+  // isn't clobbered by a refetch landing mid-drag.
+  const [items, setItems] = useState<Tag[]>([]);
+  const isDraggingRef = useRef(false);
+  const draggedIndexRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (tags && !isDraggingRef.current) setItems(tags);
+  }, [tags]);
 
   const handleDelete = (id: number) => {
     deleteTagMutation.mutate(id, {
@@ -25,14 +45,67 @@ export const TagsList = ({ onEdit }: TagsListProps) => {
     });
   };
 
+  const handleDragStart =
+    (index: number) => (event: DragEvent<HTMLSpanElement>) => {
+      draggedIndexRef.current = index;
+      isDraggingRef.current = true;
+      event.dataTransfer.effectAllowed = 'move';
+    };
+
+  const handleDragOver =
+    (index: number) => (event: DragEvent<HTMLLIElement>) => {
+      event.preventDefault();
+      const draggedIndex = draggedIndexRef.current;
+      if (draggedIndex === null || draggedIndex === index) return;
+      setItems((previous) => {
+        const next = [...previous];
+        const [moved] = next.splice(draggedIndex, 1);
+        next.splice(index, 0, moved);
+        return next;
+      });
+      draggedIndexRef.current = index;
+    };
+
+  const handleDrop = (event: DragEvent<HTMLLIElement>) => {
+    event.preventDefault();
+  };
+
+  const handleDragEnd = () => {
+    isDraggingRef.current = false;
+    draggedIndexRef.current = null;
+    reorderTagsMutation.mutate(
+      items.map((tag) => tag.id),
+      {
+        onError: () => {
+          reorderTagsFailedToast();
+          if (tags) setItems(tags);
+        },
+      },
+    );
+  };
+
   if (isPending) return <p>{t('settings.tags.loading')}</p>;
   if (isError) return <p>{t('settings.tags.error')}</p>;
   if (tags.length === 0) return <p>{t('settings.tags.empty')}</p>;
 
   return (
     <ul className="tags-list">
-      {tags.map((tag) => (
-        <li key={tag.id} className="tags-list-row">
+      {items.map((tag, index) => (
+        <li
+          key={tag.id}
+          className="tags-list-row"
+          onDragOver={handleDragOver(index)}
+          onDrop={handleDrop}
+        >
+          <span
+            className="tags-list-drag-handle"
+            draggable
+            onDragStart={handleDragStart(index)}
+            onDragEnd={handleDragEnd}
+            aria-hidden="true"
+          >
+            <FontAwesomeIcon icon={faGripVertical} />
+          </span>
           <span
             className="tags-list-color"
             style={{ backgroundColor: tag.color }}
@@ -40,7 +113,9 @@ export const TagsList = ({ onEdit }: TagsListProps) => {
           />
           <span className="tags-list-name">{tag.name}</span>
           <span className="tags-list-meta">
-            {t('settings.tags.transactionCount', { count: 0 })}
+            {t('settings.tags.transactionCount', {
+              count: tag.transaction_count,
+            })}
           </span>
 
           {confirmingDeleteId === tag.id ? (

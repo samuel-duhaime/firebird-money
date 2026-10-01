@@ -64,6 +64,9 @@ export const importSucceededToast = (createdCount: number) =>
 export const deleteTagFailedToast = () =>
   toast.error(i18n.t('toast.deleteTagFailed'));
 
+export const reorderTagsFailedToast = () =>
+  toast.error(i18n.t('toast.reorderTagsFailed'));
+
 export const importPartialToast = (
   createdCount: number,
   failedCount: number,
