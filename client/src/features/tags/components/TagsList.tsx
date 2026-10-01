@@ -73,6 +73,15 @@ export const TagsList = ({ onEdit }: TagsListProps) => {
   const handleDragEnd = () => {
     isDraggingRef.current = false;
     draggedIndexRef.current = null;
+    // `dragend` also fires for a canceled drag (e.g. Escape) and for a drag that lands back on
+    // its starting position — neither actually changed the order, so skip the round trip (and
+    // the error toast it'd show on a no-op failure) when `items` still matches the server.
+    const unchanged =
+      tags &&
+      items.length === tags.length &&
+      items.every((tag, index) => tag.id === tags[index]?.id);
+    if (unchanged) return;
+
     reorderTagsMutation.mutate(
       items.map((tag) => tag.id),
       {

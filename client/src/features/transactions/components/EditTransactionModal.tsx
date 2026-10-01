@@ -226,6 +226,13 @@ export const EditTransactionModal = ({
     }
   };
 
+  // TODO: rapid toggles can race — each one computes `next` from this render's `tagIds`, but the
+  // refetch that follows a save is only skipped on the amount/merchant fields while they're mid
+  // edit (see the effect above), not on this one, so a slow save plus an incoming refetch can let
+  // a later click build its replacement set from stale server data and clobber an in-flight save.
+  // Needs a shared draft that every toggle updates synchronously and every save reads from, with
+  // server reconciliation held off until the save queue drains (same issue in TransactionsList's
+  // row-level toggle).
   const handleTagToggle = (tagId: number) => {
     const next = tagIds.includes(tagId)
       ? tagIds.filter((id) => id !== tagId)

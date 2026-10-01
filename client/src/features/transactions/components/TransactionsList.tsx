@@ -146,6 +146,10 @@ const TransactionRow = ({
   };
 
   const tagIds = transaction.tags.map((tag) => tag.id);
+  // TODO: this computes `next` straight from `transaction.tags` (this render's server data), so
+  // two rapid toggles can both read the pre-save tag set and the second save can clobber the
+  // first. See the matching TODO on EditTransactionModal's handleTagToggle — needs the same
+  // shared, synchronously-updated draft rather than each row deriving from `transaction.tags`.
   const handleTagToggle = (tagId: number) => {
     const next = tagIds.includes(tagId)
       ? tagIds.filter((id) => id !== tagId)

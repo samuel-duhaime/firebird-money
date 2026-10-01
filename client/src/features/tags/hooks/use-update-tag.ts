@@ -10,6 +10,10 @@ export const useUpdateTag = () => {
       updateTag(id, patch),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tags'] });
+      // A transaction's `tags` are embedded at fetch time (name/color snapshot, not a live
+      // reference) — without this, a cached transactions list can go on showing a tag's old name
+      // or color for up to the query's staleTime after it's edited here.
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
     },
   });
 };
