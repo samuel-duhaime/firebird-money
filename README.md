@@ -126,18 +126,18 @@ Magic links last 15 minutes and work once. The session cookie is httpOnly and Sa
 
 `/transactions`:
 
-- `GET /transactions` — list the caller's household's transactions, optionally filtered with `?date=YYYY-MM-DD`, `?start_date=`/`?end_date=` (inclusive range), `?merchant=`, and/or `?search=` (case-insensitive match against merchant, category, or amount). Accepts `?order=` (`date` [default], `inverse_date`, `amount`, `inverse_amount`).
+- `GET /transactions` — list the caller's household's transactions, optionally filtered with `?date=YYYY-MM-DD`, `?start_date=`/`?end_date=` (inclusive range), `?merchant=`, and/or `?search=` (case-insensitive match against merchant, category, tag names, or amount). Accepts `?order=` (`date` [default], `inverse_date`, `amount`, `inverse_amount`).
 - `GET /transactions/{id}` — fetch a single transaction.
-- `POST /transactions` — create a transaction (`date`, `merchant`, `amount`, `category_id`, `account`). `household_id` and `household_member_id` are never read from the body — they're always the caller's own household and membership.
-- `PATCH /transactions/{id}` — partially update a transaction (only the fields you send change).
+- `POST /transactions` — create a transaction (`date`, `merchant`, `amount`, `category_id`, `account`, optional `tag_ids`). `household_id` and `household_member_id` are never read from the body — they're always the caller's own household and membership.
+- `PATCH /transactions/{id}` — partially update a transaction (only the fields you send change). `tag_ids`, if given, *replaces* the full tag set (`[]` clears it).
 - `DELETE /transactions/{id}` — delete a transaction.
-- `PATCH /transactions/bulk` — partially update several transactions at once (`ids`, `patch` — `patch` supports `date`, `merchant`, `category_id` only). Ids the household doesn't own are silently skipped.
+- `PATCH /transactions/bulk` — partially update several transactions at once (`ids`, `patch` — `patch` supports `date`, `merchant`, `category_id`, and `tag_ids`). Unlike the single-transaction `PATCH`, `tag_ids` here *adds* to each transaction's existing tags rather than replacing them. Ids the household doesn't own are silently skipped.
 - `DELETE /transactions/bulk` — delete several transactions at once (`ids`). Ids the household doesn't own are silently skipped.
-- `GET /transactions/download` — download the same filtered/sorted transactions as `GET /transactions`, rendered as a file. Accepts the same query params plus `?format=` (`csv` or `xlsx`, required).
+- `GET /transactions/download` — download the same filtered/sorted transactions as `GET /transactions`, rendered as a file (including a Tags column). Accepts the same query params plus `?format=` (`csv` or `xlsx`, required).
 - `POST /transactions/import` — upload a budget file (multipart, field `file`, 10 MB max) to import as transactions. Kicks off an async job and returns `202 Accepted` with a `Location` header pointing at the job. Requires the `claude` CLI (see [Install](#install)); the unattended subprocess it spawns authenticates as the caller via a forwarded session cookie.
 - `GET /transactions/import/jobs/{id}` — poll an import job's status (`pending`, `running`, `succeeded`, `failed`) and, once terminal, its `created_count`/`failed_count`/`skipped_count`/`error_message`.
 
-Every transaction response includes its joined category (`category_name_en`, `category_name_fr`, `category_type`). `category_id` must belong to the caller's own household.
+Every transaction response includes its joined category (`category_name_en`, `category_name_fr`, `category_type`) and its attached tags (`tags`, each `{id, name, color}`). `category_id` must belong to the caller's own household; any `tag_ids` outside it are silently dropped rather than rejected.
 
 `/categories`:
 
@@ -161,13 +161,14 @@ New households are seeded with starter groups and categories automatically.
 
 `/tags`:
 
-- `GET /tags` — list the caller's household's tags.
+- `GET /tags` — list the caller's household's tags, in their display order.
 - `GET /tags/{id}` — fetch a single tag.
-- `POST /tags` — create a tag (`name`, `color`). Unlike categories, a tag has a single free-form `name` — no `name_en`/`name_fr` pair.
+- `POST /tags` — create a tag (`name`, `color`). Unlike categories, a tag has a single free-form `name` — no `name_en`/`name_fr` pair. Appended at the end of the household's order.
 - `PATCH /tags/{id}` — partially update a tag (only the fields you send change).
+- `PATCH /tags/reorder` — set the household's tag display order (`tag_ids`, every id in the new order). Returns the tags in their new order.
 - `DELETE /tags/{id}` — delete a tag. Fails while it's still used by existing transactions.
 
-A tag is a free-form label the household attaches to transactions for its own organization (e.g. "Vacation 2026", "Reimbursable"), independent of category or account — see `transaction_tags`. Names are unique per household, not globally. New households are seeded with starter tags automatically. Attaching tags to transactions isn't wired up yet (tracked separately).
+A tag is a free-form label attached to transactions (see `tag_ids` on [`/transactions`](#api)), independent of category or account. Names are unique per household, not globally. New households are seeded with starter tags automatically.
 
 `/households`:
 

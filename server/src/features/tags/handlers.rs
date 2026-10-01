@@ -6,7 +6,7 @@ use log::error;
 use serde::Deserialize;
 use sqlx::PgPool;
 
-use super::model::{NewTag, TagPatch};
+use super::model::{NewTag, ReorderTagsRequest, TagPatch};
 use super::repository;
 use crate::features::auth::CurrentUser;
 use crate::shared::http_error::{
@@ -64,6 +64,35 @@ async fn list_tags(
         Ok(tags) => HttpResponse::Ok().json(tags),
         Err(e) => {
             error!("failed to list tags error={e}");
+            internal_error_response(&l10n, &locale)
+        }
+    }
+}
+
+/// `PATCH /tags/reorder` — set the caller's household's tag display order to `tag_ids`. Registered
+/// ahead of `/tags/{id}` so "reorder" is never parsed as an id.
+async fn reorder_tags(
+    body: web::Json<ReorderTagsRequest>,
+    current_user: CurrentUser,
+    pool: web::Data<PgPool>,
+    l10n: web::Data<L10n>,
+) -> impl Responder {
+    let locale = l10n.locale();
+    let household_id = match current_user.require_household_id(&l10n, &locale) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
+
+    match repository::reorder(&pool, household_id, &body.tag_ids).await {
+        Ok(()) => match repository::list(&pool, household_id).await {
+            Ok(tags) => HttpResponse::Ok().json(tags),
+            Err(e) => {
+                error!("failed to list tags after reorder error={e}");
+                internal_error_response(&l10n, &locale)
+            }
+        },
+        Err(e) => {
+            error!("failed to reorder tags error={e}");
             internal_error_response(&l10n, &locale)
         }
     }
@@ -153,6 +182,7 @@ async fn delete_tag(
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.route("/tags", web::get().to(list_tags))
         .route("/tags", web::post().to(create_tag))
+        .route("/tags/reorder", web::patch().to(reorder_tags))
         .route("/tags/{id}", web::get().to(get_tag))
         .route("/tags/{id}", web::patch().to(update_tag))
         .route("/tags/{id}", web::delete().to(delete_tag));
