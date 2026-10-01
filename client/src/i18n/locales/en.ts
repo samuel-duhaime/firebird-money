@@ -246,6 +246,7 @@ export const en = {
       'Failed to delete the transactions. Please try again.',
     deleteTagFailed: 'Failed to delete the tag. Please try again.',
     reorderTagsFailed: 'Failed to save the new tag order. Please try again.',
+    updateSettingsFailed: 'Failed to save your settings. Please try again.',
     signInFailed: 'Could not send the sign-in link. Please try again.',
     signOutFailed: 'Could not sign out. Please try again.',
     onboardingFailed: 'Could not set up your household. Please try again.',

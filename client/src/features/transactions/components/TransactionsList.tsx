@@ -25,6 +25,7 @@ import {
   amountTooLongToast,
   invalidAmountToast,
   requiredFieldToast,
+  updateSettingsFailedToast,
   updateTransactionFailedToast,
 } from '../../../lib/toast';
 import type { Transaction } from '../utils/types';
@@ -361,7 +362,9 @@ export const TransactionsList = () => {
   const updateSettingsMutation = useUpdateSettings();
   const columnVisibility = columnVisibilityFromSettings(settings);
   const handleToggleColumn = (column: OptionalColumn) => {
-    updateSettingsMutation.mutate(toggleColumnPatch(column, columnVisibility));
+    updateSettingsMutation.mutate(toggleColumnPatch(column, columnVisibility), {
+      onError: updateSettingsFailedToast,
+    });
   };
 
   const [selectionMode, setSelectionMode] = useState(false);
