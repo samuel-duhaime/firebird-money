@@ -1,0 +1,64 @@
+.columns-popover {
+  width: 220px;
+  padding: var(--spacing-xs);
+  gap: 2px;
+}
+
+.columns-popover-count {
+  margin: 0;
+  padding: var(--spacing-xs) var(--spacing-s);
+  color: var(--color-lightest);
+  font-size: 13px;
+}
+
+.columns-popover-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-s);
+  padding: var(--spacing-xs) var(--spacing-s);
+  border-radius: var(--spacing-xs);
+  color: var(--color-white);
+  font: 400 15px/1.5 Quicksand, sans-serif;
+  cursor: pointer;
+}
+
+.columns-popover-option:hover {
+  background: var(--color-medium);
+}
+
+.columns-toggle-switch {
+  flex-shrink: 0;
+  width: 36px;
+  height: 20px;
+  margin: 0;
+  border-radius: 999px;
+  appearance: none;
+  background: var(--color-medium);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.columns-toggle-switch::before {
+  content: '';
+  display: block;
+  width: 16px;
+  height: 16px;
+  margin: 2px;
+  border-radius: 50%;
+  background: var(--color-white);
+  transition: transform 0.15s ease;
+}
+
+.columns-toggle-switch:checked {
+  background: var(--color-primary);
+}
+
+.columns-toggle-switch:checked::before {
+  transform: translateX(16px);
+}
+
+.columns-toggle-switch:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}

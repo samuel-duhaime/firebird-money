@@ -6,6 +6,8 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faChevronRight } from '@fortawesome/free-solid-svg-icons';
 import { useTransactions } from '../hooks/use-transactions';
 import { useUpdateTransaction } from '../hooks/use-update-transaction';
+import { useSettings } from '../../settings/hooks/use-settings';
+import { useUpdateSettings } from '../../settings/hooks/use-update-settings';
 import { TransactionsToolbar } from './TransactionsToolbar';
 import { CategoryPicker } from './CategoryPicker';
 import { TagPicker } from '../../tags/components/TagPicker';
@@ -14,9 +16,16 @@ import { formatAmount, formatDateHeading } from '../utils/format';
 import { normalizeAmount, sanitizeAmountInput } from '../utils/amount';
 import { toIntlLocale } from '../../../i18n/locale';
 import {
+  columnVisibilityFromSettings,
+  rowGridTemplateColumns,
+  toggleColumnPatch,
+} from '../utils/column-visibility';
+import type { ColumnVisibility, OptionalColumn } from '../utils/column-visibility';
+import {
   amountTooLongToast,
   invalidAmountToast,
   requiredFieldToast,
+  updateSettingsFailedToast,
   updateTransactionFailedToast,
 } from '../../../lib/toast';
 import type { Transaction } from '../utils/types';
@@ -56,6 +65,7 @@ const TransactionRow = ({
   selectionMode,
   isSelected,
   onToggleSelect,
+  columnVisibility,
 }: {
   transaction: Transaction;
   language: string;
@@ -63,6 +73,7 @@ const TransactionRow = ({
   selectionMode: boolean;
   isSelected: boolean;
   onToggleSelect: (id: number) => void;
+  columnVisibility: ColumnVisibility;
 }) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -161,6 +172,11 @@ const TransactionRow = ({
     return (
       <li
         className="transactions-row transactions-row--selectable"
+        style={{
+          gridTemplateColumns: rowGridTemplateColumns(columnVisibility, {
+            selectable: true,
+          }),
+        }}
         onClick={() => onToggleSelect(transaction.id)}
       >
         <input
@@ -176,22 +192,28 @@ const TransactionRow = ({
         <span className="transactions-row-cell transactions-row-merchant">
           {transaction.merchant}
         </span>
-        <span className="transactions-row-cell transactions-row-category">
-          {categoryName}
-        </span>
-        <span className="transactions-row-cell transactions-row-tags">
-          {transaction.tags.map((tag) => (
-            <span
-              key={tag.id}
-              className="transactions-row-tag-dot"
-              style={{ backgroundColor: tag.color }}
-              title={tag.name}
-            />
-          ))}
-        </span>
-        <span className="transactions-row-cell transactions-row-account">
-          {transaction.account}
-        </span>
+        {columnVisibility.category && (
+          <span className="transactions-row-cell transactions-row-category">
+            {categoryName}
+          </span>
+        )}
+        {columnVisibility.tags && (
+          <span className="transactions-row-cell transactions-row-tags">
+            {transaction.tags.map((tag) => (
+              <span
+                key={tag.id}
+                className="transactions-row-tag-dot"
+                style={{ backgroundColor: tag.color }}
+                title={tag.name}
+              />
+            ))}
+          </span>
+        )}
+        {columnVisibility.account && (
+          <span className="transactions-row-cell transactions-row-account">
+            {transaction.account}
+          </span>
+        )}
         <span
           className={
             isCredit
@@ -207,7 +229,14 @@ const TransactionRow = ({
   }
 
   return (
-    <li className="transactions-row">
+    <li
+      className="transactions-row"
+      style={{
+        gridTemplateColumns: rowGridTemplateColumns(columnVisibility, {
+          selectable: false,
+        }),
+      }}
+    >
       {editingField === 'merchant' ? (
         <input
           className="transactions-row-cell transactions-row-input"
@@ -228,39 +257,44 @@ const TransactionRow = ({
         </button>
       )}
 
-      <CategoryPicker
-        categoryId={transaction.category_id}
-        label={categoryName}
-        className="transactions-row-cell transactions-row-category transactions-row-cell--editable"
-        onSelect={handleCategorySelect}
-      />
-
-      <TagPicker
-        selectedTagIds={tagIds}
-        onToggle={handleTagToggle}
-        triggerClassName="transactions-row-cell transactions-row-tags transactions-row-cell--editable"
-        ariaLabel={t('transactions.add.tags')}
-      />
-
-      {editingField === 'account' ? (
-        <input
-          className="transactions-row-cell transactions-row-input"
-          aria-label={t('transactions.add.account', 'Account')}
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={handleKeyDown}
-          onBlur={commit}
-          autoFocus
+      {columnVisibility.category && (
+        <CategoryPicker
+          categoryId={transaction.category_id}
+          label={categoryName}
+          className="transactions-row-cell transactions-row-category transactions-row-cell--editable"
+          onSelect={handleCategorySelect}
         />
-      ) : (
-        <button
-          type="button"
-          className="transactions-row-cell transactions-row-account transactions-row-cell--editable"
-          onClick={() => startEdit('account', transaction.account)}
-        >
-          {transaction.account}
-        </button>
       )}
+
+      {columnVisibility.tags && (
+        <TagPicker
+          selectedTagIds={tagIds}
+          onToggle={handleTagToggle}
+          triggerClassName="transactions-row-cell transactions-row-tags transactions-row-cell--editable"
+          ariaLabel={t('transactions.add.tags')}
+        />
+      )}
+
+      {columnVisibility.account &&
+        (editingField === 'account' ? (
+          <input
+            className="transactions-row-cell transactions-row-input"
+            aria-label={t('transactions.add.account', 'Account')}
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={handleKeyDown}
+            onBlur={commit}
+            autoFocus
+          />
+        ) : (
+          <button
+            type="button"
+            className="transactions-row-cell transactions-row-account transactions-row-cell--editable"
+            onClick={() => startEdit('account', transaction.account)}
+          >
+            {transaction.account}
+          </button>
+        ))}
 
       {editingField === 'amount' ? (
         <input
@@ -323,6 +357,15 @@ export const TransactionsList = () => {
     isPending,
     isError,
   } = useTransactions(search, order, start_date, end_date);
+
+  const { data: settings } = useSettings();
+  const updateSettingsMutation = useUpdateSettings();
+  const columnVisibility = columnVisibilityFromSettings(settings);
+  const handleToggleColumn = (column: OptionalColumn) => {
+    updateSettingsMutation.mutate(toggleColumnPatch(column, columnVisibility), {
+      onError: updateSettingsFailedToast,
+    });
+  };
 
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -406,10 +449,12 @@ export const TransactionsList = () => {
         selectionMode={selectionMode}
         selectedCount={selectedIds.size}
         totalCount={allIds.length}
+        columnVisibility={columnVisibility}
         onEnterSelectionMode={() => setSelectionMode(true)}
         onCancelSelection={cancelSelection}
         onToggleSelectAll={toggleSelectAll}
         onOpenBulkEdit={() => setBulkEditOpen(true)}
+        onToggleColumn={handleToggleColumn}
       />
       <div className="transactions-card-body">
         {isPending && (
@@ -442,6 +487,7 @@ export const TransactionsList = () => {
                     selectionMode={selectionMode}
                     isSelected={selectedIds.has(transaction.id)}
                     onToggleSelect={toggleSelect}
+                    columnVisibility={columnVisibility}
                   />
                 ))}
               </Fragment>

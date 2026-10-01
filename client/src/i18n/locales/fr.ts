@@ -148,6 +148,14 @@ export const fr: typeof en = {
         inverse_amount: 'Montant (faible à élevé)',
       },
     },
+    columns: {
+      visibleCount: '{{visible}} sur {{total}} visibles',
+      labels: {
+        tags: 'Étiquettes',
+        category: 'Catégorie',
+        account: 'Compte',
+      },
+    },
     search: {
       trigger: 'Rechercher',
       title: 'Rechercher',
@@ -239,6 +247,7 @@ export const fr: typeof en = {
     deleteTagFailed: "Impossible de supprimer l'étiquette. Réessaie.",
     reorderTagsFailed:
       "Impossible d'enregistrer le nouvel ordre des étiquettes. Réessaie.",
+    updateSettingsFailed: "Impossible d'enregistrer tes paramètres. Réessaie.",
     signInFailed: 'Impossible d’envoyer le lien de connexion. Réessaie.',
     signOutFailed: 'Impossible de te déconnecter. Réessaie.',
     onboardingFailed: 'Impossible de configurer ton ménage. Réessaie.',

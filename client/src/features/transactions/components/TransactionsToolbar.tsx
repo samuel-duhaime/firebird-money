@@ -1,33 +1,35 @@
 import { useEffect, useRef } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { useTranslation } from 'react-i18next';
-import {
-  faChevronDown,
-  faSquareCheck,
-  faTableColumns,
-} from '@fortawesome/free-solid-svg-icons';
+import { faChevronDown, faSquareCheck } from '@fortawesome/free-solid-svg-icons';
 import { notImplementedToast } from '../../../lib/toast';
 import { SortButton } from './SortButton';
+import { ColumnsButton } from './ColumnsButton';
+import type { ColumnVisibility, OptionalColumn } from '../utils/column-visibility';
 import './TransactionsToolbar.css';
 
 type TransactionsToolbarProps = {
   selectionMode: boolean;
   selectedCount: number;
   totalCount: number;
+  columnVisibility: ColumnVisibility;
   onEnterSelectionMode: () => void;
   onCancelSelection: () => void;
   onToggleSelectAll: () => void;
   onOpenBulkEdit: () => void;
+  onToggleColumn: (column: OptionalColumn) => void;
 };
 
 export const TransactionsToolbar = ({
   selectionMode,
   selectedCount,
   totalCount,
+  columnVisibility,
   onEnterSelectionMode,
   onCancelSelection,
   onToggleSelectAll,
   onOpenBulkEdit,
+  onToggleColumn,
 }: TransactionsToolbarProps) => {
   const { t } = useTranslation();
   const selectAllRef = useRef<HTMLInputElement>(null);
@@ -100,14 +102,7 @@ export const TransactionsToolbar = ({
         )}
         <span className="transactions-toolbar-divider" />
         <SortButton />
-        <button
-          type="button"
-          className="transactions-toolbar-button"
-          onClick={notImplementedToast}
-        >
-          <FontAwesomeIcon icon={faTableColumns} />
-          <span>{t('transactions.toolbar.columns')}</span>
-        </button>
+        <ColumnsButton visibility={columnVisibility} onToggle={onToggleColumn} />
       </div>
     </div>
   );
