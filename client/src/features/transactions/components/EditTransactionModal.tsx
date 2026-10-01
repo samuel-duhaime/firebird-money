@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCategories } from '../../categories/hooks/use-categories';
+import { TagPicker } from '../../tags/components/TagPicker';
 import { useTransaction } from '../hooks/use-transaction';
 import { useUpdateTransaction } from '../hooks/use-update-transaction';
 import { useDeleteTransaction } from '../hooks/use-delete-transaction';
@@ -43,6 +44,7 @@ export const EditTransactionModal = ({
   const [merchant, setMerchant] = useState('');
   const [date, setDate] = useState('');
   const [categoryId, setCategoryId] = useState<number | null>(null);
+  const [tagIds, setTagIds] = useState<number[]>([]);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
   const firstFieldRef = useRef<HTMLInputElement>(null);
@@ -76,6 +78,7 @@ export const EditTransactionModal = ({
     if (activeElementId !== 'edit-merchant') setMerchant(transaction.merchant);
     setDate(transaction.date);
     setCategoryId(transaction.category_id);
+    setTagIds(transaction.tags.map((tag) => tag.id));
   }, [transaction]);
 
   useEffect(() => {
@@ -101,10 +104,12 @@ export const EditTransactionModal = ({
       dialogRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR) ??
         [],
     );
-    const popover = document.querySelector('.category-picker-popover');
-    const popoverFocusable = popover
-      ? Array.from(popover.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
-      : [];
+    const popovers = document.querySelectorAll(
+      '.category-picker-popover, .tag-picker-popover',
+    );
+    const popoverFocusable = Array.from(popovers).flatMap((popover) =>
+      Array.from(popover.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)),
+    );
     return [...dialogFocusable, ...popoverFocusable];
   };
 
@@ -221,6 +226,21 @@ export const EditTransactionModal = ({
     }
   };
 
+  // TODO: rapid toggles can race — each one computes `next` from this render's `tagIds`, but the
+  // refetch that follows a save is only skipped on the amount/merchant fields while they're mid
+  // edit (see the effect above), not on this one, so a slow save plus an incoming refetch can let
+  // a later click build its replacement set from stale server data and clobber an in-flight save.
+  // Needs a shared draft that every toggle updates synchronously and every save reads from, with
+  // server reconciliation held off until the save queue drains (same issue in TransactionsList's
+  // row-level toggle).
+  const handleTagToggle = (tagId: number) => {
+    const next = tagIds.includes(tagId)
+      ? tagIds.filter((id) => id !== tagId)
+      : [...tagIds, tagId];
+    setTagIds(next);
+    save({ tag_ids: next });
+  };
+
   const handleDelete = () => {
     deleteTransactionMutation.mutate(transactionId, {
       onSuccess: () => {
@@ -316,9 +336,7 @@ export const EditTransactionModal = ({
               </div>
 
               <div className="edit-transaction-field">
-                <label htmlFor="edit-date">
-                  {t('transactions.add.date')}
-                </label>
+                <label htmlFor="edit-date">{t('transactions.add.date')}</label>
                 <input
                   id="edit-date"
                   type="date"
@@ -338,6 +356,16 @@ export const EditTransactionModal = ({
                       : 'modal-category-trigger modal-category-trigger--placeholder'
                   }
                   onSelect={handleCategorySelect}
+                />
+              </div>
+
+              <div className="edit-transaction-field">
+                <label>{t('transactions.add.tags')}</label>
+                <TagPicker
+                  selectedTagIds={tagIds}
+                  onToggle={handleTagToggle}
+                  triggerClassName="modal-category-trigger"
+                  ariaLabel={t('transactions.add.tags')}
                 />
               </div>
             </>

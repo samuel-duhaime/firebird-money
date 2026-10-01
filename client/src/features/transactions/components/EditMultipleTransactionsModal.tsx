@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCategories } from '../../categories/hooks/use-categories';
+import { TagPicker } from '../../tags/components/TagPicker';
 import { useBulkUpdateTransactions } from '../hooks/use-bulk-update-transactions';
 import { useBulkDeleteTransactions } from '../hooks/use-bulk-delete-transactions';
 import {
@@ -43,6 +44,10 @@ export const EditMultipleTransactionsModal = ({
   const [dateActive, setDateActive] = useState(false);
   const [date, setDate] = useState('');
   const [categoryId, setCategoryId] = useState<number | undefined>(undefined);
+  // Picking a tag here only ever *adds* it to each selected transaction's existing tags (see
+  // `BulkTransactionPatch.tag_ids`) — there's no "no change" vs "clear" distinction to track like
+  // the other fields, so a plain array (empty = nothing picked yet) is enough.
+  const [tagIds, setTagIds] = useState<number[]>([]);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -71,10 +76,12 @@ export const EditMultipleTransactionsModal = ({
       dialogRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR) ??
         [],
     );
-    const popover = document.querySelector('.category-picker-popover');
-    const popoverFocusable = popover
-      ? Array.from(popover.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
-      : [];
+    const popovers = document.querySelectorAll(
+      '.category-picker-popover, .tag-picker-popover',
+    );
+    const popoverFocusable = Array.from(popovers).flatMap((popover) =>
+      Array.from(popover.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)),
+    );
     return [...dialogFocusable, ...popoverFocusable];
   };
 
@@ -123,11 +130,11 @@ export const EditMultipleTransactionsModal = ({
   const categoryLabel =
     categoryId === undefined
       ? t('transactions.editMultiple.noChange')
-      : (selectedCategory
-          ? i18n.language === 'fr'
-            ? selectedCategory.name_fr
-            : selectedCategory.name_en
-          : t('transactions.add.selectCategory'));
+      : selectedCategory
+        ? i18n.language === 'fr'
+          ? selectedCategory.name_fr
+          : selectedCategory.name_en
+        : t('transactions.add.selectCategory');
 
   // A field counts as changed only once it actually holds a value — merely activating it (e.g.
   // clicking the Date trigger without picking a date yet) stays equivalent to "no change".
@@ -139,6 +146,7 @@ export const EditMultipleTransactionsModal = ({
     if (merchantHasValue) patch.merchant = merchant.trim();
     if (dateHasValue) patch.date = date;
     if (categoryId !== undefined) patch.category_id = categoryId;
+    if (tagIds.length > 0) patch.tag_ids = tagIds;
 
     if (Object.keys(patch).length === 0) {
       noBulkChangesToast();
@@ -284,6 +292,39 @@ export const EditMultipleTransactionsModal = ({
                   type="button"
                   className="edit-multiple-field-clear"
                   onClick={() => setCategoryId(undefined)}
+                  aria-label={t('transactions.editMultiple.noChange')}
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="edit-transaction-field">
+            <label>
+              {t('transactions.add.tags')}{' '}
+              <span className="edit-multiple-field-hint">
+                ({t('transactions.editMultiple.tagsHint')})
+              </span>
+            </label>
+            <div className="edit-multiple-field-control">
+              <TagPicker
+                selectedTagIds={tagIds}
+                onToggle={(tagId) =>
+                  setTagIds((previous) =>
+                    previous.includes(tagId)
+                      ? previous.filter((id) => id !== tagId)
+                      : [...previous, tagId],
+                  )
+                }
+                triggerClassName="modal-category-trigger"
+                ariaLabel={t('transactions.add.tags')}
+              />
+              {tagIds.length > 0 && (
+                <button
+                  type="button"
+                  className="edit-multiple-field-clear"
+                  onClick={() => setTagIds([])}
                   aria-label={t('transactions.editMultiple.noChange')}
                 >
                   ×

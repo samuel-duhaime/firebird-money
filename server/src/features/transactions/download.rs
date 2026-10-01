@@ -4,7 +4,17 @@ use rust_xlsxwriter::{Workbook, XlsxError};
 
 use super::model::{SortOrder, Transaction, TransactionFilter};
 
-const HEADERS: [&str; 4] = ["Date", "Merchant", "Category", "Amount"];
+const HEADERS: [&str; 5] = ["Date", "Merchant", "Category", "Tags", "Amount"];
+
+/// Comma-joins a transaction's tag names for a single spreadsheet cell, e.g. "Tax, Reimburse".
+fn tags_cell(transaction: &Transaction) -> String {
+    transaction
+        .tags
+        .iter()
+        .map(|tag| tag.name.as_str())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
 
 /// Builds a filename like `transactions_starbucks_highest-amount.csv` from the filters that were
 /// actually applied, so the downloaded file's name reflects what's inside it.
@@ -77,6 +87,7 @@ pub fn to_csv(transactions: &[Transaction]) -> Result<Vec<u8>, csv::Error> {
             transaction.date.to_string(),
             escape_formula(&transaction.merchant),
             escape_formula(&transaction.category_name_en),
+            escape_formula(&tags_cell(transaction)),
             transaction.amount.to_string(),
         ])?;
     }
@@ -97,7 +108,8 @@ pub fn to_xlsx(transactions: &[Transaction]) -> Result<Vec<u8>, XlsxError> {
         worksheet.write(row, 0, transaction.date.to_string())?;
         worksheet.write(row, 1, &transaction.merchant)?;
         worksheet.write(row, 2, &transaction.category_name_en)?;
-        worksheet.write(row, 3, transaction.amount)?;
+        worksheet.write(row, 3, tags_cell(transaction))?;
+        worksheet.write(row, 4, transaction.amount)?;
     }
 
     workbook.save_to_buffer()

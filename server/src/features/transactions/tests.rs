@@ -65,6 +65,7 @@ fn app_with_jobs(
         .configure(auth::configure)
         .configure(crate::features::category_groups::configure)
         .configure(crate::features::categories::configure)
+        .configure(crate::features::tags::configure)
 }
 
 /// Signs in and completes onboarding (creating a fresh household), returning the session cookie.
@@ -244,6 +245,25 @@ where
         .unwrap_or_else(|| panic!("expected created transaction, got {body}"))
 }
 
+/// Creates a tag through `POST /tags` and returns its id, for tests that need an existing tag to
+/// attach to a transaction.
+async fn create_tag_via_api<S, B>(app: &S, cookie: &str, name: &str) -> i64
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let req = test::TestRequest::post()
+        .uri("/tags")
+        .insert_header(("Cookie", cookie))
+        .set_json(serde_json::json!({ "name": name, "color": "#2F80ED" }))
+        .to_request();
+    let resp = test::call_service(app, req).await;
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    body["id"]
+        .as_i64()
+        .unwrap_or_else(|| panic!("expected created tag, got {body}"))
+}
+
 // --- GET /transactions ---
 
 #[sqlx::test]
@@ -271,6 +291,85 @@ async fn list_transactions_returns_all_rows(pool: PgPool) {
     assert_eq!(resp.status(), 200);
     let body: serde_json::Value = test::read_body_json(resp).await;
     assert_eq!(body.as_array().unwrap().len(), 2);
+}
+
+#[sqlx::test]
+async fn list_transactions_includes_tags(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    let tag_a_id = create_tag_via_api(&app, &cookie, "Test Tag A").await;
+    let tag_b_id = create_tag_via_api(&app, &cookie, "Test Tag B").await;
+
+    let create_req = test::TestRequest::post()
+        .uri("/transactions")
+        .insert_header(("Cookie", cookie.clone()))
+        .set_json(serde_json::json!({
+            "date": "2024-01-15",
+            "merchant": "STARBUCKS",
+            "amount": "12.34",
+            "category_id": category_id,
+            "account": "User 1",
+            "tag_ids": [tag_a_id, tag_b_id],
+        }))
+        .to_request();
+    assert_eq!(test::call_service(&app, create_req).await.status(), 201);
+    create_via_api(&app, &cookie, category_id, "2024-01-16", "IGA", "56.78").await;
+
+    let req = test::TestRequest::get()
+        .uri("/transactions")
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    let body: serde_json::Value = test::call_and_read_body_json(&app, req).await;
+    let rows = body.as_array().unwrap();
+
+    let starbucks = rows
+        .iter()
+        .find(|row| row["merchant"] == "STARBUCKS")
+        .unwrap();
+    let tag_names: Vec<&str> = starbucks["tags"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|tag| tag["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(tag_names, vec!["Test Tag A", "Test Tag B"]);
+
+    let iga = rows.iter().find(|row| row["merchant"] == "IGA").unwrap();
+    assert_eq!(iga["tags"].as_array().unwrap().len(), 0);
+}
+
+#[sqlx::test]
+async fn list_transactions_search_matches_tag_name(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    let vacation_id = create_tag_via_api(&app, &cookie, "Vacation 2026").await;
+
+    let create_req = test::TestRequest::post()
+        .uri("/transactions")
+        .insert_header(("Cookie", cookie.clone()))
+        .set_json(serde_json::json!({
+            "date": "2024-01-15",
+            "merchant": "AIR CANADA",
+            "amount": "250.00",
+            "category_id": category_id,
+            "account": "User 1",
+            "tag_ids": [vacation_id],
+        }))
+        .to_request();
+    assert_eq!(test::call_service(&app, create_req).await.status(), 201);
+    create_via_api(&app, &cookie, category_id, "2024-01-16", "IGA", "56.78").await;
+
+    let req = test::TestRequest::get()
+        .uri("/transactions?search=vacation")
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    let body: serde_json::Value = test::call_and_read_body_json(&app, req).await;
+    let rows = body.as_array().unwrap();
+
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["merchant"], "AIR CANADA");
 }
 
 #[sqlx::test]
@@ -1000,9 +1099,46 @@ async fn download_transactions_csv_contains_header_and_rows(pool: PgPool) {
     let body = test::read_body(resp).await;
     let csv = String::from_utf8(body.to_vec()).unwrap();
     let mut lines = csv.lines();
-    assert_eq!(lines.next().unwrap(), "Date,Merchant,Category,Amount");
-    assert_eq!(lines.next().unwrap(), "2024-01-16,IGA,Other,56.78");
-    assert_eq!(lines.next().unwrap(), "2024-01-15,STARBUCKS,Other,12.34");
+    assert_eq!(lines.next().unwrap(), "Date,Merchant,Category,Tags,Amount");
+    assert_eq!(lines.next().unwrap(), "2024-01-16,IGA,Other,,56.78");
+    assert_eq!(lines.next().unwrap(), "2024-01-15,STARBUCKS,Other,,12.34");
+}
+
+#[sqlx::test]
+async fn download_transactions_includes_tags_column(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    let tag_a_id = create_tag_via_api(&app, &cookie, "Test Tag A").await;
+    let tag_b_id = create_tag_via_api(&app, &cookie, "Test Tag B").await;
+
+    let create_req = test::TestRequest::post()
+        .uri("/transactions")
+        .insert_header(("Cookie", cookie.clone()))
+        .set_json(serde_json::json!({
+            "date": "2024-01-15",
+            "merchant": "STARBUCKS",
+            "amount": "12.34",
+            "category_id": category_id,
+            "account": "User 1",
+            "tag_ids": [tag_a_id, tag_b_id],
+        }))
+        .to_request();
+    assert_eq!(test::call_service(&app, create_req).await.status(), 201);
+
+    let req = test::TestRequest::get()
+        .uri("/transactions/download?format=csv")
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    let body = test::read_body(resp).await;
+    let csv = String::from_utf8(body.to_vec()).unwrap();
+    assert_eq!(
+        csv.lines().nth(1).unwrap(),
+        "2024-01-15,STARBUCKS,Other,\"Test Tag A, Test Tag B\",12.34"
+    );
 }
 
 #[sqlx::test]
@@ -1088,10 +1224,10 @@ async fn download_transactions_csv_escapes_formula_like_merchant(pool: PgPool) {
     let body = test::read_body(resp).await;
     let csv = String::from_utf8(body.to_vec()).unwrap();
     let rows: Vec<&str> = csv.lines().skip(1).collect();
-    assert_eq!(rows[0], "2024-01-15,'=SUM(A1:A2),Other,12.34");
-    assert_eq!(rows[1], "2024-01-16,'+1234567890,Other,20.00");
-    assert_eq!(rows[2], "2024-01-17,'-2+3,Other,30.00");
-    assert_eq!(rows[3], "2024-01-18,'@SUM(A1),Other,40.00");
+    assert_eq!(rows[0], "2024-01-15,'=SUM(A1:A2),Other,,12.34");
+    assert_eq!(rows[1], "2024-01-16,'+1234567890,Other,,20.00");
+    assert_eq!(rows[2], "2024-01-17,'-2+3,Other,,30.00");
+    assert_eq!(rows[3], "2024-01-18,'@SUM(A1),Other,,40.00");
 }
 
 #[sqlx::test]
@@ -1128,7 +1264,7 @@ async fn download_transactions_csv_escapes_formula_like_category(pool: PgPool) {
     let csv = String::from_utf8(body.to_vec()).unwrap();
     assert_eq!(
         csv.lines().nth(1).unwrap(),
-        "2024-01-15,STARBUCKS,'=cmd,12.34"
+        "2024-01-15,STARBUCKS,'=cmd,,12.34"
     );
 }
 
@@ -1274,8 +1410,8 @@ async fn download_transactions_respects_search_filter(pool: PgPool) {
     let body = test::read_body(resp).await;
     let csv = String::from_utf8(body.to_vec()).unwrap();
     let mut lines = csv.lines();
-    assert_eq!(lines.next().unwrap(), "Date,Merchant,Category,Amount");
-    assert_eq!(lines.next().unwrap(), "2024-01-15,STARBUCKS,Other,12.34");
+    assert_eq!(lines.next().unwrap(), "Date,Merchant,Category,Tags,Amount");
+    assert_eq!(lines.next().unwrap(), "2024-01-15,STARBUCKS,Other,,12.34");
     assert!(lines.next().is_none());
 }
 
@@ -1305,8 +1441,8 @@ async fn download_transactions_respects_order(pool: PgPool) {
     let body = test::read_body(resp).await;
     let csv = String::from_utf8(body.to_vec()).unwrap();
     let mut lines = csv.lines().skip(1);
-    assert_eq!(lines.next().unwrap(), "2024-01-15,STARBUCKS,Other,12.34");
-    assert_eq!(lines.next().unwrap(), "2024-01-16,IGA,Other,56.78");
+    assert_eq!(lines.next().unwrap(), "2024-01-15,STARBUCKS,Other,,12.34");
+    assert_eq!(lines.next().unwrap(), "2024-01-16,IGA,Other,,56.78");
 }
 
 #[sqlx::test]
@@ -1369,6 +1505,43 @@ async fn get_transaction_returns_row(pool: PgPool) {
     assert_eq!(body["category_type"], "expense");
     assert!(body["household_id"].is_i64());
     assert!(body["household_member_id"].is_i64());
+    assert_eq!(body["tags"].as_array().unwrap().len(), 0);
+}
+
+#[sqlx::test]
+async fn get_transaction_includes_tags(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    let tag_id = create_tag_via_api(&app, &cookie, "Test Tag A").await;
+
+    let create_req = test::TestRequest::post()
+        .uri("/transactions")
+        .insert_header(("Cookie", cookie.clone()))
+        .set_json(serde_json::json!({
+            "date": "2024-01-15",
+            "merchant": "STARBUCKS",
+            "amount": "12.34",
+            "category_id": category_id,
+            "account": "User 1",
+            "tag_ids": [tag_id],
+        }))
+        .to_request();
+    let create_body: serde_json::Value = test::call_and_read_body_json(&app, create_req).await;
+    let id = create_body["id"].as_i64().unwrap();
+    assert_eq!(create_body["tags"][0]["name"], "Test Tag A");
+
+    let req = test::TestRequest::get()
+        .uri(&format!("/transactions/{id}"))
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    let body: serde_json::Value = test::call_and_read_body_json(&app, req).await;
+
+    let tags = body["tags"].as_array().unwrap();
+    assert_eq!(tags.len(), 1);
+    assert_eq!(tags[0]["id"], tag_id);
+    assert_eq!(tags[0]["name"], "Test Tag A");
+    assert_eq!(tags[0]["color"], "#2F80ED");
 }
 
 #[sqlx::test]
@@ -1489,6 +1662,67 @@ async fn create_transaction_returns_created_row(pool: PgPool) {
         location,
         format!("/transactions/{}", body["id"].as_i64().unwrap())
     );
+    assert_eq!(body["tags"].as_array().unwrap().len(), 0);
+}
+
+#[sqlx::test]
+async fn create_transaction_with_tag_ids_attaches_tags(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    let tag_a_id = create_tag_via_api(&app, &cookie, "Test Tag A").await;
+    let tag_b_id = create_tag_via_api(&app, &cookie, "Test Tag B").await;
+
+    let req = test::TestRequest::post()
+        .uri("/transactions")
+        .insert_header(("Cookie", cookie))
+        .set_json(serde_json::json!({
+            "date": "2024-01-15",
+            "merchant": "STARBUCKS",
+            "amount": "12.34",
+            "category_id": category_id,
+            "account": "User 1",
+            "tag_ids": [tag_a_id, tag_b_id],
+        }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 201);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    let tag_ids: Vec<i64> = body["tags"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|tag| tag["id"].as_i64().unwrap())
+        .collect();
+    assert_eq!(tag_ids, vec![tag_a_id, tag_b_id]);
+}
+
+#[sqlx::test]
+async fn create_transaction_ignores_tag_ids_from_another_household(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie_a = sign_in_with_household(&app, "a@example.com").await;
+    let cookie_b = sign_in_with_household(&app, "b@example.com").await;
+    let category_a = create_other_category(&app, &cookie_a).await;
+    let tag_b = create_tag_via_api(&app, &cookie_b, "Only B's Tag").await;
+
+    let req = test::TestRequest::post()
+        .uri("/transactions")
+        .insert_header(("Cookie", cookie_a))
+        .set_json(serde_json::json!({
+            "date": "2024-01-15",
+            "merchant": "STARBUCKS",
+            "amount": "12.34",
+            "category_id": category_a,
+            "account": "User 1",
+            "tag_ids": [tag_b],
+        }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 201);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["tags"].as_array().unwrap().len(), 0);
 }
 
 #[sqlx::test]
@@ -1782,6 +2016,145 @@ async fn update_transaction_changes_category(pool: PgPool) {
 }
 
 #[sqlx::test]
+async fn update_transaction_replaces_tags(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    let tag_a_id = create_tag_via_api(&app, &cookie, "Test Tag A").await;
+    let tag_b_id = create_tag_via_api(&app, &cookie, "Test Tag B").await;
+
+    let create_req = test::TestRequest::post()
+        .uri("/transactions")
+        .insert_header(("Cookie", cookie.clone()))
+        .set_json(serde_json::json!({
+            "date": "2024-01-15",
+            "merchant": "STARBUCKS",
+            "amount": "12.34",
+            "category_id": category_id,
+            "account": "User 1",
+            "tag_ids": [tag_a_id],
+        }))
+        .to_request();
+    let create_body: serde_json::Value = test::call_and_read_body_json(&app, create_req).await;
+    let id = create_body["id"].as_i64().unwrap();
+
+    let req = test::TestRequest::patch()
+        .uri(&format!("/transactions/{id}"))
+        .insert_header(("Cookie", cookie))
+        .set_json(serde_json::json!({ "tag_ids": [tag_b_id] }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    let tag_ids: Vec<i64> = body["tags"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|tag| tag["id"].as_i64().unwrap())
+        .collect();
+    assert_eq!(tag_ids, vec![tag_b_id]);
+}
+
+#[sqlx::test]
+async fn update_transaction_clears_tags_with_empty_array(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    let tag_a_id = create_tag_via_api(&app, &cookie, "Test Tag A").await;
+
+    let create_req = test::TestRequest::post()
+        .uri("/transactions")
+        .insert_header(("Cookie", cookie.clone()))
+        .set_json(serde_json::json!({
+            "date": "2024-01-15",
+            "merchant": "STARBUCKS",
+            "amount": "12.34",
+            "category_id": category_id,
+            "account": "User 1",
+            "tag_ids": [tag_a_id],
+        }))
+        .to_request();
+    let create_body: serde_json::Value = test::call_and_read_body_json(&app, create_req).await;
+    let id = create_body["id"].as_i64().unwrap();
+
+    let req = test::TestRequest::patch()
+        .uri(&format!("/transactions/{id}"))
+        .insert_header(("Cookie", cookie))
+        .set_json(serde_json::json!({ "tag_ids": [] }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["tags"].as_array().unwrap().len(), 0);
+}
+
+#[sqlx::test]
+async fn update_transaction_without_tag_ids_leaves_tags_unchanged(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    let tag_a_id = create_tag_via_api(&app, &cookie, "Test Tag A").await;
+
+    let create_req = test::TestRequest::post()
+        .uri("/transactions")
+        .insert_header(("Cookie", cookie.clone()))
+        .set_json(serde_json::json!({
+            "date": "2024-01-15",
+            "merchant": "STARBUCKS",
+            "amount": "12.34",
+            "category_id": category_id,
+            "account": "User 1",
+            "tag_ids": [tag_a_id],
+        }))
+        .to_request();
+    let create_body: serde_json::Value = test::call_and_read_body_json(&app, create_req).await;
+    let id = create_body["id"].as_i64().unwrap();
+
+    let req = test::TestRequest::patch()
+        .uri(&format!("/transactions/{id}"))
+        .insert_header(("Cookie", cookie))
+        .set_json(serde_json::json!({ "amount": "20.00" }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["tags"].as_array().unwrap().len(), 1);
+    assert_eq!(body["tags"][0]["name"], "Test Tag A");
+}
+
+#[sqlx::test]
+async fn update_transaction_ignores_tag_ids_from_another_household(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie_a = sign_in_with_household(&app, "a@example.com").await;
+    let cookie_b = sign_in_with_household(&app, "b@example.com").await;
+    let category_a = create_other_category(&app, &cookie_a).await;
+    let id = create_via_api(
+        &app,
+        &cookie_a,
+        category_a,
+        "2024-01-15",
+        "STARBUCKS",
+        "12.34",
+    )
+    .await;
+    let tag_b = create_tag_via_api(&app, &cookie_b, "Only B's Tag").await;
+
+    let req = test::TestRequest::patch()
+        .uri(&format!("/transactions/{id}"))
+        .insert_header(("Cookie", cookie_a))
+        .set_json(serde_json::json!({ "tag_ids": [tag_b] }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["tags"].as_array().unwrap().len(), 0);
+}
+
+#[sqlx::test]
 async fn update_transaction_rejects_unknown_category_id(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
     let cookie = sign_in_with_household(&app, "sam@example.com").await;
@@ -1901,6 +2274,113 @@ async fn update_transaction_rejects_malformed_body(pool: PgPool) {
     let resp = test::call_service(&app, req).await;
 
     assert_eq!(resp.status(), 400);
+}
+
+// --- PATCH /transactions/bulk ---
+
+#[sqlx::test]
+async fn bulk_update_transactions_adds_tags_without_removing_existing(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    let tag_a_id = create_tag_via_api(&app, &cookie, "Test Tag A").await;
+    let tag_b_id = create_tag_via_api(&app, &cookie, "Test Tag B").await;
+
+    // One transaction already carries a tag — the bulk add below must keep it, not replace it.
+    let create_req = test::TestRequest::post()
+        .uri("/transactions")
+        .insert_header(("Cookie", cookie.clone()))
+        .set_json(serde_json::json!({
+            "date": "2024-01-15",
+            "merchant": "STARBUCKS",
+            "amount": "12.34",
+            "category_id": category_id,
+            "account": "User 1",
+            "tag_ids": [tag_a_id],
+        }))
+        .to_request();
+    let starbucks_id: serde_json::Value = test::call_and_read_body_json(&app, create_req).await;
+    let starbucks_id = starbucks_id["id"].as_i64().unwrap();
+    let iga_id = create_via_api(&app, &cookie, category_id, "2024-01-16", "IGA", "56.78").await;
+
+    let req = test::TestRequest::patch()
+        .uri("/transactions/bulk")
+        .insert_header(("Cookie", cookie))
+        .set_json(serde_json::json!({
+            "ids": [starbucks_id, iga_id],
+            "patch": { "tag_ids": [tag_b_id] },
+        }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    let rows = body.as_array().unwrap();
+
+    let starbucks = rows
+        .iter()
+        .find(|row| row["id"].as_i64() == Some(starbucks_id))
+        .unwrap();
+    let mut starbucks_tags: Vec<&str> = starbucks["tags"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|tag| tag["name"].as_str().unwrap())
+        .collect();
+    starbucks_tags.sort_unstable();
+    assert_eq!(starbucks_tags, vec!["Test Tag A", "Test Tag B"]);
+
+    let iga = rows
+        .iter()
+        .find(|row| row["id"].as_i64() == Some(iga_id))
+        .unwrap();
+    let iga_tags: Vec<&str> = iga["tags"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|tag| tag["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(iga_tags, vec!["Test Tag B"]);
+}
+
+#[sqlx::test]
+async fn bulk_update_transactions_skips_ids_the_household_doesnt_own_for_tags(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie_a = sign_in_with_household(&app, "a@example.com").await;
+    let cookie_b = sign_in_with_household(&app, "b@example.com").await;
+    let category_b = create_other_category(&app, &cookie_b).await;
+    let tag_a = create_tag_via_api(&app, &cookie_a, "Test Tag A").await;
+    let only_bs_id = create_via_api(
+        &app,
+        &cookie_b,
+        category_b,
+        "2024-01-15",
+        "ONLY B'S",
+        "12.34",
+    )
+    .await;
+
+    let req = test::TestRequest::patch()
+        .uri("/transactions/bulk")
+        .insert_header(("Cookie", cookie_a))
+        .set_json(serde_json::json!({
+            "ids": [only_bs_id],
+            "patch": { "tag_ids": [tag_a] },
+        }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body.as_array().unwrap().len(), 0);
+
+    // Confirm nothing was attached to B's transaction despite the (ignored) request.
+    let get_req = test::TestRequest::get()
+        .uri(&format!("/transactions/{only_bs_id}"))
+        .insert_header(("Cookie", cookie_b))
+        .to_request();
+    let get_body: serde_json::Value = test::call_and_read_body_json(&app, get_req).await;
+    assert_eq!(get_body["tags"].as_array().unwrap().len(), 0);
 }
 
 // --- DELETE /transactions/{id} ---

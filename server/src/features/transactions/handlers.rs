@@ -97,8 +97,8 @@ async fn create_transaction(
 
 /// `GET /transactions` — list transactions, optionally filtered by `date`, a `start_date`/
 /// `end_date` range, `merchant`, and/or a free-text `search` matched against merchant, category,
-/// and amount. Accepts `order` (`date`, `inverse_date`, `amount`, `inverse_amount`) to control
-/// sort order.
+/// tag names, and amount. Accepts `order` (`date`, `inverse_date`, `amount`, `inverse_amount`) to
+/// control sort order.
 async fn list_transactions(
     filter: web::Query<TransactionFilter>,
     current_user: CurrentUser,

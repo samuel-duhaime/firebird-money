@@ -1,0 +1,115 @@
+.tag-picker-trigger {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 20px;
+}
+
+.tag-picker-trigger-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tag-picker-trigger-label--placeholder {
+  color: var(--color-lightest);
+}
+
+.tag-picker-trigger-chips {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.tag-picker-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--color-medium);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.tag-picker-chip-color {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.tag-picker-trigger-chevron {
+  flex: none;
+  margin-left: var(--spacing-xs);
+  color: var(--color-lightest);
+  font-size: 12px;
+}
+
+/* In the transactions list, the chevron is part of the row's "hover to edit" affordance rather
+ * than a permanent select-style arrow — it only shows up once the cell itself signals it's
+ * editable. Mirrors the equivalent rule in CategoryPicker.css. */
+.transactions-row-cell--editable .tag-picker-trigger-chevron {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.transactions-row-cell--editable:hover .tag-picker-trigger-chevron,
+.transactions-row-cell--editable:focus-visible .tag-picker-trigger-chevron {
+  opacity: 1;
+}
+
+.tag-picker-popover {
+  width: 240px;
+  max-height: calc(100vh - 32px);
+  padding: var(--spacing-xs);
+  gap: 2px;
+  overflow-y: auto;
+}
+
+.tag-picker-empty {
+  margin: var(--spacing-xs) 0;
+  padding: 0 var(--spacing-s);
+  color: var(--color-lightest);
+  font-size: 14px;
+}
+
+.tag-picker-option {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  width: 100%;
+  padding: var(--spacing-xs) var(--spacing-s);
+  border: none;
+  border-radius: var(--spacing-xs);
+  background: none;
+  color: var(--color-white);
+  font:
+    400 15px/1.5 Quicksand,
+    sans-serif;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.tag-picker-option:hover,
+.tag-picker-option:focus-visible {
+  background: var(--color-medium);
+}
+
+.tag-picker-option--selected,
+.tag-picker-option--selected:hover,
+.tag-picker-option--selected:focus-visible {
+  background: color-mix(in srgb, var(--color-primary) 30%, var(--color-dark));
+}
+
+.tag-picker-option-color {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}

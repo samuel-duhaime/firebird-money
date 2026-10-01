@@ -32,18 +32,18 @@
   background: color-mix(in srgb, var(--color-medium) 40%, var(--color-dark));
   color: var(--color-lightest);
   font-size: 15px;
-  min-width: 520px;
+  min-width: 600px;
 }
 
 .transactions-row {
   display: grid;
   grid-template-columns:
-    minmax(0, 2fr) minmax(0, 1.5fr) minmax(0, 1.5fr)
+    minmax(0, 2fr) minmax(0, 1.3fr) minmax(0, 1.3fr) minmax(0, 1.3fr)
     110px 16px;
   align-items: center;
   gap: var(--spacing-s);
   padding: var(--spacing-s);
-  min-width: 520px;
+  min-width: 600px;
   transition: filter 0.15s ease;
 }
 
@@ -53,7 +53,7 @@
 
 .transactions-row--selectable {
   grid-template-columns:
-    20px minmax(0, 2fr) minmax(0, 1.5fr) minmax(0, 1.5fr)
+    20px minmax(0, 2fr) minmax(0, 1.3fr) minmax(0, 1.3fr) minmax(0, 1.3fr)
     110px 16px;
   cursor: pointer;
 }
@@ -117,6 +117,26 @@
 
 .transactions-row-account {
   color: var(--color-lightest);
+}
+
+.transactions-row-tags {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Keeps the picked tags on one line, clipped like any other cell, instead of wrapping onto a
+ * second line and growing the row's height. */
+.transactions-row-tags .tag-picker-trigger-chips,
+.transactions-row-tags .tag-picker-chip {
+  flex-wrap: nowrap;
+}
+
+.transactions-row-tag-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
 }
 
 .transactions-row-amount {

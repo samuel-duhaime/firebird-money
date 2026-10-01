@@ -5,6 +5,13 @@
   color: var(--color-white);
 }
 
+.edit-multiple-field-hint {
+  color: var(--color-lightest);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
 .edit-multiple-field-control {
   display: flex;
   align-items: center;

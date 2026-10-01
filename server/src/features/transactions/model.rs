@@ -4,7 +4,17 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
-/// A single row in the `transactions` table, joined with its category.
+/// A tag attached to a transaction, as embedded in `Transaction::tags` — just enough to render it
+/// (name, color), not the full `tags::model::Tag` row (household id, created_at, ... are noise
+/// here).
+#[derive(Debug, Clone, Serialize, FromRow)]
+pub struct TransactionTag {
+    pub id: i32,
+    pub name: String,
+    pub color: String,
+}
+
+/// A single row in the `transactions` table, joined with its category and its attached tags.
 #[derive(Debug, Serialize, FromRow)]
 pub struct Transaction {
     pub id: i64,
@@ -23,6 +33,11 @@ pub struct Transaction {
     pub account: String,
     pub reviewed: bool,
     pub created_at: DateTime<Utc>,
+    /// Never read directly off a `transactions` row — there's no such column. Always populated
+    /// after the fact by `repository::attach_tags`, in a second batched query (not a `JOIN` on the
+    /// main query, since a transaction can carry several tags and that would multiply rows).
+    #[sqlx(skip)]
+    pub tags: Vec<TransactionTag>,
 }
 
 /// Body for `POST /transactions`. `id` and `created_at` are generated; `household_id` and
@@ -37,6 +52,9 @@ pub struct NewTransaction {
     pub category_id: i32,
     pub account: String,
     pub reviewed: Option<bool>,
+    /// Optional; absent or `[]` means no tags. Ids outside the caller's own household are
+    /// silently dropped rather than rejected, same as `BulkUpdateRequest`'s `ids`.
+    pub tag_ids: Option<Vec<i32>>,
 }
 
 /// In-memory status of an async budget-file import, tracked for as long as this server process
@@ -117,6 +135,10 @@ pub struct TransactionPatch {
     pub amount: Option<Decimal>,
     pub category_id: Option<i32>,
     pub account: Option<String>,
+    /// `None` leaves tags unchanged. `Some(ids)` *replaces* the full tag set with exactly `ids`
+    /// (so `Some([])` clears every tag) — unlike `BulkTransactionPatch::tag_ids`, which only adds.
+    /// Ids outside the caller's own household are silently dropped.
+    pub tag_ids: Option<Vec<i32>>,
 }
 
 /// The subset of [`TransactionPatch`] fields the bulk "edit multiple" panel exposes — no `amount`
@@ -127,6 +149,11 @@ pub struct BulkTransactionPatch {
     pub date: Option<NaiveDate>,
     pub merchant: Option<String>,
     pub category_id: Option<i32>,
+    /// `None` (or `Some([])`) leaves tags unchanged. `Some(ids)` *adds* `ids` to each selected
+    /// transaction's existing tags — unlike `TransactionPatch::tag_ids`, nothing already on a
+    /// transaction is ever removed this way. Ids outside the caller's own household are silently
+    /// dropped.
+    pub tag_ids: Option<Vec<i32>>,
 }
 
 /// Body for `PATCH /transactions/bulk`.

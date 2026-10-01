@@ -1,0 +1,53 @@
+.tag-modal {
+  width: 420px;
+  max-width: 90vw;
+  max-height: calc(100dvh - 2rem);
+  display: flex;
+  flex-direction: column;
+  background: var(--color-dark);
+  color: var(--color-white);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+}
+
+.tag-modal-color-and-name {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+/* `.modal-body input` (AddTransactionModal.css) sets width: 100% with higher specificity than a
+ * single class, so this needs the extra `.modal-body` qualifier to actually win the 32px size. */
+.modal-body input.tag-modal-color-input {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.tag-modal-color-input::-webkit-color-swatch-wrapper {
+  padding: 0;
+  border-radius: 50%;
+  overflow: hidden;
+}
+
+.tag-modal-color-input::-webkit-color-swatch {
+  border: none;
+  border-radius: 50%;
+}
+
+.tag-modal-color-input::-moz-color-swatch {
+  border: none;
+  border-radius: 50%;
+}
+
+.tag-modal-color-and-name input[type='text'] {
+  flex: 1;
+}
