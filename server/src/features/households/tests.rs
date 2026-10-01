@@ -277,11 +277,16 @@ async fn delete_household_removes_row(pool: PgPool) {
     let app = test::init_service(app_with(pool.clone())).await;
     let cookie = sign_in(&app, "sam@example.com").await;
     // A bare `POST /households` (unlike onboarding) never connects the caller as a member, but
-    // still seeds starter category groups/categories — which would otherwise block this delete
-    // (see `delete_household_rejects_when_referenced_by_member`). Clear them directly, in FK
-    // order, so this test isolates "deleting an otherwise-unreferenced household succeeds".
+    // still seeds starter category groups/categories/tags — which would otherwise block this
+    // delete (see `delete_household_rejects_when_referenced_by_member`). Clear them directly, in
+    // FK order, so this test isolates "deleting an otherwise-unreferenced household succeeds".
     let id = create_via_api(&app, &cookie).await;
 
+    sqlx::query("DELETE FROM tags WHERE household_id = $1")
+        .bind(id)
+        .execute(&pool)
+        .await
+        .expect("clear seeded tags");
     sqlx::query("DELETE FROM categories WHERE household_id = $1")
         .bind(id)
         .execute(&pool)

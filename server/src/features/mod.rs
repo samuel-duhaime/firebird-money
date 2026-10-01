@@ -3,5 +3,6 @@ pub mod categories;
 pub mod category_groups;
 pub mod household_members;
 pub mod households;
+pub mod tags;
 pub mod transactions;
 pub mod users;

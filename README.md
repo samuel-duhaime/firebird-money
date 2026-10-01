@@ -111,8 +111,8 @@ In VS Code, run the "Run Client and Server" task (`Ctrl+Shift+P` → `Tasks: Run
 
 ## API
 
-The API is JSON, backed by Postgres, and requires a session. `transactions`, `categories`, and
-`category-groups` are scoped to the caller's household.
+The API is JSON, backed by Postgres, and requires a session. `transactions`, `categories`,
+`category-groups`, and `tags` are scoped to the caller's household.
 
 `/auth`:
 
@@ -159,11 +159,21 @@ Every transaction response includes its joined category (`category_name_en`, `ca
 
 New households are seeded with starter groups and categories automatically.
 
+`/tags`:
+
+- `GET /tags` — list the caller's household's tags.
+- `GET /tags/{id}` — fetch a single tag.
+- `POST /tags` — create a tag (`name`, `color`). Unlike categories, a tag has a single free-form `name` — no `name_en`/`name_fr` pair.
+- `PATCH /tags/{id}` — partially update a tag (only the fields you send change).
+- `DELETE /tags/{id}` — delete a tag. Fails while it's still used by existing transactions.
+
+A tag is a free-form label the household attaches to transactions for its own organization (e.g. "Vacation 2026", "Reimbursable"), independent of category or account — see `transaction_tags`. Names are unique per household, not globally. New households are seeded with starter tags automatically. Attaching tags to transactions isn't wired up yet (tracked separately).
+
 `/households`:
 
 - `GET /households/{id}` — fetch a single household.
-- `POST /households` — create a new household, seeded with its starter category groups and categories.
-- `DELETE /households/{id}` — delete a household. Fails while it still has data connected to it (members, category groups, categories, or transactions).
+- `POST /households` — create a new household, seeded with its starter category groups, categories, and tags.
+- `DELETE /households/{id}` — delete a household. Fails while it still has data connected to it (members, category groups, categories, tags, or transactions).
 
 Beyond `id`/`created_at`, a household carries only a `join_code`, generated on creation: the code an existing member shares so someone else can join through `POST /auth/onboarding`. Who belongs to it, and with what role, lives in `/household-members`.
 
@@ -186,7 +196,7 @@ A user is a standalone login identity — how they relate to their (at most one)
 
 ## Data model
 
-The currently implemented API exposes `Category`, `CategoryGroup`, `Transaction`, `Household`, `User`, and `HouseholdMember` (see [API](#api) above). The diagram below predates `CategoryGroup` and household scoping — Account, Institution, Merchant, Tag, and Rule are still design-stage, and `HouseholdMember` isn't pictured either:
+The currently implemented API exposes `Category`, `CategoryGroup`, `Transaction`, `Household`, `User`, `HouseholdMember`, and `Tag` (see [API](#api) above). The diagram below predates `CategoryGroup`, household scoping, and `Tag` — Account, Institution, Merchant, and Rule are still design-stage, and `HouseholdMember`/`Tag` aren't pictured either:
 ![API class diagram](docs/images/api-diagram.png)
 
 ## Tests

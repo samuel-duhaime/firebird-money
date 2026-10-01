@@ -5,6 +5,7 @@ use super::model::Household;
 use crate::features::category_groups::repository as category_groups_repository;
 use crate::features::household_members::model::NewHouseholdMember;
 use crate::features::household_members::repository as household_members_repository;
+use crate::features::tags::repository as tags_repository;
 use crate::shared::http_error::is_unique_violation;
 
 const SELECT_COLUMNS: &str = "id, join_code, created_at";
@@ -18,9 +19,9 @@ fn generate_join_code() -> String {
     Uuid::new_v4().simple().to_string()[..8].to_uppercase()
 }
 
-/// Creates a new household with a freshly generated `join_code`, seeds its starter category groups
-/// and categories, and returns the household. Everything happens in one transaction, so a
-/// household is never left half-seeded if a later step fails.
+/// Creates a new household with a freshly generated `join_code`, seeds its starter category
+/// groups, categories, and tags, and returns the household. Everything happens in one
+/// transaction, so a household is never left half-seeded if a later step fails.
 pub async fn create(pool: &PgPool) -> Result<Household, sqlx::Error> {
     let mut last_error = None;
 
@@ -44,6 +45,7 @@ pub async fn create(pool: &PgPool) -> Result<Household, sqlx::Error> {
         };
 
         category_groups_repository::seed_defaults(&mut tx, household.id).await?;
+        tags_repository::seed_defaults(&mut tx, household.id).await?;
         tx.commit().await?;
         return Ok(household);
     }
@@ -79,6 +81,7 @@ pub async fn create_with_manager(pool: &PgPool, user_id: i32) -> Result<Househol
         };
 
         category_groups_repository::seed_defaults(&mut tx, household.id).await?;
+        tags_repository::seed_defaults(&mut tx, household.id).await?;
 
         let new_member = NewHouseholdMember {
             user_id,
