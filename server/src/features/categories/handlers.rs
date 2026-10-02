@@ -6,7 +6,7 @@ use log::error;
 use serde::Deserialize;
 use sqlx::PgPool;
 
-use super::model::{CategoryPatch, NewCategory};
+use super::model::{CategoryPatch, NewCategory, ReorderCategoriesRequest};
 use super::repository;
 use crate::features::auth::CurrentUser;
 use crate::shared::http_error::{
@@ -74,6 +74,36 @@ async fn list_categories(
         Ok(categories) => HttpResponse::Ok().json(categories),
         Err(e) => {
             error!("failed to list categories error={e}");
+            internal_error_response(&l10n, &locale)
+        }
+    }
+}
+
+/// `PATCH /categories/reorder` — set the display order of the given categories (see
+/// `repository::reorder`) within the caller's household. Registered ahead of `/categories/{id}`
+/// so "reorder" is never parsed as an id.
+async fn reorder_categories(
+    body: web::Json<ReorderCategoriesRequest>,
+    current_user: CurrentUser,
+    pool: web::Data<PgPool>,
+    l10n: web::Data<L10n>,
+) -> impl Responder {
+    let locale = l10n.locale();
+    let household_id = match current_user.require_household_id(&l10n, &locale) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
+
+    match repository::reorder(&pool, household_id, &body.category_ids).await {
+        Ok(()) => match repository::list(&pool, household_id).await {
+            Ok(categories) => HttpResponse::Ok().json(categories),
+            Err(e) => {
+                error!("failed to list categories after reorder error={e}");
+                internal_error_response(&l10n, &locale)
+            }
+        },
+        Err(e) => {
+            error!("failed to reorder categories error={e}");
             internal_error_response(&l10n, &locale)
         }
     }
@@ -173,6 +203,7 @@ async fn delete_category(
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.route("/categories", web::get().to(list_categories))
         .route("/categories", web::post().to(create_category))
+        .route("/categories/reorder", web::patch().to(reorder_categories))
         .route("/categories/{id}", web::get().to(get_category))
         .route("/categories/{id}", web::patch().to(update_category))
         .route("/categories/{id}", web::delete().to(delete_category));

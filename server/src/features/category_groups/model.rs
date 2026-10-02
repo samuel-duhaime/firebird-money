@@ -12,6 +12,10 @@ pub struct CategoryGroup {
     pub name_fr: String,
     pub r#type: String,
     pub created_at: DateTime<Utc>,
+    /// This household's chosen display order for its groups (see `PATCH /category-groups/reorder`)
+    /// — lower sorts first. Not a global rank; only meaningful relative to the household's other
+    /// groups.
+    pub sort_order: i32,
 }
 
 /// Body for `POST /category-groups`. `household_id` is never read from the body — it's always the
@@ -29,4 +33,13 @@ pub struct CategoryGroupPatch {
     pub name_en: Option<String>,
     pub name_fr: Option<String>,
     pub r#type: Option<String>,
+}
+
+/// Body for `PATCH /category-groups/reorder` — the household's category groups, in the new
+/// display order. Every id must belong to the caller's own household (ids that don't are silently
+/// skipped, like elsewhere in this API), and this is a full replacement of the order, not a patch:
+/// a group left out of `category_group_ids` keeps whatever `sort_order` it already had.
+#[derive(Debug, Deserialize)]
+pub struct ReorderCategoryGroupsRequest {
+    pub category_group_ids: Vec<i32>,
 }

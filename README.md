@@ -141,20 +141,22 @@ Every transaction response includes its joined category (`category_name_en`, `ca
 
 `/categories`:
 
-- `GET /categories` — list the caller's household's categories.
+- `GET /categories` — list the caller's household's categories, each in its display order relative to the others in its group.
 - `GET /categories/{id}` — fetch a single category.
-- `POST /categories` — create a category (`group_id`, `name_en`, `name_fr`). `group_id` must reference a category group in the caller's own household.
+- `POST /categories` — create a category (`group_id`, `name_en`, `name_fr`). `group_id` must reference a category group in the caller's own household. Appended at the end of its group's order.
 - `PATCH /categories/{id}` — partially update a category (only the fields you send change).
+- `PATCH /categories/reorder` — set the display order of the given categories (`category_ids`, every id in the new order). Pass just one group's ids to reorder within that group alone. Returns every category in its (possibly unaffected) order.
 - `DELETE /categories/{id}` — delete a category. Fails while it's still used by existing transactions.
 
 `type` lives on the category's group, not the category. Names are unique per household, not globally.
 
 `/category-groups`:
 
-- `GET /category-groups` — list the caller's household's category groups.
+- `GET /category-groups` — list the caller's household's category groups, in their display order.
 - `GET /category-groups/{id}` — fetch a single category group.
-- `POST /category-groups` — create a category group (`name_en`, `name_fr`, `type`, where `type` is `income`, `expense`, or `transfer`).
+- `POST /category-groups` — create a category group (`name_en`, `name_fr`, `type`, where `type` is `income`, `expense`, or `transfer`). Appended at the end of the household's order.
 - `PATCH /category-groups/{id}` — partially update a category group (only the fields you send change).
+- `PATCH /category-groups/reorder` — set the household's category group display order (`category_group_ids`, every id in the new order). Returns the groups in their new order.
 - `DELETE /category-groups/{id}` — delete a category group. Fails while it still has categories in it.
 
 New households are seeded with starter groups and categories automatically.

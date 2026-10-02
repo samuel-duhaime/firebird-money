@@ -345,6 +345,95 @@ async fn list_categories_does_not_leak_another_households_categories(pool: PgPoo
     assert!(!rows.iter().any(|r| r["id"].as_i64() == Some(only_as_id)));
 }
 
+// --- PATCH /categories/reorder ---
+
+#[sqlx::test]
+async fn reorder_categories_sets_the_given_order_within_a_group(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let group_id = create_group_via_api(&app, &cookie).await;
+    let first = create_via_api(&app, &cookie, group_id, "First", "Premier").await;
+    let second = create_via_api(&app, &cookie, group_id, "Second", "Deuxième").await;
+
+    let req = test::TestRequest::patch()
+        .uri("/categories/reorder")
+        .insert_header(("Cookie", cookie.clone()))
+        .set_json(serde_json::json!({ "category_ids": [second, first] }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 200);
+
+    let rows = list_via_api(&app, &cookie).await;
+    let ids_in_group: Vec<i64> = rows
+        .iter()
+        .filter(|r| r["group_id"].as_i64() == Some(group_id))
+        .map(|r| r["id"].as_i64().unwrap())
+        .collect();
+    assert_eq!(ids_in_group, vec![second, first]);
+}
+
+#[sqlx::test]
+async fn reorder_categories_leaves_other_groups_untouched(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let group_a = create_group_via_api(&app, &cookie).await;
+    let other_id = create_via_api(&app, &cookie, group_a, "Other", "Autre").await;
+    let before = list_via_api(&app, &cookie).await;
+    let before_other = before
+        .iter()
+        .find(|r| r["id"].as_i64() == Some(other_id))
+        .cloned();
+
+    let req = test::TestRequest::patch()
+        .uri("/categories/reorder")
+        .insert_header(("Cookie", cookie.clone()))
+        .set_json(serde_json::json!({ "category_ids": [] }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 200);
+
+    let after = list_via_api(&app, &cookie).await;
+    let after_other = after
+        .iter()
+        .find(|r| r["id"].as_i64() == Some(other_id))
+        .cloned();
+    assert_eq!(before_other, after_other);
+}
+
+#[sqlx::test]
+async fn reorder_categories_ignores_ids_from_another_household(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie_a = sign_in_with_household(&app, "a@example.com").await;
+    let cookie_b = sign_in_with_household(&app, "b@example.com").await;
+    let group_b = create_group_via_api(&app, &cookie_b).await;
+    let category_b = create_via_api(&app, &cookie_b, group_b, "Only B's", "Seulement B").await;
+    let before_b = list_via_api(&app, &cookie_b).await;
+
+    let req = test::TestRequest::patch()
+        .uri("/categories/reorder")
+        .insert_header(("Cookie", cookie_a))
+        .set_json(serde_json::json!({ "category_ids": [category_b] }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 200);
+
+    // B's own order is untouched by A's (ignored) request.
+    let after_b = list_via_api(&app, &cookie_b).await;
+    assert_eq!(before_b, after_b);
+}
+
+#[sqlx::test]
+async fn reorder_categories_requires_a_session(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let req = test::TestRequest::patch()
+        .uri("/categories/reorder")
+        .set_json(serde_json::json!({ "category_ids": [1] }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 401);
+}
+
 // --- GET /categories/{id} ---
 
 #[sqlx::test]

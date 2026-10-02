@@ -259,6 +259,90 @@ async fn list_category_groups_does_not_leak_another_households_groups(pool: PgPo
     assert!(!rows.iter().any(|r| r["id"].as_i64() == Some(custom_id)));
 }
 
+// --- PATCH /category-groups/reorder ---
+
+#[sqlx::test]
+async fn reorder_category_groups_sets_the_given_order(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+
+    let before_req = test::TestRequest::get()
+        .uri("/category-groups")
+        .insert_header(("Cookie", cookie.clone()))
+        .to_request();
+    let before: serde_json::Value = test::call_and_read_body_json(&app, before_req).await;
+    let ids: Vec<i64> = before
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["id"].as_i64().unwrap())
+        .collect();
+    let reversed: Vec<i64> = ids.iter().rev().copied().collect();
+
+    let req = test::TestRequest::patch()
+        .uri("/category-groups/reorder")
+        .insert_header(("Cookie", cookie.clone()))
+        .set_json(serde_json::json!({ "category_group_ids": reversed }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 200);
+
+    let after_req = test::TestRequest::get()
+        .uri("/category-groups")
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    let after: serde_json::Value = test::call_and_read_body_json(&app, after_req).await;
+    let after_ids: Vec<i64> = after
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["id"].as_i64().unwrap())
+        .collect();
+    assert_eq!(after_ids, reversed);
+}
+
+#[sqlx::test]
+async fn reorder_category_groups_ignores_ids_from_another_household(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie_a = sign_in_with_household(&app, "a@example.com").await;
+    let cookie_b = sign_in_with_household(&app, "b@example.com").await;
+    let group_b = create_via_api(&app, &cookie_b, "Only B's Group", "Groupe de B", "expense").await;
+
+    let before_req = test::TestRequest::get()
+        .uri("/category-groups")
+        .insert_header(("Cookie", cookie_b.clone()))
+        .to_request();
+    let before_b: serde_json::Value = test::call_and_read_body_json(&app, before_req).await;
+
+    let req = test::TestRequest::patch()
+        .uri("/category-groups/reorder")
+        .insert_header(("Cookie", cookie_a))
+        .set_json(serde_json::json!({ "category_group_ids": [group_b] }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 200);
+
+    // B's own order is untouched by A's (ignored) request.
+    let after_req = test::TestRequest::get()
+        .uri("/category-groups")
+        .insert_header(("Cookie", cookie_b))
+        .to_request();
+    let after_b: serde_json::Value = test::call_and_read_body_json(&app, after_req).await;
+    assert_eq!(before_b, after_b);
+}
+
+#[sqlx::test]
+async fn reorder_category_groups_requires_a_session(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let req = test::TestRequest::patch()
+        .uri("/category-groups/reorder")
+        .set_json(serde_json::json!({ "category_group_ids": [1] }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 401);
+}
+
 // --- GET /category-groups/{id} ---
 
 #[sqlx::test]
