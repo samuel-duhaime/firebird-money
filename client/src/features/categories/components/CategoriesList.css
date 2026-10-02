@@ -144,8 +144,9 @@
   opacity: 1;
 }
 
-.categories-list-name {
-  flex: 1;
+.categories-list-meta {
+  color: var(--color-lightest);
+  font-size: 14px;
 }
 
 .categories-list-actions {

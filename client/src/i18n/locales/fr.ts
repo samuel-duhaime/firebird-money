@@ -104,6 +104,8 @@ export const fr: typeof en = {
       loading: 'Chargement des catégories…',
       error: 'Échec du chargement des catégories.',
       emptySection: 'Aucun groupe pour le moment.',
+      transactionCount_one: '{{count}} transaction',
+      transactionCount_other: '{{count}} transactions',
       deleteCategoryConfirm: 'Supprimer la catégorie « {{name}} »?',
       deleteGroupConfirm: 'Supprimer le groupe « {{name}} »?',
       deleteConfirmButton: 'Supprimer',

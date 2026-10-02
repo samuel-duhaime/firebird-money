@@ -16,6 +16,9 @@ pub struct Category {
     /// `PATCH /categories/reorder`) — lower sorts first. Only meaningful relative to the other
     /// categories sharing its `group_id`, not a household-wide rank.
     pub sort_order: i32,
+    /// How many transactions currently carry this category — always computed fresh from
+    /// `transactions`, never stored.
+    pub transaction_count: i64,
 }
 
 /// Body for `POST /categories`. `id` and `created_at` are generated. `household_id` is never read

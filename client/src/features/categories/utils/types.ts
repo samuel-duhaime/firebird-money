@@ -20,4 +20,6 @@ export interface Category {
    * `reorderCategories`) — lower sorts first. Only meaningful relative to the other categories
    * sharing its `group_id`. */
   sort_order: number;
+  /** How many transactions currently carry this category. */
+  transaction_count: number;
 }

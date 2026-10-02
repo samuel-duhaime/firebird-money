@@ -141,7 +141,7 @@ Every transaction response includes its joined category (`category_name_en`, `ca
 
 `/categories`:
 
-- `GET /categories` — list the caller's household's categories, each in its display order relative to the others in its group.
+- `GET /categories` — list the caller's household's categories, each in its display order relative to the others in its group and with how many transactions currently carry it.
 - `GET /categories/{id}` — fetch a single category.
 - `POST /categories` — create a category (`group_id`, `name_en`, `name_fr`). `group_id` must reference a category group in the caller's own household. Appended at the end of its group's order.
 - `PATCH /categories/{id}` — partially update a category (only the fields you send change).

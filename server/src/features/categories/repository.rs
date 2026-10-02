@@ -33,19 +33,25 @@ pub async fn insert_defaults(
 }
 
 /// Inserts a new category, scoped to `household_id`, at the end of its group's order, and returns
-/// the created row.
+/// the created row. `transaction_count` is always 0 for a just-created category, but computed the
+/// same way as everywhere else for consistency rather than hardcoded.
 pub async fn create(
     pool: &PgPool,
     household_id: i32,
     new_category: &NewCategory,
 ) -> Result<Category, sqlx::Error> {
     sqlx::query_as::<_, Category>(&format!(
-        "INSERT INTO categories (household_id, group_id, name_en, name_fr, sort_order)
-         VALUES (
-             $1, $2, $3, $4,
-             (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM categories WHERE group_id = $2)
+        "WITH inserted AS (
+            INSERT INTO categories (household_id, group_id, name_en, name_fr, sort_order)
+            VALUES (
+                $1, $2, $3, $4,
+                (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM categories WHERE group_id = $2)
+            )
+            RETURNING *
          )
-         RETURNING {SELECT_COLUMNS}"
+         SELECT {SELECT_COLUMNS},
+                (SELECT COUNT(*) FROM transactions WHERE category_id = inserted.id) AS transaction_count
+         FROM inserted"
     ))
     .bind(household_id)
     .bind(new_category.group_id)
@@ -56,10 +62,14 @@ pub async fn create(
 }
 
 /// Lists a household's categories, each in its display order relative to the others in its group
-/// (see `reorder`).
+/// (see `reorder`), with how many transactions currently carry it.
 pub async fn list(pool: &PgPool, household_id: i32) -> Result<Vec<Category>, sqlx::Error> {
     sqlx::query_as::<_, Category>(&format!(
-        "SELECT {SELECT_COLUMNS} FROM categories WHERE household_id = $1 ORDER BY group_id, sort_order, id"
+        "SELECT {SELECT_COLUMNS},
+                (SELECT COUNT(*) FROM transactions WHERE category_id = categories.id) AS transaction_count
+         FROM categories
+         WHERE household_id = $1
+         ORDER BY group_id, sort_order, id"
     ))
     .bind(household_id)
     .fetch_all(pool)
@@ -103,7 +113,10 @@ pub async fn get(
     id: i32,
 ) -> Result<Option<Category>, sqlx::Error> {
     sqlx::query_as::<_, Category>(&format!(
-        "SELECT {SELECT_COLUMNS} FROM categories WHERE id = $1 AND household_id = $2"
+        "SELECT {SELECT_COLUMNS},
+                (SELECT COUNT(*) FROM transactions WHERE category_id = categories.id) AS transaction_count
+         FROM categories
+         WHERE id = $1 AND household_id = $2"
     ))
     .bind(id)
     .bind(household_id)
@@ -121,12 +134,17 @@ pub async fn update(
     patch: &CategoryPatch,
 ) -> Result<Option<Category>, sqlx::Error> {
     sqlx::query_as::<_, Category>(&format!(
-        "UPDATE categories
-         SET name_en = COALESCE($3, name_en),
-             name_fr = COALESCE($4, name_fr),
-             group_id = COALESCE($5, group_id)
-         WHERE id = $1 AND household_id = $2
-         RETURNING {SELECT_COLUMNS}"
+        "WITH updated AS (
+            UPDATE categories
+            SET name_en = COALESCE($3, name_en),
+                name_fr = COALESCE($4, name_fr),
+                group_id = COALESCE($5, group_id)
+            WHERE id = $1 AND household_id = $2
+            RETURNING *
+         )
+         SELECT {SELECT_COLUMNS},
+                (SELECT COUNT(*) FROM transactions WHERE category_id = updated.id) AS transaction_count
+         FROM updated"
     ))
     .bind(id)
     .bind(household_id)
