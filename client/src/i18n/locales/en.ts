@@ -102,6 +102,8 @@ export const en = {
       loading: 'Loading categories…',
       error: 'Failed to load categories.',
       emptySection: 'No groups yet.',
+      transactionCount_one: '{{count}} transaction',
+      transactionCount_other: '{{count}} transactions',
       deleteCategoryConfirm: 'Delete the "{{name}}" category?',
       deleteGroupConfirm: 'Delete the "{{name}}" group?',
       deleteConfirmButton: 'Delete',

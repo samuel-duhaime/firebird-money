@@ -721,3 +721,59 @@ async fn delete_category_rejects_when_referenced_by_transaction(pool: PgPool) {
     let body: serde_json::Value = test::read_body_json(delete_resp).await;
     assert!(body["error"].is_string());
 }
+
+#[sqlx::test]
+async fn category_transaction_count_reflects_attached_transactions(pool: PgPool) {
+    let app = test::init_service(
+        App::new()
+            .app_data(web::Data::new(pool))
+            .app_data(web::Data::new(L10n::new()))
+            .app_data(web::Data::new(test_config()))
+            .app_data(web::Data::new(reqwest::Client::new()))
+            .configure(configure)
+            .configure(auth::configure)
+            .configure(crate::features::category_groups::configure)
+            .configure(crate::features::transactions::configure),
+    )
+    .await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let group_id = create_group_via_api(&app, &cookie).await;
+    let category_id =
+        create_via_api(&app, &cookie, group_id, "Test Category", "Catégorie test").await;
+
+    let rows = list_via_api(&app, &cookie).await;
+    let before = rows
+        .iter()
+        .find(|row| row["id"].as_i64() == Some(category_id))
+        .unwrap();
+    assert_eq!(before["transaction_count"], 0);
+
+    for merchant in ["STARBUCKS", "IGA"] {
+        let txn_req = test::TestRequest::post()
+            .uri("/transactions")
+            .insert_header(("Cookie", cookie.clone()))
+            .set_json(serde_json::json!({
+                "date": "2024-01-15",
+                "merchant": merchant,
+                "amount": "12.34",
+                "category_id": category_id,
+                "account": "User 1",
+            }))
+            .to_request();
+        assert_eq!(test::call_service(&app, txn_req).await.status(), 201);
+    }
+
+    let rows = list_via_api(&app, &cookie).await;
+    let after = rows
+        .iter()
+        .find(|row| row["id"].as_i64() == Some(category_id))
+        .unwrap();
+    assert_eq!(after["transaction_count"], 2);
+
+    let get_req = test::TestRequest::get()
+        .uri(&format!("/categories/{category_id}"))
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    let get_body: serde_json::Value = test::call_and_read_body_json(&app, get_req).await;
+    assert_eq!(get_body["transaction_count"], 2);
+}

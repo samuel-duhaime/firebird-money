@@ -226,6 +226,11 @@ export const CategoryGroupCard = ({
             <span className="categories-list-name">
               {language === 'fr' ? category.name_fr : category.name_en}
             </span>
+            <span className="categories-list-meta">
+              {t('settings.categories.transactionCount', {
+                count: category.transaction_count,
+              })}
+            </span>
 
             {confirmingDeleteCategoryId === category.id ? (
               <div className="categories-list-actions">
