@@ -185,4 +185,69 @@ test.describe('Household > Categories settings', () => {
         .locator('.categories-list-name'),
     ).toHaveText(afterDrag);
   });
+
+  test('move up/down buttons reorder categories within a group for anyone who cannot drag-and-drop, and survive a reload', async ({
+    authedPage,
+  }) => {
+    await authedPage.goto('/settings/categories');
+    const incomeGroup = authedPage.locator('.category-group-card', {
+      hasText: 'Income',
+    });
+    const nameLocator = incomeGroup.locator('.categories-list-name');
+    await expect(nameLocator.first()).toHaveText('Paychecks');
+
+    const firstRow = incomeGroup.locator('li.categories-list-row').first();
+    await expect(
+      firstRow.getByRole('button', { name: 'Move Paychecks up' }),
+    ).toBeDisabled();
+    await firstRow
+      .getByRole('button', { name: 'Move Paychecks down' })
+      .click();
+
+    await expect(nameLocator.first()).not.toHaveText('Paychecks');
+    await expect(nameLocator.nth(1)).toHaveText('Paychecks');
+
+    const afterMove = await nameLocator.allTextContents();
+    await authedPage.reload();
+    await expect(
+      authedPage
+        .locator('.category-group-card', { hasText: 'Income' })
+        .locator('.categories-list-name'),
+    ).toHaveText(afterMove);
+  });
+
+  test('move up/down buttons reorder groups within a type section for anyone who cannot drag-and-drop, and survive a reload', async ({
+    authedPage,
+  }) => {
+    await authedPage.goto('/settings/categories');
+    const expensesSection = authedPage
+      .locator('.category-type-section', { hasText: 'Expenses' })
+      .first();
+    const groupNameLocator = expensesSection.locator(
+      '.category-group-header .category-group-name',
+    );
+    const firstGroupName = await groupNameLocator.first().textContent();
+
+    const firstGroupHeader = expensesSection
+      .locator('.category-group-header')
+      .first();
+    await expect(
+      firstGroupHeader.getByRole('button', { name: /^Move .+ up$/ }),
+    ).toBeDisabled();
+    await firstGroupHeader
+      .getByRole('button', { name: /^Move .+ down$/ })
+      .click();
+
+    await expect(groupNameLocator.first()).not.toHaveText(firstGroupName!);
+    await expect(groupNameLocator.nth(1)).toHaveText(firstGroupName!);
+
+    const afterMove = await groupNameLocator.allTextContents();
+    await authedPage.reload();
+    await expect(
+      authedPage
+        .locator('.category-type-section', { hasText: 'Expenses' })
+        .first()
+        .locator('.category-group-header .category-group-name'),
+    ).toHaveText(afterMove);
+  });
 });

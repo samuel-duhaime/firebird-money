@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCategories } from '../hooks/use-categories';
 import { useCategoryGroups } from '../hooks/use-category-groups';
@@ -8,6 +9,10 @@ import './CategoriesList.css';
 /** The order sections are shown in — matches the order `type` appears in the backend's default
  * seed data (income first, then expense groups, then transfer groups). */
 const TYPES: CategoryGroup['type'][] = ['income', 'expense', 'transfer'];
+
+/** A stable empty-array reference for a type with no groups yet — see `NO_CATEGORIES` in
+ * `CategoryTypeSection` for why this needs to be stable rather than a fresh `?? []` each time. */
+const NO_GROUPS: CategoryGroup[] = [];
 
 type CategoriesListProps = {
   onNewGroup: (type: CategoryGroup['type']) => void;
@@ -35,6 +40,19 @@ export const CategoriesList = ({
     isError: categoriesError,
   } = useCategories();
 
+  // Grouped once per `categoryGroups` change rather than re-filtered on every render for each of
+  // the 3 sections — a fresh array identity every render would otherwise look like a real change
+  // to `useDragReorder`'s `sourceItems` effect downstream, in `CategoryTypeSection`.
+  const groupsByType = useMemo(() => {
+    const map = new Map<CategoryGroup['type'], CategoryGroup[]>();
+    for (const group of categoryGroups ?? []) {
+      const list = map.get(group.type);
+      if (list) list.push(group);
+      else map.set(group.type, [group]);
+    }
+    return map;
+  }, [categoryGroups]);
+
   if (groupsPending || categoriesPending) {
     return <p>{t('settings.categories.loading')}</p>;
   }
@@ -48,7 +66,7 @@ export const CategoriesList = ({
         <CategoryTypeSection
           key={type}
           type={type}
-          groups={categoryGroups.filter((group) => group.type === type)}
+          groups={groupsByType.get(type) ?? NO_GROUPS}
           categories={categories}
           language={language}
           onNewGroup={onNewGroup}

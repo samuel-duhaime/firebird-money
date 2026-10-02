@@ -1,0 +1,37 @@
+/* A vertical pair of up/down buttons — the keyboard- and screen-reader-accessible alternative to
+ * a mouse-only drag handle, for any list a feature lets the household drag-and-drop reorder. Each
+ * feature's own stylesheet is responsible for revealing `.move-buttons` on its row's `:hover` and
+ * `:focus-within` (opacity starts at 0 here so it doesn't clutter the row at rest). */
+.move-buttons {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 1px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.move-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 11px;
+  padding: 0;
+  border: none;
+  border-radius: 2px;
+  background: none;
+  color: var(--color-lightest);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.move-button:hover:not(:disabled) {
+  background: var(--color-medium);
+  color: var(--color-white);
+}
+
+.move-button:disabled {
+  color: var(--color-medium);
+  cursor: default;
+}

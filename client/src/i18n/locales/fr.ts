@@ -81,6 +81,8 @@ export const fr: typeof en = {
       transactionCount_other: '{{count}} transactions',
       deleteConfirm: 'Supprimer l’étiquette « {{name}} »?',
       deleteConfirmButton: 'Supprimer',
+      moveUp: 'Déplacer {{name}} vers le haut',
+      moveDown: 'Déplacer {{name}} vers le bas',
       modal: {
         newTitle: 'Nouvelle étiquette',
         editTitle: 'Modifier l’étiquette',
@@ -105,6 +107,8 @@ export const fr: typeof en = {
       deleteCategoryConfirm: 'Supprimer la catégorie « {{name}} »?',
       deleteGroupConfirm: 'Supprimer le groupe « {{name}} »?',
       deleteConfirmButton: 'Supprimer',
+      moveUp: 'Déplacer {{name}} vers le haut',
+      moveDown: 'Déplacer {{name}} vers le bas',
       types: {
         income: 'Revenus',
         expense: 'Dépenses',

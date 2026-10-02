@@ -1,9 +1,14 @@
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useReorderCategoryGroups } from '../hooks/use-reorder-category-groups';
-import { useDragReorder } from '../hooks/use-drag-reorder';
+import { useDragReorder } from '../../../lib/use-drag-reorder';
 import { reorderCategoryGroupsFailedToast } from '../../../lib/toast';
 import { CategoryGroupCard } from './CategoryGroupCard';
 import type { Category, CategoryGroup } from '../utils/types';
+
+/** A stable empty-array reference for a group with no categories — `?? []` would otherwise hand
+ * `useDragReorder` a newly allocated array every render, defeating its memoized-input check. */
+const NO_CATEGORIES: Category[] = [];
 
 type CategoryTypeSectionProps = {
   type: CategoryGroup['type'];
@@ -35,12 +40,27 @@ export const CategoryTypeSection = ({
     handleDragOver,
     handleDrop,
     handleDragEnd,
+    moveUp,
+    moveDown,
   } = useDragReorder(
     groups,
     (group) => group.id,
     reorderCategoryGroupsMutation,
     reorderCategoryGroupsFailedToast,
   );
+
+  // Grouped once per `categories` change, not re-filtered for every group on every render — see
+  // the `useDragReorder` fix this accompanies: a fresh array identity every render looks like a
+  // real change to its `sourceItems` effect, which would reset an in-flight drag or save.
+  const categoriesByGroupId = useMemo(() => {
+    const map = new Map<number, Category[]>();
+    for (const category of categories) {
+      const list = map.get(category.group_id);
+      if (list) list.push(category);
+      else map.set(category.group_id, [category]);
+    }
+    return map;
+  }, [categories]);
 
   return (
     <section className="category-type-section">
@@ -63,9 +83,7 @@ export const CategoryTypeSection = ({
             <CategoryGroupCard
               key={group.id}
               group={group}
-              categories={categories.filter(
-                (category) => category.group_id === group.id,
-              )}
+              categories={categoriesByGroupId.get(group.id) ?? NO_CATEGORIES}
               language={language}
               onEditGroup={() => onEditGroup(group)}
               onEditCategory={onEditCategory}
@@ -74,6 +92,10 @@ export const CategoryTypeSection = ({
               onRowDrop={handleDrop}
               onHandleDragStart={handleDragStart(index)}
               onHandleDragEnd={handleDragEnd}
+              onMoveUp={() => moveUp(index)}
+              onMoveDown={() => moveDown(index)}
+              canMoveUp={index > 0}
+              canMoveDown={index < items.length - 1}
             />
           ))}
         </ul>

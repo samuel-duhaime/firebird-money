@@ -1,21 +1,30 @@
-import { useEffect, useRef, useState } from 'react';
-import type { DragEvent } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faGripVertical } from '@fortawesome/free-solid-svg-icons';
+import {
+  faAngleDown,
+  faAngleUp,
+  faGripVertical,
+} from '@fortawesome/free-solid-svg-icons';
 import { useTags } from '../hooks/use-tags';
 import { useDeleteTag } from '../hooks/use-delete-tag';
 import { useReorderTags } from '../hooks/use-reorder-tags';
+import { useDragReorder } from '../../../lib/use-drag-reorder';
 import {
   deleteTagFailedToast,
   reorderTagsFailedToast,
 } from '../../../lib/toast';
 import type { Tag } from '../utils/types';
+import '../../../components/MoveButtons.css';
 import './TagsList.css';
 
 type TagsListProps = {
   onEdit: (tag: Tag) => void;
 };
+
+/** A stable empty-array reference for while `tags` hasn't loaded yet — `useDragReorder` needs an
+ * array every render, and a fresh `?? []` each time would defeat its memoized-input check. */
+const NO_TAGS: Tag[] = [];
 
 export const TagsList = ({ onEdit }: TagsListProps) => {
   const { t } = useTranslation();
@@ -26,71 +35,26 @@ export const TagsList = ({ onEdit }: TagsListProps) => {
     null,
   );
 
-  // A local copy the drag gesture reorders live, independent of the query cache until the drop
-  // lands and the server confirms it — kept in sync with `tags` the rest of the time (e.g. after
-  // a create/delete elsewhere), but never while `isDraggingRef` is true, so an in-flight gesture
-  // isn't clobbered by a refetch landing mid-drag.
-  const [items, setItems] = useState<Tag[]>([]);
-  const isDraggingRef = useRef(false);
-  const draggedIndexRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (tags && !isDraggingRef.current) setItems(tags);
-  }, [tags]);
+  const {
+    items,
+    handleDragStart,
+    handleDragOver,
+    handleDrop,
+    handleDragEnd,
+    moveUp,
+    moveDown,
+  } = useDragReorder(
+    tags ?? NO_TAGS,
+    (tag) => tag.id,
+    reorderTagsMutation,
+    reorderTagsFailedToast,
+  );
 
   const handleDelete = (id: number) => {
     deleteTagMutation.mutate(id, {
       onSuccess: () => setConfirmingDeleteId(null),
       onError: deleteTagFailedToast,
     });
-  };
-
-  const handleDragStart =
-    (index: number) => (event: DragEvent<HTMLSpanElement>) => {
-      draggedIndexRef.current = index;
-      isDraggingRef.current = true;
-      event.dataTransfer.effectAllowed = 'move';
-    };
-
-  const handleDragOver =
-    (index: number) => (event: DragEvent<HTMLLIElement>) => {
-      event.preventDefault();
-      const draggedIndex = draggedIndexRef.current;
-      if (draggedIndex === null || draggedIndex === index) return;
-      setItems((previous) => {
-        const next = [...previous];
-        const [moved] = next.splice(draggedIndex, 1);
-        next.splice(index, 0, moved);
-        return next;
-      });
-      draggedIndexRef.current = index;
-    };
-
-  const handleDrop = (event: DragEvent<HTMLLIElement>) => {
-    event.preventDefault();
-  };
-
-  const handleDragEnd = () => {
-    isDraggingRef.current = false;
-    draggedIndexRef.current = null;
-    // `dragend` also fires for a canceled drag (e.g. Escape) and for a drag that lands back on
-    // its starting position — neither actually changed the order, so skip the round trip (and
-    // the error toast it'd show on a no-op failure) when `items` still matches the server.
-    const unchanged =
-      tags &&
-      items.length === tags.length &&
-      items.every((tag, index) => tag.id === tags[index]?.id);
-    if (unchanged) return;
-
-    reorderTagsMutation.mutate(
-      items.map((tag) => tag.id),
-      {
-        onError: () => {
-          reorderTagsFailedToast();
-          if (tags) setItems(tags);
-        },
-      },
-    );
   };
 
   if (isPending) return <p>{t('settings.tags.loading')}</p>;
@@ -115,6 +79,26 @@ export const TagsList = ({ onEdit }: TagsListProps) => {
           >
             <FontAwesomeIcon icon={faGripVertical} />
           </span>
+          <div className="move-buttons">
+            <button
+              type="button"
+              className="move-button"
+              onClick={() => moveUp(index)}
+              disabled={index === 0}
+              aria-label={t('settings.tags.moveUp', { name: tag.name })}
+            >
+              <FontAwesomeIcon icon={faAngleUp} />
+            </button>
+            <button
+              type="button"
+              className="move-button"
+              onClick={() => moveDown(index)}
+              disabled={index === items.length - 1}
+              aria-label={t('settings.tags.moveDown', { name: tag.name })}
+            >
+              <FontAwesomeIcon icon={faAngleDown} />
+            </button>
+          </div>
           <span
             className="tags-list-color"
             style={{ backgroundColor: tag.color }}
