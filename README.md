@@ -207,15 +207,15 @@ Settings are per-user, not per-household: which optional columns show on the tra
 
 ## Data schema
 
-Every table in the Postgres schema (see `server/migrations/`) and how they relate:
+Every table in the Postgres schema (see `server/migrations/`) and how they relate. `Account`, `Institution`, `Merchant`, and `Rule` are still design-stage — not real tables yet — so they aren't pictured; `transactions.merchant`/`account` are plain text until they land.
 
 ```mermaid
 erDiagram
     HOUSEHOLDS ||--o{ HOUSEHOLD_MEMBERS : has
-    USERS ||--o{ HOUSEHOLD_MEMBERS : has
+    USERS ||--o| HOUSEHOLD_MEMBERS : has
     USERS ||--o{ LOGIN_TOKENS : has
     USERS ||--o{ SESSIONS : has
-    USERS ||--|| SETTINGS : has
+    USERS ||--o| SETTINGS : has
     HOUSEHOLDS ||--o{ CATEGORY_GROUPS : has
     HOUSEHOLDS ||--o{ CATEGORIES : has
     CATEGORY_GROUPS ||--o{ CATEGORIES : has
