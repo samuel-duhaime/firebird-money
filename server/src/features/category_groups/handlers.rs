@@ -6,7 +6,7 @@ use log::error;
 use serde::Deserialize;
 use sqlx::PgPool;
 
-use super::model::{CategoryGroupPatch, NewCategoryGroup};
+use super::model::{CategoryGroupPatch, NewCategoryGroup, ReorderCategoryGroupsRequest};
 use super::repository;
 use crate::features::auth::CurrentUser;
 use crate::shared::http_error::{
@@ -73,6 +73,36 @@ async fn list_category_groups(
         Ok(groups) => HttpResponse::Ok().json(groups),
         Err(e) => {
             error!("failed to list category groups error={e}");
+            internal_error_response(&l10n, &locale)
+        }
+    }
+}
+
+/// `PATCH /category-groups/reorder` — set the caller's household's category group display order
+/// to `category_group_ids`. Registered ahead of `/category-groups/{id}` so "reorder" is never
+/// parsed as an id.
+async fn reorder_category_groups(
+    body: web::Json<ReorderCategoryGroupsRequest>,
+    current_user: CurrentUser,
+    pool: web::Data<PgPool>,
+    l10n: web::Data<L10n>,
+) -> impl Responder {
+    let locale = l10n.locale();
+    let household_id = match current_user.require_household_id(&l10n, &locale) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
+
+    match repository::reorder(&pool, household_id, &body.category_group_ids).await {
+        Ok(()) => match repository::list(&pool, household_id).await {
+            Ok(groups) => HttpResponse::Ok().json(groups),
+            Err(e) => {
+                error!("failed to list category groups after reorder error={e}");
+                internal_error_response(&l10n, &locale)
+            }
+        },
+        Err(e) => {
+            error!("failed to reorder category groups error={e}");
             internal_error_response(&l10n, &locale)
         }
     }
@@ -176,6 +206,10 @@ async fn delete_category_group(
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.route("/category-groups", web::get().to(list_category_groups))
         .route("/category-groups", web::post().to(create_category_group))
+        .route(
+            "/category-groups/reorder",
+            web::patch().to(reorder_category_groups),
+        )
         .route("/category-groups/{id}", web::get().to(get_category_group))
         .route(
             "/category-groups/{id}",

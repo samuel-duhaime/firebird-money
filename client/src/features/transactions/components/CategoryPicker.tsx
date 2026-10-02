@@ -7,7 +7,6 @@ import { faChevronDown, faPlus } from '@fortawesome/free-solid-svg-icons';
 import { useCategories } from '../../categories/hooks/use-categories';
 import { useCategoryGroups } from '../../categories/hooks/use-category-groups';
 import { useAnchoredPopover } from '../../../lib/use-anchored-popover';
-import { notImplementedToast } from '../../../lib/toast';
 import type { Category } from '../../categories/utils/types';
 import '../../../components/Popover.css';
 import './CategoryPicker.css';
@@ -117,8 +116,10 @@ export const CategoryPicker = ({
   };
 
   const handleCreateNew = () => {
-    notImplementedToast();
     setIsOpen(false);
+    // Opens in a new tab rather than navigating away, so whatever the caller is in the middle of
+    // here (e.g. an in-progress add-transaction form) stays open behind it.
+    window.open('/settings/categories', '_blank', 'noopener');
   };
 
   const handleToggle = () => {

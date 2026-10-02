@@ -70,6 +70,18 @@ export const updateSettingsFailedToast = () =>
 export const reorderTagsFailedToast = () =>
   toast.error(i18n.t('toast.reorderTagsFailed'));
 
+export const deleteCategoryFailedToast = () =>
+  toast.error(i18n.t('toast.deleteCategoryFailed'));
+
+export const deleteCategoryGroupFailedToast = () =>
+  toast.error(i18n.t('toast.deleteCategoryGroupFailed'));
+
+export const reorderCategoriesFailedToast = () =>
+  toast.error(i18n.t('toast.reorderCategoriesFailed'));
+
+export const reorderCategoryGroupsFailedToast = () =>
+  toast.error(i18n.t('toast.reorderCategoryGroupsFailed'));
+
 export const importPartialToast = (
   createdCount: number,
   failedCount: number,

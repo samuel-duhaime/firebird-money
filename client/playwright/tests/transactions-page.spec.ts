@@ -2252,7 +2252,7 @@ test.describe('edit 1 field directly', () => {
       ).toBeVisible();
     });
 
-    test('shows a not-available-yet message for "Create new category"', async ({
+    test('opens the categories settings page in a new tab for "Create new category"', async ({
       authedPage,
       context,
       workerInfra,
@@ -2268,14 +2268,19 @@ test.describe('edit 1 field directly', () => {
         hasText: 'Corner Store',
       });
       await row.getByRole('button', { name: 'Groceries', exact: true }).click();
-      await authedPage
-        .locator('.category-picker-popover')
-        .getByRole('button', { name: 'Create new category', exact: true })
-        .click();
+      const [newPage] = await Promise.all([
+        context.waitForEvent('page'),
+        authedPage
+          .locator('.category-picker-popover')
+          .getByRole('button', { name: 'Create new category', exact: true })
+          .click(),
+      ]);
+      await newPage.waitForLoadState();
 
-      await expect(
-        authedPage.getByText('This feature is not available yet.'),
-      ).toBeVisible();
+      // Opened in a new tab rather than navigating away, so the in-progress edit stays open
+      // behind it.
+      await expect(newPage).toHaveURL(/\/settings\/categories$/);
+      await expect(authedPage).toHaveURL(/\/transactions$/);
       await expect(
         authedPage.locator('.category-picker-popover'),
       ).not.toBeVisible();
@@ -2356,11 +2361,13 @@ test.describe('edit 1 field directly', () => {
         await authedPage.keyboard.press('ArrowDown');
         await authedPage.keyboard.press('ArrowDown');
         await authedPage.keyboard.press('ArrowDown');
-        await authedPage.keyboard.press('Enter');
+        const [newPage] = await Promise.all([
+          context.waitForEvent('page'),
+          authedPage.keyboard.press('Enter'),
+        ]);
+        await newPage.waitForLoadState();
 
-        await expect(
-          authedPage.getByText('This feature is not available yet.'),
-        ).toBeVisible();
+        await expect(newPage).toHaveURL(/\/settings\/categories$/);
       });
     });
   });
