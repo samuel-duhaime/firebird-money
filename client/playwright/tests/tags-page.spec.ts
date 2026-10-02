@@ -167,4 +167,41 @@ test.describe('Household > Tags settings', () => {
     await expect(nameLocator).toHaveCount(DEFAULT_TAG_NAMES.length);
     await expect(nameLocator).toHaveText(afterDrag);
   });
+
+  test('move up/down buttons reorder tags for anyone who cannot drag-and-drop, and survive a reload', async ({
+    authedPage,
+  }) => {
+    await authedPage.goto('/settings/tags');
+    const nameLocator = authedPage.locator('.tags-list-name');
+    await expect(nameLocator.first()).toHaveText('Tax');
+
+    const firstRow = authedPage.locator('li.tags-list-row').first();
+    // The first row can't move up — only down.
+    await expect(
+      firstRow.getByRole('button', { name: 'Move Tax up' }),
+    ).toBeDisabled();
+    await firstRow.getByRole('button', { name: 'Move Tax down' }).click();
+
+    await expect(nameLocator.first()).not.toHaveText('Tax');
+    await expect(nameLocator.nth(1)).toHaveText('Tax');
+
+    // Move it back up with the row's own "move up" button, now that it isn't first anymore.
+    await authedPage
+      .locator('li.tags-list-row', { hasText: 'Tax' })
+      .getByRole('button', { name: 'Move Tax up' })
+      .click();
+    await expect(nameLocator.first()).toHaveText('Tax');
+
+    const afterMoves = await nameLocator.allTextContents();
+    await authedPage.reload();
+    await expect(nameLocator).toHaveText(afterMoves);
+  });
+
+  test('the last row cannot move further down', async ({ authedPage }) => {
+    await authedPage.goto('/settings/tags');
+    const lastRow = authedPage.locator('li.tags-list-row').last();
+    await expect(
+      lastRow.getByRole('button', { name: /^Move .+ down$/ }),
+    ).toBeDisabled();
+  });
 });

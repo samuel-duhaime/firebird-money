@@ -2,17 +2,23 @@ import { useState } from 'react';
 import type { DragEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faGripVertical, faPlus } from '@fortawesome/free-solid-svg-icons';
+import {
+  faAngleDown,
+  faAngleUp,
+  faGripVertical,
+  faPlus,
+} from '@fortawesome/free-solid-svg-icons';
 import { useDeleteCategory } from '../hooks/use-delete-category';
 import { useDeleteCategoryGroup } from '../hooks/use-delete-category-group';
 import { useReorderCategories } from '../hooks/use-reorder-categories';
-import { useDragReorder } from '../hooks/use-drag-reorder';
+import { useDragReorder } from '../../../lib/use-drag-reorder';
 import {
   deleteCategoryFailedToast,
   deleteCategoryGroupFailedToast,
   reorderCategoriesFailedToast,
 } from '../../../lib/toast';
 import type { Category, CategoryGroup } from '../utils/types';
+import '../../../components/MoveButtons.css';
 import './CategoriesList.css';
 
 type CategoryGroupCardProps = {
@@ -29,6 +35,12 @@ type CategoryGroupCardProps = {
   onRowDrop: (event: DragEvent<HTMLLIElement>) => void;
   onHandleDragStart: (event: DragEvent<HTMLSpanElement>) => void;
   onHandleDragEnd: () => void;
+  /** Keyboard/button equivalent of dragging this group within its section — the mouse-only drag
+   * handle above has no keyboard or screen-reader path otherwise. */
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
 };
 
 export const CategoryGroupCard = ({
@@ -42,6 +54,10 @@ export const CategoryGroupCard = ({
   onRowDrop,
   onHandleDragStart,
   onHandleDragEnd,
+  onMoveUp,
+  onMoveDown,
+  canMoveUp,
+  canMoveDown,
 }: CategoryGroupCardProps) => {
   const { t } = useTranslation();
   const deleteCategoryMutation = useDeleteCategory();
@@ -57,6 +73,8 @@ export const CategoryGroupCard = ({
     handleDragOver,
     handleDrop,
     handleDragEnd,
+    moveUp,
+    moveDown,
   } = useDragReorder(
     categories,
     (category) => category.id,
@@ -93,6 +111,30 @@ export const CategoryGroupCard = ({
         >
           <FontAwesomeIcon icon={faGripVertical} />
         </span>
+        <div className="move-buttons">
+          <button
+            type="button"
+            className="move-button"
+            onClick={onMoveUp}
+            disabled={!canMoveUp}
+            aria-label={t('settings.categories.moveUp', {
+              name: language === 'fr' ? group.name_fr : group.name_en,
+            })}
+          >
+            <FontAwesomeIcon icon={faAngleUp} />
+          </button>
+          <button
+            type="button"
+            className="move-button"
+            onClick={onMoveDown}
+            disabled={!canMoveDown}
+            aria-label={t('settings.categories.moveDown', {
+              name: language === 'fr' ? group.name_fr : group.name_en,
+            })}
+          >
+            <FontAwesomeIcon icon={faAngleDown} />
+          </button>
+        </div>
         <span className="category-group-name">
           {language === 'fr' ? group.name_fr : group.name_en}
         </span>
@@ -157,6 +199,30 @@ export const CategoryGroupCard = ({
             >
               <FontAwesomeIcon icon={faGripVertical} />
             </span>
+            <div className="move-buttons">
+              <button
+                type="button"
+                className="move-button"
+                onClick={() => moveUp(index)}
+                disabled={index === 0}
+                aria-label={t('settings.categories.moveUp', {
+                  name: language === 'fr' ? category.name_fr : category.name_en,
+                })}
+              >
+                <FontAwesomeIcon icon={faAngleUp} />
+              </button>
+              <button
+                type="button"
+                className="move-button"
+                onClick={() => moveDown(index)}
+                disabled={index === items.length - 1}
+                aria-label={t('settings.categories.moveDown', {
+                  name: language === 'fr' ? category.name_fr : category.name_en,
+                })}
+              >
+                <FontAwesomeIcon icon={faAngleDown} />
+              </button>
+            </div>
             <span className="categories-list-name">
               {language === 'fr' ? category.name_fr : category.name_en}
             </span>

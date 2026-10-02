@@ -79,6 +79,8 @@ export const en = {
       transactionCount_other: '{{count}} transactions',
       deleteConfirm: 'Delete the "{{name}}" tag?',
       deleteConfirmButton: 'Delete',
+      moveUp: 'Move {{name}} up',
+      moveDown: 'Move {{name}} down',
       modal: {
         newTitle: 'New tag',
         editTitle: 'Edit tag',
@@ -103,6 +105,8 @@ export const en = {
       deleteCategoryConfirm: 'Delete the "{{name}}" category?',
       deleteGroupConfirm: 'Delete the "{{name}}" group?',
       deleteConfirmButton: 'Delete',
+      moveUp: 'Move {{name}} up',
+      moveDown: 'Move {{name}} down',
       types: {
         income: 'Income',
         expense: 'Expenses',

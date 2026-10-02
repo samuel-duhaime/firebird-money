@@ -36,6 +36,14 @@
   opacity: 1;
 }
 
+/* `.move-buttons` base styling is in the shared `components/MoveButtons.css`, imported alongside
+ * this file — `:focus-within` (not just `:hover`) so it reveals itself the moment Tab lands on it,
+ * rather than staying invisible right when a keyboard user needs to see it. */
+.tags-list-row:hover .move-buttons,
+.tags-list-row:focus-within .move-buttons {
+  opacity: 1;
+}
+
 .tags-list-color {
   flex-shrink: 0;
   width: 12px;

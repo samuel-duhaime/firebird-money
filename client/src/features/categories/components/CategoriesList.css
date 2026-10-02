@@ -59,6 +59,15 @@
   opacity: 1;
 }
 
+/* `.move-buttons`/`.move-button` (the keyboard/button alternative to the drag handles above) come
+ * from the shared `components/MoveButtons.css`, imported alongside this file. */
+.category-group-header:hover .move-buttons,
+.category-group-header:focus-within .move-buttons,
+.categories-list-row:hover .move-buttons,
+.categories-list-row:focus-within .move-buttons {
+  opacity: 1;
+}
+
 .category-group-name {
   font-weight: 700;
 }
