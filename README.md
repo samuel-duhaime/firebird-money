@@ -164,7 +164,7 @@ New households are seeded with starter groups and categories automatically.
 
 `/tags`:
 
-- `GET /tags` — list the caller's household's tags, in their display order and with how many transactions currently carry each.
+- `GET /tags` — list the caller's household's tags, in their display order, with each tag's `transaction_count`.
 - `GET /tags/{id}` — fetch a single tag.
 - `POST /tags` — create a tag (`name`, `color`). Unlike categories, a tag has a single free-form `name` — no `name_en`/`name_fr` pair. Appended at the end of the household's order.
 - `PATCH /tags/{id}` — partially update a tag (only the fields you send change).
