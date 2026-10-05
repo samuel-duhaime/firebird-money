@@ -209,6 +209,10 @@ Settings are per-user, not per-household: which optional columns show on the tra
 
 Every table in the Postgres schema (see `server/migrations/`) and how they relate. `Account`, `Institution`, `Merchant`, and `Rule` are still design-stage — not real tables yet — so they aren't pictured; `transactions.merchant`/`account` are plain text until they land.
 
+Split into two diagrams for readability; `HOUSEHOLDS` and `HOUSEHOLD_MEMBERS` appear in both since they're the bridge between them.
+
+**People & access:**
+
 ```mermaid
 erDiagram
     HOUSEHOLDS ||--o{ HOUSEHOLD_MEMBERS : has
@@ -216,6 +220,12 @@ erDiagram
     USERS ||--o{ LOGIN_TOKENS : has
     USERS ||--o{ SESSIONS : has
     USERS ||--o| SETTINGS : has
+```
+
+**Household finances:**
+
+```mermaid
+erDiagram
     HOUSEHOLDS ||--o{ CATEGORY_GROUPS : has
     HOUSEHOLDS ||--o{ CATEGORIES : has
     CATEGORY_GROUPS ||--o{ CATEGORIES : has
