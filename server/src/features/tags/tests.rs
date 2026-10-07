@@ -544,7 +544,7 @@ async fn delete_tag_rejects_when_referenced_by_transaction(pool: PgPool) {
         .insert_header(("Cookie", cookie.clone()))
         .set_json(serde_json::json!({
             "date": "2024-01-15",
-            "merchant": "STARBUCKS",
+            "original_statement": "STARBUCKS",
             "amount": "12.34",
             "category_id": category_id,
             "account": "User 1",
@@ -584,7 +584,7 @@ async fn tag_transaction_count_reflects_attached_transactions(pool: PgPool) {
             .insert_header(("Cookie", cookie.clone()))
             .set_json(serde_json::json!({
                 "date": "2024-01-15",
-                "merchant": merchant,
+                "original_statement": merchant,
                 "amount": "12.34",
                 "category_id": category_id,
                 "account": "User 1",

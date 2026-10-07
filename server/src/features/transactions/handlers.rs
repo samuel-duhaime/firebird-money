@@ -94,7 +94,7 @@ async fn create_transaction(
         Ok(transaction) => HttpResponse::Created()
             .insert_header(("Location", format!("/transactions/{}", transaction.id)))
             .json(transaction),
-        Err(e) if matches!(e, sqlx::Error::RowNotFound) => error_response_with_n(
+        Err(sqlx::Error::RowNotFound) => error_response_with_n(
             &l10n,
             &locale,
             StatusCode::BAD_REQUEST,
@@ -382,7 +382,7 @@ async fn update_transaction(
     match repository::update(&pool, household_id, i64::from(id), &patch).await {
         Ok(Some(transaction)) => HttpResponse::Ok().json(transaction),
         Ok(None) => not_found_response(&l10n, &locale, "transaction-not-found", id),
-        Err(e) if matches!(e, sqlx::Error::RowNotFound) => error_response_with_n(
+        Err(sqlx::Error::RowNotFound) => error_response_with_n(
             &l10n,
             &locale,
             StatusCode::BAD_REQUEST,
@@ -448,7 +448,7 @@ async fn bulk_update_transactions(
 
     match repository::bulk_update(&pool, household_id, &body.ids, &body.patch).await {
         Ok(transactions) => HttpResponse::Ok().json(transactions),
-        Err(e) if matches!(e, sqlx::Error::RowNotFound) => error_response_with_n(
+        Err(sqlx::Error::RowNotFound) => error_response_with_n(
             &l10n,
             &locale,
             StatusCode::BAD_REQUEST,

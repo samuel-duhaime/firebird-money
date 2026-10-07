@@ -16,10 +16,7 @@ pub struct DefaultMerchant {
 }
 
 const fn merchant(name: &'static str) -> DefaultMerchant {
-    DefaultMerchant {
-        name,
-        aliases: &[],
-    }
+    DefaultMerchant { name, aliases: &[] }
 }
 
 pub const DEFAULT_MERCHANTS: &[DefaultMerchant] = &[

@@ -514,9 +514,10 @@ async fn resolve_or_create_creates_a_new_merchant_when_nothing_matches(pool: PgP
     let household_id = own_household_id(&app, &cookie).await;
 
     let mut conn = pool.acquire().await.unwrap();
-    let created_id = repository::resolve_or_create(&mut conn, household_id, "NotImportantMerchantName")
-        .await
-        .unwrap();
+    let created_id =
+        repository::resolve_or_create(&mut conn, household_id, "NotImportantMerchantName")
+            .await
+            .unwrap();
 
     let merchant = repository::get(&pool, household_id, created_id)
         .await
@@ -609,7 +610,10 @@ async fn list_merchants_sorts_alphabetically_when_requested(pool: PgPool) {
     create_via_api(&app, &cookie, "Alpha Shop").await;
 
     let merchants = list_via_api_ordered(&app, &cookie, "alphabetical").await;
-    let names: Vec<&str> = merchants.iter().map(|m| m["name"].as_str().unwrap()).collect();
+    let names: Vec<&str> = merchants
+        .iter()
+        .map(|m| m["name"].as_str().unwrap())
+        .collect();
 
     let alpha_index = names.iter().position(|n| *n == "Alpha Shop").unwrap();
     let zebra_index = names.iter().position(|n| *n == "Zebra Shop").unwrap();
