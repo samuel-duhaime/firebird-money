@@ -112,7 +112,9 @@ In VS Code, run the "Run Client and Server" task (`Ctrl+Shift+P` → `Tasks: Run
 ## API
 
 The API is JSON, backed by Postgres, and requires a session. `transactions`, `categories`,
-`category-groups`, and `tags` are scoped to the caller's household.
+`category-groups`, and `tags` are scoped to the caller's household. `merchants` is mostly scoped the
+same way, except for a shared common set every household can see but never modify — see
+[`/merchants`](#api).
 
 `/auth`:
 
@@ -126,18 +128,30 @@ Magic links last 15 minutes and work once. The session cookie is httpOnly and Sa
 
 `/transactions`:
 
-- `GET /transactions` — list the caller's household's transactions, optionally filtered with `?date=YYYY-MM-DD`, `?start_date=`/`?end_date=` (inclusive range), `?merchant=`, and/or `?search=` (case-insensitive match against merchant, category, tag names, or amount). Accepts `?order=` (`date` [default], `inverse_date`, `amount`, `inverse_amount`).
+- `GET /transactions` — list the caller's household's transactions, optionally filtered with `?date=YYYY-MM-DD`, `?start_date=`/`?end_date=` (inclusive range), `?merchant_id=`, and/or `?search=` (case-insensitive match against merchant name, original statement, category, tag names, or amount). Accepts `?order=` (`date` [default], `inverse_date`, `amount`, `inverse_amount`).
 - `GET /transactions/{id}` — fetch a single transaction.
-- `POST /transactions` — create a transaction (`date`, `merchant`, `amount`, `category_id`, `account`, optional `tag_ids`). `household_id` and `household_member_id` are never read from the body — they're always the caller's own household and membership.
-- `PATCH /transactions/{id}` — partially update a transaction (only the fields you send change). `tag_ids`, if given, *replaces* the full tag set (`[]` clears it).
+- `POST /transactions` — create a transaction (`date`, `amount`, `category_id`, `account`, optional `tag_ids`, and either `merchant_id` and/or `original_statement`). `household_id` and `household_member_id` are never read from the body — they're always the caller's own household and membership.
+- `PATCH /transactions/{id}` — partially update a transaction (only the fields you send change). `tag_ids`, if given, *replaces* the full tag set (`[]` clears it). There's no `original_statement` here — it's immutable after creation; only `merchant_id` is editable.
 - `DELETE /transactions/{id}` — delete a transaction.
-- `PATCH /transactions/bulk` — partially update several transactions at once (`ids`, `patch` — `patch` supports `date`, `merchant`, `category_id`, and `tag_ids`). Unlike the single-transaction `PATCH`, `tag_ids` here *adds* to each transaction's existing tags rather than replacing them. Ids the household doesn't own are silently skipped.
+- `PATCH /transactions/bulk` — partially update several transactions at once (`ids`, `patch` — `patch` supports `date`, `merchant_id`, `category_id`, and `tag_ids`). Unlike the single-transaction `PATCH`, `tag_ids` here *adds* to each transaction's existing tags rather than replacing them. Ids the household doesn't own are silently skipped.
 - `DELETE /transactions/bulk` — delete several transactions at once (`ids`). Ids the household doesn't own are silently skipped.
 - `GET /transactions/download` — download the same filtered/sorted transactions as `GET /transactions`, rendered as a file (including a Tags column). Accepts the same query params plus `?format=` (`csv` or `xlsx`, required).
 - `POST /transactions/import` — upload a budget file (multipart, field `file`, 10 MB max) to import as transactions. Kicks off an async job and returns `202 Accepted` with a `Location` header pointing at the job. Requires the `claude` CLI (see [Install](#install)); the unattended subprocess it spawns authenticates as the caller via a forwarded session cookie.
 - `GET /transactions/import/jobs/{id}` — poll an import job's status (`pending`, `running`, `succeeded`, `failed`) and, once terminal, its `created_count`/`failed_count`/`skipped_count`/`error_message`.
 
-Every transaction response includes its joined category (`category_name_en`, `category_name_fr`, `category_type`) and its attached tags (`tags`, each `{id, name, color}`). `category_id` must belong to the caller's own household; any `tag_ids` outside it are silently dropped rather than rejected.
+Every transaction response includes its joined category (`category_name_en`, `category_name_fr`, `category_type`), its joined merchant (`merchant_name`, `merchant_logo_url`), the immutable `original_statement` it was created from, and its attached tags (`tags`, each `{id, name, color}`). `category_id` must belong to the caller's own household; any `tag_ids` outside it are silently dropped rather than rejected.
+
+On create, `merchant_id` and `original_statement` are both optional but at least one is required: given `merchant_id` alone, `original_statement` defaults to that merchant's own name (the manual "Add Transaction" shape); given `original_statement` alone, the server matches an existing merchant by case-insensitive substring (checking common merchants and the household's own, including each one's aliases) or creates a new custom merchant named exactly the given text (the budget-file importer's shape — see [`/merchants`](#api)). A `merchant_id` that doesn't belong to the caller's household (and isn't common) is rejected with `400`, same as an unknown `category_id`.
+
+`/merchants`:
+
+- `GET /merchants` — list merchants visible to the caller's household (the shared common set plus this household's own), each with how many of the household's transactions currently carry it and, if any exist, a `recommended_category_id` — the category most often used with that merchant in this household's own transaction history (ties broken by whichever was used most recently), `null` until there's at least one. Accepts `?order=` (`transaction_count` [default] or `alphabetical`).
+- `GET /merchants/{id}` — fetch a single merchant.
+- `POST /merchants` — create a custom merchant for the caller's household (`name`).
+- `PATCH /merchants/{id}` — rename a custom merchant. Common merchants (shared across every household) can't be changed this way — same as any id outside the caller's household, it 404s.
+- `DELETE /merchants/{id}` — delete a custom merchant. Fails while it's still used by existing transactions; common merchants can't be deleted at all.
+
+A merchant with `household_id: null` is common — seeded once at server startup (not per household, unlike categories/tags), shared by every household, and immune to the household-scoped update/delete above. Everything else belongs to exactly one household. A common merchant may also carry `aliases` (alternate spellings it also matches on, e.g. "McDonalds" for "McDonald's") — curated server-side, not settable through this API.
 
 `/categories`:
 
@@ -176,7 +190,7 @@ A tag is a free-form label attached to transactions (see `tag_ids` on [`/transac
 
 - `GET /households/{id}` — fetch a single household.
 - `POST /households` — create a new household, seeded with its starter category groups, categories, and tags.
-- `DELETE /households/{id}` — delete a household. Fails while it still has data connected to it (members, category groups, categories, tags, or transactions).
+- `DELETE /households/{id}` — delete a household. Fails while it still has data connected to it (members, category groups, categories, tags, custom merchants, or transactions).
 
 Beyond `id`/`created_at`, a household carries only a `join_code`, generated on creation: the code an existing member shares so someone else can join through `POST /auth/onboarding`. Who belongs to it, and with what role, lives in `/household-members`.
 
@@ -199,7 +213,7 @@ A user is a standalone login identity — how they relate to their (at most one)
 
 ## Data model
 
-The currently implemented API exposes `Category`, `CategoryGroup`, `Transaction`, `Household`, `User`, `HouseholdMember`, and `Tag` (see [API](#api) above). The diagram below predates `CategoryGroup`, household scoping, and `Tag` — Account, Institution, Merchant, and Rule are still design-stage, and `HouseholdMember`/`Tag` aren't pictured either:
+The currently implemented API exposes `Category`, `CategoryGroup`, `Transaction`, `Household`, `User`, `HouseholdMember`, `Tag`, and `Merchant` (see [API](#api) above). The diagram below predates `CategoryGroup`, household scoping, `Tag`, and `Merchant` — Account, Institution, and Rule are still design-stage, and `HouseholdMember`/`Tag`/`Merchant` aren't pictured either:
 ![API class diagram](docs/images/api-diagram.png)
 
 ## Tests
