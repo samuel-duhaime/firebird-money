@@ -5,7 +5,11 @@ import './_app.settings.css';
 
 type HouseholdNavItem =
   | { key: string; labelKey: string }
-  | { key: string; labelKey: string; to: '/settings/tags' | '/settings/categories' };
+  | {
+      key: string;
+      labelKey: string;
+      to: '/settings/tags' | '/settings/categories' | '/settings/merchants';
+    };
 
 const HOUSEHOLD_NAV_ITEMS: HouseholdNavItem[] = [
   { key: 'members', labelKey: 'settings.household.members' },
@@ -17,7 +21,11 @@ const HOUSEHOLD_NAV_ITEMS: HouseholdNavItem[] = [
     labelKey: 'settings.household.categories',
     to: '/settings/categories',
   },
-  { key: 'merchants', labelKey: 'settings.household.merchants' },
+  {
+    key: 'merchants',
+    labelKey: 'settings.household.merchants',
+    to: '/settings/merchants',
+  },
   { key: 'rules', labelKey: 'settings.household.rules' },
   { key: 'tags', labelKey: 'settings.household.tags', to: '/settings/tags' },
   { key: 'data', labelKey: 'settings.household.data' },

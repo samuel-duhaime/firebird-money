@@ -64,6 +64,12 @@ export const importSucceededToast = (createdCount: number) =>
 export const deleteTagFailedToast = () =>
   toast.error(i18n.t('toast.deleteTagFailed'));
 
+export const deleteMerchantFailedToast = () =>
+  toast.error(i18n.t('toast.deleteMerchantFailed'));
+
+export const deleteMerchantInUseToast = () =>
+  toast.error(i18n.t('toast.deleteMerchantInUse'));
+
 export const updateSettingsFailedToast = () =>
   toast.error(i18n.t('toast.updateSettingsFailed'));
 

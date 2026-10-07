@@ -95,6 +95,37 @@ export const fr: typeof en = {
         failed: "Impossible d'enregistrer l'étiquette. Réessaie.",
       },
     },
+    merchants: {
+      heading: 'Marchands',
+      newMerchant: 'Nouveau marchand',
+      edit: 'Modifier',
+      delete: 'Supprimer',
+      loading: 'Chargement des marchands…',
+      error: 'Échec du chargement des marchands.',
+      empty: 'Aucun marchand pour le moment.',
+      search: 'Rechercher parmi {{count}} marchands…',
+      total_one: '{{count}} marchand',
+      total_other: '{{count}} marchands',
+      transactionCount_one: '{{count}} transaction',
+      transactionCount_other: '{{count}} transactions',
+      deleteConfirm: 'Supprimer le marchand « {{name}} »?',
+      deleteConfirmButton: 'Supprimer',
+      sort: {
+        label: 'Trier',
+        transactionCount: 'Nombre de transactions',
+        alphabetical: 'Alphabétique',
+      },
+      modal: {
+        newTitle: 'Nouveau marchand',
+        editTitle: 'Modifier le marchand',
+        name: 'Nom',
+        cancel: 'Annuler',
+        save: 'Enregistrer',
+        required: 'Un nom est requis.',
+        duplicateName: 'Un marchand avec ce nom existe déjà.',
+        failed: 'Impossible d’enregistrer le marchand. Réessaie.',
+      },
+    },
     categories: {
       heading: 'Catégories',
       newGroup: 'Créer un groupe',
@@ -293,6 +324,9 @@ export const fr: typeof en = {
     bulkDeleteTransactionsFailed:
       'Impossible de supprimer les transactions. Réessaie.',
     deleteTagFailed: "Impossible de supprimer l'étiquette. Réessaie.",
+    deleteMerchantFailed: 'Impossible de supprimer le marchand. Réessaie.',
+    deleteMerchantInUse:
+      'Ce marchand a encore des transactions, donc il ne peut pas être supprimé. Déplace ou supprime ces transactions d’abord.',
     reorderTagsFailed:
       "Impossible d'enregistrer le nouvel ordre des étiquettes. Réessaie.",
     deleteCategoryFailed: "Impossible de supprimer la catégorie. Réessaie.",

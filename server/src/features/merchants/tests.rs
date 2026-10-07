@@ -359,6 +359,39 @@ async fn delete_merchant_deletes_a_custom_merchant(pool: PgPool) {
 }
 
 #[sqlx::test]
+async fn delete_merchant_fails_while_used_by_a_transaction(pool: PgPool) {
+    let app = test::init_service(app_with(pool.clone())).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let household_id = own_household_id(&app, &cookie).await;
+    let household_member_id = own_household_member_id(&app, &cookie).await;
+    let merchant_id = create_via_api(&app, &cookie, "In-Use Shop").await;
+    let category_id = insert_category(&pool, household_id, "Category Test").await;
+    insert_transaction(
+        &pool,
+        household_id,
+        household_member_id,
+        merchant_id,
+        category_id,
+        "2026-01-01",
+    )
+    .await;
+
+    let req = test::TestRequest::delete()
+        .uri(&format!("/merchants/{merchant_id}"))
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 409);
+
+    // The merchant and its transaction are both still there — the delete was refused, not partial.
+    let merchant = repository::get(&pool, household_id, merchant_id as i32)
+        .await
+        .unwrap();
+    assert!(merchant.is_some());
+}
+
+#[sqlx::test]
 async fn delete_merchant_404s_on_a_common_merchant(pool: PgPool) {
     repository::seed_defaults(&pool).await.unwrap();
     let app = test::init_service(app_with(pool)).await;

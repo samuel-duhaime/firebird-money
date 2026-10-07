@@ -1,0 +1,136 @@
+.merchants-list-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.merchants-list-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-s);
+}
+
+.merchants-list-sort {
+  padding: 6px 34px 6px 12px;
+  border: 1px solid var(--color-medium);
+  border-radius: 8px;
+  background: var(--color-dark);
+  color: var(--color-white);
+  font-size: 14px;
+  cursor: pointer;
+  /* The native arrow ignores padding — it's drawn by the browser flush against the edge
+   * regardless — so it's replaced with a custom one that actually respects the gap (same fix as
+   * .modal-body select in CategoryGroupModal.css). */
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23A4A4A6' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 14px;
+}
+
+.merchants-list-search {
+  width: 260px;
+  max-width: 100%;
+  padding: 6px 12px;
+  border: 1px solid var(--color-medium);
+  border-radius: 8px;
+  background: var(--color-dark);
+  color: var(--color-white);
+  font-size: 14px;
+}
+
+.merchants-list-total {
+  font-weight: 700;
+}
+
+.merchants-list {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--color-medium);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.merchants-list-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-s) var(--spacing-m);
+}
+
+.merchants-list-row + .merchants-list-row {
+  border-top: 1px solid var(--color-medium);
+}
+
+.merchants-list-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--color-primary) 25%, transparent);
+  color: var(--color-primary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.merchants-list-name {
+  font-weight: 600;
+}
+
+.merchants-list-meta {
+  color: var(--color-lightest);
+  font-size: 14px;
+}
+
+.merchants-list-actions {
+  display: flex;
+  gap: var(--spacing-xs);
+  margin-left: auto;
+}
+
+.merchants-list-action {
+  padding: 6px 14px;
+  border: 1px solid var(--color-light);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-white);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.merchants-list-action:hover {
+  background: var(--color-medium);
+}
+
+.merchants-list-action--danger {
+  border-color: var(--color-error);
+  color: var(--color-error);
+}
+
+.merchants-list-action--danger:hover {
+  background: color-mix(in srgb, var(--color-error) 15%, transparent);
+}
+
+.merchants-list-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-s);
+  flex: 1;
+}
+
+.merchants-list-confirm-text {
+  color: var(--color-lightest);
+  font-size: 14px;
+}
