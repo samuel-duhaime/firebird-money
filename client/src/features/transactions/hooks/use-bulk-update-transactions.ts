@@ -10,6 +10,9 @@ export const useBulkUpdateTransactions = () => {
       bulkUpdateTransactions(ids, patch),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      // See use-update-transaction.ts — a merchant's transaction_count/recommended_category_id
+      // are computed from the household's transactions.
+      queryClient.invalidateQueries({ queryKey: ['merchants'] });
     },
   });
 };

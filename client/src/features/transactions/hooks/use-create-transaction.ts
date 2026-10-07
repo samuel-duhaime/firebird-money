@@ -9,6 +9,9 @@ export const useCreateTransaction = () => {
     mutationFn: createTransaction,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      // A merchant's transaction_count/recommended_category_id are computed from the household's
+      // transactions, so a new one can change either for whichever merchant it names.
+      queryClient.invalidateQueries({ queryKey: ['merchants'] });
       addTransactionSucceededToast();
     },
   });

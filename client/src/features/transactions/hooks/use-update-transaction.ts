@@ -10,6 +10,10 @@ export const useUpdateTransaction = () => {
       updateTransaction(id, patch),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      // A merchant's transaction_count/recommended_category_id are computed from the household's
+      // transactions, so changing one (especially its merchant_id or category_id) can change
+      // either for the old and/or new merchant.
+      queryClient.invalidateQueries({ queryKey: ['merchants'] });
     },
   });
 };

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCategories } from '../../categories/hooks/use-categories';
+import { useMerchants } from '../../merchants/hooks/use-merchants';
 import { TagPicker } from '../../tags/components/TagPicker';
 import { useTransaction } from '../hooks/use-transaction';
 import { useUpdateTransaction } from '../hooks/use-update-transaction';
@@ -16,6 +17,7 @@ import {
 } from '../../../lib/toast';
 import { normalizeAmount, sanitizeAmountInput } from '../utils/amount';
 import { CategoryPicker } from './CategoryPicker';
+import { MerchantPicker } from './MerchantPicker';
 import type { TransactionPatch } from '../utils/api';
 import './AddTransactionModal.css';
 import './EditTransactionModal.css';
@@ -34,6 +36,7 @@ export const EditTransactionModal = ({
 }: EditTransactionModalProps) => {
   const { t, i18n } = useTranslation();
   const { data: categories } = useCategories();
+  const { data: merchants } = useMerchants();
   const {
     data: transaction,
     isPending,
@@ -41,7 +44,6 @@ export const EditTransactionModal = ({
   } = useTransaction(transactionId);
 
   const [amount, setAmount] = useState('');
-  const [merchant, setMerchant] = useState('');
   const [date, setDate] = useState('');
   const [categoryId, setCategoryId] = useState<number | null>(null);
   const [tagIds, setTagIds] = useState<number[]>([]);
@@ -49,10 +51,11 @@ export const EditTransactionModal = ({
   const dialogRef = useRef<HTMLDivElement>(null);
   const firstFieldRef = useRef<HTMLInputElement>(null);
   // Escape reverts state, then blurs synchronously — before that state update has re-rendered.
-  // Without these, the blur-triggered commit* below would still read the pre-revert value from
-  // its stale closure and re-save it, undoing the revert it was meant to perform.
+  // Without this, the blur-triggered commitAmount below would still read the pre-revert value from
+  // its stale closure and re-save it, undoing the revert it was meant to perform. merchant doesn't
+  // need this guard — picking from MerchantPicker is already a discrete commit, not a text field a
+  // user can Escape out of mid-edit.
   const cancelledAmountRef = useRef(false);
-  const cancelledMerchantRef = useRef(false);
   // Captured once, synchronously, on first render — before the autofocus effect below moves
   // focus into the dialog — so closing can return keyboard focus to whatever row/button opened
   // it (the transactions list stays mounted underneath the whole time this panel is open).
@@ -75,7 +78,6 @@ export const EditTransactionModal = ({
     // overwritten with the pre-edit server value.
     const activeElementId = document.activeElement?.id;
     if (activeElementId !== 'edit-amount') setAmount(transaction.amount);
-    if (activeElementId !== 'edit-merchant') setMerchant(transaction.merchant);
     setDate(transaction.date);
     setCategoryId(transaction.category_id);
     setTagIds(transaction.tags.map((tag) => tag.id));
@@ -105,7 +107,7 @@ export const EditTransactionModal = ({
         [],
     );
     const popovers = document.querySelectorAll(
-      '.category-picker-popover, .tag-picker-popover',
+      '.category-picker-popover, .merchant-picker-popover, .tag-picker-popover',
     );
     const popoverFocusable = Array.from(popovers).flatMap((popover) =>
       Array.from(popover.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)),
@@ -176,34 +178,9 @@ export const EditTransactionModal = ({
     }
   };
 
-  const handleMerchantChange = (e: ChangeEvent<HTMLInputElement>) => {
-    setMerchant(e.target.value);
-  };
-
-  const commitMerchant = () => {
-    if (cancelledMerchantRef.current) {
-      cancelledMerchantRef.current = false;
-      return;
-    }
-    if (!transaction) return;
-    const trimmed = merchant.trim();
-    if (trimmed === '') {
-      requiredFieldToast();
-      setMerchant(transaction.merchant);
-      return;
-    }
-    setMerchant(trimmed);
-    if (trimmed !== transaction.merchant) save({ merchant: trimmed });
-  };
-
-  const handleMerchantKeyDown = (e: ReactKeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      e.currentTarget.blur();
-    } else if (e.key === 'Escape') {
-      e.stopPropagation();
-      cancelledMerchantRef.current = true;
-      setMerchant(transaction?.merchant ?? '');
-      e.currentTarget.blur();
+  const handleMerchantSelect = (id: number) => {
+    if (transaction && id !== transaction.merchant_id) {
+      save({ merchant_id: id });
     }
   };
 
@@ -260,6 +237,11 @@ export const EditTransactionModal = ({
       ? selectedCategory.name_fr
       : selectedCategory.name_en
     : t('transactions.add.selectCategory');
+
+  const selectedMerchant = merchants?.find(
+    (m) => m.id === transaction?.merchant_id,
+  );
+  const merchantLabel = selectedMerchant?.name ?? transaction?.merchant_name ?? '';
 
   return (
     <div
@@ -321,17 +303,13 @@ export const EditTransactionModal = ({
               </div>
 
               <div className="edit-transaction-field">
-                <label htmlFor="edit-merchant">
-                  {t('transactions.add.merchant')}
-                </label>
-                <input
-                  id="edit-merchant"
-                  type="text"
-                  placeholder={t('transactions.add.merchantPlaceholder')}
-                  value={merchant}
-                  onChange={handleMerchantChange}
-                  onBlur={commitMerchant}
-                  onKeyDown={handleMerchantKeyDown}
+                <label>{t('transactions.add.merchant')}</label>
+                <MerchantPicker
+                  merchantId={transaction.merchant_id}
+                  label={merchantLabel}
+                  className="modal-category-trigger"
+                  onSelect={handleMerchantSelect}
+                  ariaLabel={t('transactions.add.merchant')}
                 />
               </div>
 

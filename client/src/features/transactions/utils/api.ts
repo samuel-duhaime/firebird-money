@@ -1,9 +1,13 @@
 import { apiFetch } from '../../../lib/api-client';
 import type { Transaction } from './types';
 
+/** At least one of `merchant_id`/`original_statement` is required (enforced server-side): the
+ * add-transaction form always sends `merchant_id` (picked via `MerchantPicker`), in which case
+ * `original_statement` is left out and the server defaults it to that merchant's own name. */
 export interface NewTransaction {
   date: string;
-  merchant: string;
+  original_statement?: string;
+  merchant_id?: number;
   amount: string;
   category_id: number;
   account: string;
@@ -21,10 +25,10 @@ export const createTransaction = (
 
 /** Body for `PATCH /transactions/{id}`. Unset fields are left unchanged. `tag_ids`, if given,
  * *replaces* the full tag set (`[]` clears it) — unlike `BulkTransactionPatch.tag_ids`, which only
- * adds. */
+ * adds. There's no `original_statement` here — it's immutable after creation. */
 export interface TransactionPatch {
   date?: string;
-  merchant?: string;
+  merchant_id?: number;
   amount?: string;
   category_id?: number;
   account?: string;
@@ -52,7 +56,7 @@ export const deleteTransaction = (id: number): Promise<void> =>
  * existing tags rather than replacing them, unlike `TransactionPatch.tag_ids`. */
 export type BulkTransactionPatch = Pick<
   TransactionPatch,
-  'date' | 'merchant' | 'category_id' | 'tag_ids'
+  'date' | 'merchant_id' | 'category_id' | 'tag_ids'
 >;
 
 export const bulkUpdateTransactions = (
