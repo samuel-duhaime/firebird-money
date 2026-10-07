@@ -1,6 +1,7 @@
 # User-visible API strings
 
 transaction-not-found = No transaction with id { $n }
+transaction-merchant-required = Either merchant_id or original_statement is required
 category-not-found = No category with id { $n }
 category-duplicate-name = A category with this name already exists
 category-in-use = Category { $n } is still used by existing transactions
@@ -21,6 +22,9 @@ household-member-requires-manager = Only a family manager can add members to thi
 tag-not-found = No tag with id { $n }
 tag-duplicate-name = A tag with this name already exists
 tag-in-use = Tag { $n } is still used by existing transactions
+merchant-not-found = No merchant with id { $n }
+merchant-duplicate-name = A merchant with this name already exists
+merchant-in-use = Merchant { $n } is still used by existing transactions
 # Magic-link email. The link itself is inserted between the instructions and the sign-off.
 auth-email-subject = Your FireBird Money sign-in link
 auth-email-greeting = Hi,

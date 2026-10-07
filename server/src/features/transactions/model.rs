@@ -24,7 +24,13 @@ pub struct Transaction {
     /// account concept).
     pub household_member_id: i32,
     pub date: NaiveDate,
-    pub merchant: String,
+    /// The raw payee/merchant text from the bank or import file, e.g. "STARBUCKS STORE #4521" —
+    /// kept forever as the immutable historical record of what the source actually said. Never
+    /// user-editable after creation; `merchant_id` is what the UI reads/writes.
+    pub original_statement: String,
+    pub merchant_id: i32,
+    pub merchant_name: String,
+    pub merchant_logo_url: Option<String>,
     pub amount: Decimal,
     pub category_id: i32,
     pub category_name_en: String,
@@ -44,10 +50,21 @@ pub struct Transaction {
 /// `household_member_id` are never read from the body — they're always the caller's own household
 /// and membership, from `CurrentUser`. `reviewed` defaults to `true` when absent; automated
 /// imports set it to `false` so they can be found later.
+///
+/// At least one of `merchant_id`/`original_statement` must be given (checked in the handler):
+/// - `merchant_id` given, `original_statement` absent: used directly (validated against the
+///   caller's household — see `merchants::repository::is_visible_to_household`), `original_statement`
+///   defaults to that merchant's own name. The shape a manual "Add Transaction" picker uses.
+/// - `original_statement` given, `merchant_id` absent: `merchants::repository::resolve_or_create`
+///   matches an existing merchant, or creates a new custom one named exactly `original_statement` if
+///   nothing matches. The shape the budget-file importer uses.
+/// - Both given: `merchant_id` is used as-is, `original_statement` stored as given (lets an import
+///   override the resolved merchant while still keeping the real statement text on record).
 #[derive(Debug, Deserialize)]
 pub struct NewTransaction {
     pub date: NaiveDate,
-    pub merchant: String,
+    pub original_statement: Option<String>,
+    pub merchant_id: Option<i32>,
     pub amount: Decimal,
     pub category_id: i32,
     pub account: String,
@@ -102,8 +119,9 @@ pub struct ImportJobReport {
 #[derive(Debug, Deserialize)]
 pub struct TransactionFilter {
     pub date: Option<NaiveDate>,
-    pub merchant: Option<String>,
-    /// Case-insensitive substring match against merchant, category name, or amount.
+    pub merchant_id: Option<i32>,
+    /// Case-insensitive substring match against merchant name, original statement, category name,
+    /// tag name, or amount.
     pub search: Option<String>,
     /// Inclusive lower bound on `date`.
     pub start_date: Option<NaiveDate>,
@@ -127,11 +145,12 @@ pub enum SortOrder {
     InverseAmount,
 }
 
-/// Body for `PATCH /transactions/{id}`. `None` fields are left unchanged.
+/// Body for `PATCH /transactions/{id}`. `None` fields are left unchanged. There's no
+/// `original_statement` here — it's immutable after creation; only `merchant_id` is editable.
 #[derive(Debug, Deserialize)]
 pub struct TransactionPatch {
     pub date: Option<NaiveDate>,
-    pub merchant: Option<String>,
+    pub merchant_id: Option<i32>,
     pub amount: Option<Decimal>,
     pub category_id: Option<i32>,
     pub account: Option<String>,
@@ -147,7 +166,7 @@ pub struct TransactionPatch {
 #[derive(Debug, Deserialize)]
 pub struct BulkTransactionPatch {
     pub date: Option<NaiveDate>,
-    pub merchant: Option<String>,
+    pub merchant_id: Option<i32>,
     pub category_id: Option<i32>,
     /// `None` (or `Some([])`) leaves tags unchanged. `Some(ids)` *adds* `ids` to each selected
     /// transaction's existing tags — unlike `TransactionPatch::tag_ids`, nothing already on a

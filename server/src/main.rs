@@ -50,6 +50,17 @@ async fn main() -> std::io::Result<()> {
 
     let l10n = web::Data::new(L10n::new());
     let pool = web::Data::new(shared::postgres::create_pool().await);
+
+    // Ensures the common merchants (Amazon, Starbucks, ...) exist before anything can reference
+    // them — idempotent, so safe to run on every restart. Unlike categories/tags' starter data,
+    // this isn't seeded per household (see merchants::repository::seed_defaults), so it has no
+    // other natural trigger point.
+    if let Err(e) = features::merchants::repository::seed_defaults(pool.get_ref()).await {
+        return Err(std::io::Error::other(format!(
+            "failed to seed default merchants: {e}"
+        )));
+    }
+
     let import_jobs = web::Data::new(JobStore::default());
     let auth_config = web::Data::new(auth_config);
     // One client, shared by every magic-link send, so the TLS connection pool is reused. Short
@@ -88,6 +99,7 @@ async fn main() -> std::io::Result<()> {
             .configure(features::categories::configure)
             .configure(features::category_groups::configure)
             .configure(features::households::configure)
+            .configure(features::merchants::configure)
             .configure(features::settings::configure)
             .configure(features::tags::configure)
             .configure(features::users::configure)
