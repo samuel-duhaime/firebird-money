@@ -19,10 +19,15 @@ pub struct VerifyQuery {
     pub token: String,
 }
 
-/// Body for `POST /auth/onboarding`. A `join_code` joins that household as a `family_member`;
-/// without one, a brand new household is created and the caller becomes its `family_manager`.
+/// Body for `POST /auth/onboarding`. The name is what other household members see; only
+/// `first_name` is required. A `join_code`
+/// joins that household as a `family_member`; without one, a brand new household is created and
+/// the caller becomes its `family_manager` — unless they already belong to one (they joined but
+/// never finished onboarding), in which case only the name is saved.
 #[derive(Debug, Deserialize)]
 pub struct OnboardingRequest {
+    pub first_name: String,
+    pub last_name: Option<String>,
     pub join_code: Option<String>,
 }
 
@@ -37,6 +42,16 @@ pub struct Membership {
     pub r#type: String,
 }
 
+/// Onboarding step: the user gave the name other household members see.
+pub const NAME_STEP: &str = "name";
+
+/// Onboarding step: the user created or joined a household.
+pub const HOUSEHOLD_STEP: &str = "household";
+
+/// Every onboarding step, in the order they're asked. Adding one here (and to the
+/// `users.onboarding_steps` CHECK constraint) sends everyone who hasn't done it back to onboarding.
+pub const ONBOARDING_STEPS: [&str; 2] = [NAME_STEP, HOUSEHOLD_STEP];
+
 /// Who the caller is: the user plus the household they belong to, if any (nobody has one until
 /// onboarding). The payload behind `GET /auth/me`, and what a successful login returns so the
 /// client doesn't need a second call.
@@ -44,6 +59,25 @@ pub struct Membership {
 pub struct AuthSession {
     pub user: User,
     pub household: Option<Membership>,
+
+    /// `ONBOARDING_STEPS` the user still has to finish, in order. The client keeps them on
+    /// onboarding until this is empty — it never needs its own copy of the step list.
+    pub pending_onboarding_steps: Vec<&'static str>,
+}
+
+impl AuthSession {
+    pub fn new(user: User, household: Option<Membership>) -> Self {
+        let pending_onboarding_steps = ONBOARDING_STEPS
+            .into_iter()
+            .filter(|step| !user.onboarding_steps.iter().any(|done| done == step))
+            .collect();
+
+        Self {
+            user,
+            household,
+            pending_onboarding_steps,
+        }
+    }
 }
 
 /// Response to `POST /auth/request-login`.

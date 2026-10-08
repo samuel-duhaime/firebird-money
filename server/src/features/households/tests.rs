@@ -81,7 +81,7 @@ where
     let onboard_req = test::TestRequest::post()
         .uri("/auth/onboarding")
         .insert_header(("Cookie", cookie.clone()))
-        .set_json(serde_json::json!({}))
+        .set_json(serde_json::json!({ "first_name": "Test", "last_name": "User" }))
         .to_request();
     let session: serde_json::Value = test::call_and_read_body_json(app, onboard_req).await;
     let household_id = session["household"]["household_id"].as_i64().unwrap();
@@ -348,7 +348,7 @@ async fn delete_household_rejects_when_referenced_by_member(pool: PgPool) {
     let join_req = test::TestRequest::post()
         .uri("/auth/onboarding")
         .insert_header(("Cookie", member_cookie))
-        .set_json(serde_json::json!({ "join_code": join_code }))
+        .set_json(serde_json::json!({ "first_name": "Test", "last_name": "User", "join_code": join_code }))
         .to_request();
     assert_eq!(test::call_service(&app, join_req).await.status(), 201);
 

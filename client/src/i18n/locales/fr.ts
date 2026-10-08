@@ -31,6 +31,14 @@ export const fr: typeof en = {
     },
   },
   onboarding: {
+    name: {
+      title: 'Bienvenue! C’est quoi ton nom?',
+      description:
+        'C’est comme ça que les autres membres de ton ménage vont te voir.',
+      firstName: 'Prénom',
+      lastName: 'Nom de famille (optionnel)',
+      submit: 'Continuer',
+    },
     title: 'Configure ton ménage',
     description:
       'Un ménage, c’est là que vivent les transactions de ta famille. Crées-en un, ou rejoins celui que quelqu’un a déjà créé.',
@@ -50,7 +58,6 @@ export const fr: typeof en = {
     household: 'Ménage',
   },
   leftMenu: {
-    username: "Nom d'utilisateur",
     language: 'Langue',
     settings: 'Paramètres',
     signOut: 'Se déconnecter',
@@ -68,6 +75,23 @@ export const fr: typeof en = {
       rules: 'Règles',
       tags: 'Étiquettes',
       data: 'Données',
+    },
+    members: {
+      heading: 'Membres',
+      loading: 'Chargement des membres…',
+      error: 'Impossible de charger les membres.',
+      manager: 'Gestionnaire',
+      status: {
+        verified: 'Vérifié',
+        pending: 'En attente',
+        suspended: 'Suspendu',
+      },
+      invite: {
+        heading: 'Code d’invitation',
+        description:
+          'Partage ce code avec quelqu’un pour qu’il puisse rejoindre ton ménage en s’inscrivant.',
+        copy: 'Copier',
+      },
     },
     tags: {
       heading: 'Étiquettes',
@@ -332,8 +356,8 @@ export const fr: typeof en = {
       'Ce marchand a encore des transactions, donc il ne peut pas être supprimé. Déplace ou supprime ces transactions d’abord.',
     reorderTagsFailed:
       "Impossible d'enregistrer le nouvel ordre des étiquettes. Réessaie.",
-    deleteCategoryFailed: "Impossible de supprimer la catégorie. Réessaie.",
-    deleteCategoryGroupFailed: "Impossible de supprimer le groupe. Réessaie.",
+    deleteCategoryFailed: 'Impossible de supprimer la catégorie. Réessaie.',
+    deleteCategoryGroupFailed: 'Impossible de supprimer le groupe. Réessaie.',
     reorderCategoriesFailed:
       "Impossible d'enregistrer le nouvel ordre des catégories. Réessaie.",
     reorderCategoryGroupsFailed:
@@ -343,6 +367,9 @@ export const fr: typeof en = {
     signOutFailed: 'Impossible de te déconnecter. Réessaie.',
     onboardingFailed: 'Impossible de configurer ton ménage. Réessaie.',
     joinCodeNotFound: 'Aucun ménage ne correspond à ce code d’invitation.',
+    firstNameRequired: 'Un prénom est requis.',
+    copyInviteCodeSucceeded: 'Code d’invitation copié.',
+    copyInviteCodeFailed: 'Impossible de copier le code d’invitation.',
     downloadFailed: 'Échec du téléchargement des transactions.',
     addTransactionSucceeded: 'Transaction ajoutée.',
     importStarted: 'Importation commencée — ça peut prendre une minute.',

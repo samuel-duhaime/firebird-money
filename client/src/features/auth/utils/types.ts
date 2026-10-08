@@ -1,3 +1,5 @@
+export type OnboardingStep = 'name' | 'household';
+
 export interface AuthUser {
   id: number;
   email: string;
@@ -5,6 +7,8 @@ export interface AuthUser {
   first_name: string | null;
   last_name: string | null;
   avatar_url: string | null;
+  /** Onboarding steps this user has finished. */
+  onboarding_steps: OnboardingStep[];
   created_at: string;
 }
 
@@ -22,6 +26,9 @@ export interface Membership {
 export interface CurrentUser {
   user: AuthUser;
   household: Membership | null;
+  /** Steps still to do, in order. The server owns the step list; the app keeps the user on
+   * `/onboarding` until this is empty. */
+  pending_onboarding_steps: OnboardingStep[];
 }
 
 /**

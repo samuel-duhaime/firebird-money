@@ -29,6 +29,14 @@ export const en = {
     },
   },
   onboarding: {
+    name: {
+      title: 'Welcome! What’s your name?',
+      description:
+        'This is how the other members of your household will see you.',
+      firstName: 'First name',
+      lastName: 'Last name (optional)',
+      submit: 'Continue',
+    },
     title: 'Set up your household',
     description:
       "A household is where your family's transactions live. Start one, or join the one someone already set up.",
@@ -48,7 +56,6 @@ export const en = {
     household: 'Household',
   },
   leftMenu: {
-    username: 'Username',
     language: 'Language',
     settings: 'Settings',
     signOut: 'Sign out',
@@ -66,6 +73,23 @@ export const en = {
       rules: 'Rules',
       tags: 'Tags',
       data: 'Data',
+    },
+    members: {
+      heading: 'Members',
+      loading: 'Loading members…',
+      error: 'Failed to load members.',
+      manager: 'Manager',
+      status: {
+        verified: 'Verified',
+        pending: 'Pending',
+        suspended: 'Suspended',
+      },
+      invite: {
+        heading: 'Invite code',
+        description:
+          'Share this code with someone so they can join your household when they sign up.',
+        copy: 'Copy',
+      },
     },
     tags: {
       heading: 'Tags',
@@ -342,6 +366,9 @@ export const en = {
     signOutFailed: 'Could not sign out. Please try again.',
     onboardingFailed: 'Could not set up your household. Please try again.',
     joinCodeNotFound: 'No household matches this join code.',
+    firstNameRequired: 'A first name is required.',
+    copyInviteCodeSucceeded: 'Invite code copied.',
+    copyInviteCodeFailed: 'Could not copy the invite code.',
     downloadFailed: 'Failed to download transactions.',
     addTransactionSucceeded: 'Transaction added.',
     importStarted: 'Import started — this can take a minute.',

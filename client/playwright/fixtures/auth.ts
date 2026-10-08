@@ -30,7 +30,7 @@ export const test = workerInfraTest.extend<AuthFixtures>({
     // A fresh user has no household, which routes real sign-ins to /onboarding — creating one
     // here matches what every real user journey does before reaching /transactions.
     await context.request.post(`${workerInfra.apiOrigin}/auth/onboarding`, {
-      data: { join_code: null },
+      data: { first_name: 'Test', last_name: 'User', join_code: null },
     });
 
     await use(page);

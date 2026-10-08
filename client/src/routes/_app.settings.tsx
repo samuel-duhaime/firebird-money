@@ -8,11 +8,19 @@ type HouseholdNavItem =
   | {
       key: string;
       labelKey: string;
-      to: '/settings/tags' | '/settings/categories' | '/settings/merchants';
+      to:
+        | '/settings/members'
+        | '/settings/tags'
+        | '/settings/categories'
+        | '/settings/merchants';
     };
 
 const HOUSEHOLD_NAV_ITEMS: HouseholdNavItem[] = [
-  { key: 'members', labelKey: 'settings.household.members' },
+  {
+    key: 'members',
+    labelKey: 'settings.household.members',
+    to: '/settings/members',
+  },
   { key: 'preferences', labelKey: 'settings.household.preferences' },
   { key: 'institutions', labelKey: 'settings.household.institutions' },
   { key: 'accounts', labelKey: 'settings.household.accounts' },

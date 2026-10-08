@@ -14,7 +14,7 @@ use sqlx::PgPool;
 
 use super::model::{
     normalize_email, AuthSession, LoginRequest, OnboardingRequest, RequestLoginResponse,
-    VerifyQuery,
+    VerifyQuery, HOUSEHOLD_STEP, NAME_STEP, ONBOARDING_STEPS,
 };
 use super::session::{build_removal_cookie, build_session_cookie, session_token};
 use super::{repository, tokens, CurrentUser};
@@ -157,10 +157,7 @@ async fn verify(
 /// `GET /auth/me` — the signed-in user and the household they belong to, if any. Requiring
 /// `CurrentUser` is what gates this route on a live session.
 async fn me(current_user: CurrentUser) -> impl Responder {
-    HttpResponse::Ok().json(AuthSession {
-        user: current_user.user,
-        household: current_user.household,
-    })
+    HttpResponse::Ok().json(AuthSession::new(current_user.user, current_user.household))
 }
 
 /// `POST /auth/logout` — end the session and clear the cookie.
@@ -184,8 +181,12 @@ async fn logout(
         .finish()
 }
 
-/// `POST /auth/onboarding` — create a household (becoming its `family_manager`) or join an
-/// existing one by `join_code` (becoming a `family_member`).
+/// `POST /auth/onboarding` — save the caller's name, then create a household (becoming its
+/// `family_manager`) or join an existing one by `join_code` (becoming a `family_member`), and mark
+/// onboarding as finished.
+///
+/// A caller who already has a household but never finished onboarding (e.g. they predate the name
+/// step) only has their name saved — the household step is already done.
 async fn onboarding(
     body: web::Json<OnboardingRequest>,
     current_user: CurrentUser,
@@ -195,15 +196,31 @@ async fn onboarding(
     let locale = l10n.locale();
     let user = current_user.user;
 
-    // `CurrentUser` already loaded this — reject up front rather than discovering it after
-    // creating (and, for the no-join branch, having to unwind) a household nobody will end up
-    // owning.
-    if current_user.household.is_some() {
+    let finished = ONBOARDING_STEPS
+        .iter()
+        .all(|step| user.onboarding_steps.iter().any(|done| done == step));
+    if finished {
         return error_response(
             &l10n,
             &locale,
             StatusCode::CONFLICT,
             "auth-already-in-household",
+        );
+    }
+
+    let first_name = body.first_name.trim();
+    // An optional last name left blank is stored as no last name at all, not an empty string.
+    let last_name = body
+        .last_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|name| !name.is_empty());
+    if first_name.is_empty() {
+        return error_response(
+            &l10n,
+            &locale,
+            StatusCode::BAD_REQUEST,
+            "auth-name-required",
         );
     }
 
@@ -222,48 +239,97 @@ async fn onboarding(
 
     let join_code = body.join_code.as_deref().map(str::trim);
 
+    // `CurrentUser` already loaded the membership — reject a join up front rather than
+    // discovering it after the fact.
+    if current_user.household.is_some() && join_code.is_some() {
+        return error_response(
+            &l10n,
+            &locale,
+            StatusCode::CONFLICT,
+            "auth-already-in-household",
+        );
+    }
+
+    if current_user.household.is_none() {
+        if let Err(response) = settle_household(&pool, &l10n, user.id, join_code).await {
+            return response;
+        }
+    }
+
+    // Runs last, so a failure above leaves the steps unrecorded and the client sends the user back
+    // to finish — with their household (if it was created) already in place.
+    let completed = [NAME_STEP, HOUSEHOLD_STEP];
+    let user =
+        match repository::complete_onboarding(&pool, user.id, first_name, last_name, &completed)
+            .await
+        {
+            Ok(user) => user,
+            Err(e) => {
+                error!(
+                    "failed to complete onboarding user_id={} error={e}",
+                    user.id
+                );
+                return internal_error_response(&l10n, &locale);
+            }
+        };
+
+    match load_auth_session(&pool, user).await {
+        Ok(session) => HttpResponse::Created().json(session),
+        Err(e) => {
+            error!("failed to load household membership after onboarding error={e}");
+            internal_error_response(&l10n, &locale)
+        }
+    }
+}
+
+/// Onboarding's household step: join the household behind `join_code` as a `family_member`, or,
+/// without one, create a household with `user_id` as its `family_manager`. `Err` carries the
+/// response to send back as-is.
+async fn settle_household(
+    pool: &PgPool,
+    l10n: &L10n,
+    user_id: i32,
+    join_code: Option<&str>,
+) -> Result<(), HttpResponse> {
+    let locale = l10n.locale();
+    let already_in_household = || {
+        error_response(
+            l10n,
+            &locale,
+            StatusCode::CONFLICT,
+            "auth-already-in-household",
+        )
+    };
+
     match join_code {
         Some(code) => {
-            let household = match households_repository::get_by_join_code(&pool, code).await {
+            let household = match households_repository::get_by_join_code(pool, code).await {
                 Ok(Some(household)) => household,
                 Ok(None) => {
-                    return error_response(
-                        &l10n,
+                    return Err(error_response(
+                        l10n,
                         &locale,
                         StatusCode::NOT_FOUND,
                         "auth-join-code-not-found",
-                    )
+                    ))
                 }
                 Err(e) => {
                     error!("failed to look up join code error={e}");
-                    return internal_error_response(&l10n, &locale);
+                    return Err(internal_error_response(l10n, &locale));
                 }
             };
 
             let new_member = NewHouseholdMember {
-                user_id: user.id,
+                user_id,
                 r#type: "family_member".to_string(),
             };
 
-            match household_members_repository::create(pool.get_ref(), household.id, &new_member)
-                .await
-            {
-                Ok(_) => match load_auth_session(&pool, user).await {
-                    Ok(session) => HttpResponse::Created().json(session),
-                    Err(e) => {
-                        error!("failed to load household membership after onboarding error={e}");
-                        internal_error_response(&l10n, &locale)
-                    }
-                },
-                Err(e) if is_unique_violation(&e) => error_response(
-                    &l10n,
-                    &locale,
-                    StatusCode::CONFLICT,
-                    "auth-already-in-household",
-                ),
+            match household_members_repository::create(pool, household.id, &new_member).await {
+                Ok(_) => Ok(()),
+                Err(e) if is_unique_violation(&e) => Err(already_in_household()),
                 Err(e) => {
                     error!("failed to connect user to household error={e}");
-                    internal_error_response(&l10n, &locale)
+                    Err(internal_error_response(l10n, &locale))
                 }
             }
         }
@@ -271,23 +337,12 @@ async fn onboarding(
         // transaction (see `create_with_manager`), so a failure at any step — including the
         // `user_id` unique violation from a concurrent onboarding request on the same account —
         // never leaves an orphaned household behind.
-        None => match households_repository::create_with_manager(&pool, user.id).await {
-            Ok(_) => match load_auth_session(&pool, user).await {
-                Ok(session) => HttpResponse::Created().json(session),
-                Err(e) => {
-                    error!("failed to load household membership after onboarding error={e}");
-                    internal_error_response(&l10n, &locale)
-                }
-            },
-            Err(e) if is_unique_violation(&e) => error_response(
-                &l10n,
-                &locale,
-                StatusCode::CONFLICT,
-                "auth-already-in-household",
-            ),
+        None => match households_repository::create_with_manager(pool, user_id).await {
+            Ok(_) => Ok(()),
+            Err(e) if is_unique_violation(&e) => Err(already_in_household()),
             Err(e) => {
                 error!("failed to create household error={e}");
-                internal_error_response(&l10n, &locale)
+                Err(internal_error_response(l10n, &locale))
             }
         },
     }
@@ -328,7 +383,7 @@ async fn sign_in_with_token(
 /// Pairs a user with the household they belong to, if any.
 async fn load_auth_session(pool: &PgPool, user: User) -> Result<AuthSession, sqlx::Error> {
     let household = repository::get_membership(pool, user.id).await?;
-    Ok(AuthSession { user, household })
+    Ok(AuthSession::new(user, household))
 }
 
 /// Registers the auth feature's routes.

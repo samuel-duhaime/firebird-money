@@ -79,8 +79,8 @@ async fn create_household_member(
     }
 }
 
-/// `GET /household-members` — list the caller's household's memberships, optionally filtered by
-/// `user_id`.
+/// `GET /household-members` — list the caller's household's members (with each one's name, email,
+/// and status), optionally filtered by `user_id`.
 async fn list_household_members(
     filter: web::Query<HouseholdMemberFilter>,
     current_user: CurrentUser,

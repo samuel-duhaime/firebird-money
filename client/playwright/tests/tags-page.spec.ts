@@ -10,21 +10,6 @@ const DEFAULT_TAG_NAMES = [
 ];
 
 test.describe('Household > Tags settings', () => {
-  test('left nav links to Household, and lands on the Tags page', async ({
-    authedPage,
-  }) => {
-    await authedPage.goto('/dashboard');
-    await authedPage
-      .getByRole('link', { name: 'Household', exact: true })
-      .click();
-
-    await expect(authedPage).toHaveURL('/settings/tags');
-    await expect(authedPage.locator('.top-menu-title')).toHaveText('Settings');
-    await expect(
-      authedPage.getByRole('link', { name: 'Tags', exact: true }),
-    ).toHaveClass(/settings-nav-link--active/);
-  });
-
   test('lists the seeded starter tags, each with a transaction count', async ({
     authedPage,
   }) => {
