@@ -257,6 +257,7 @@ export const AddTransactionModal = ({ onClose }: AddTransactionModalProps) => {
           <input
             id="date"
             type="date"
+            className={date ? undefined : 'date-input--empty'}
             value={date}
             onChange={handleDateChange}
           />

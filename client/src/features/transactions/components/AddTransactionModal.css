@@ -95,12 +95,26 @@
   text-align: left;
 }
 
-.modal-category-trigger--placeholder .category-picker-trigger-label {
+.modal-category-trigger--placeholder .category-picker-trigger-label,
+.modal-category-trigger--placeholder .merchant-picker-trigger-label {
   color: var(--color-lightest);
 }
 
 .modal-body input[type='date']::-webkit-calendar-picker-indicator {
   cursor: pointer;
+}
+
+/* `::placeholder` doesn't apply to a native date input's own "mm/dd/yyyy" — unlike a text
+ * input, so the generic `.modal-body input::placeholder` rule above never reaches it, and it
+ * falls back to the input's own (white) `color`. `.date-input--empty` is toggled in JS based on
+ * whether a date is actually picked, so the empty state can be dimmed like every other
+ * placeholder here while a picked date still reads white. */
+.modal-body input[type='date'].date-input--empty::-webkit-datetime-edit-fields-wrapper,
+.modal-body input[type='date'].date-input--empty::-webkit-datetime-edit-text,
+.modal-body input[type='date'].date-input--empty::-webkit-datetime-edit-month-field,
+.modal-body input[type='date'].date-input--empty::-webkit-datetime-edit-day-field,
+.modal-body input[type='date'].date-input--empty::-webkit-datetime-edit-year-field {
+  color: var(--color-lightest);
 }
 
 .amount-input-wrapper {
