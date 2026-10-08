@@ -10,6 +10,7 @@ import { useSettings } from '../../settings/hooks/use-settings';
 import { useUpdateSettings } from '../../settings/hooks/use-update-settings';
 import { TransactionsToolbar } from './TransactionsToolbar';
 import { CategoryPicker } from './CategoryPicker';
+import { MerchantPicker } from './MerchantPicker';
 import { TagPicker } from '../../tags/components/TagPicker';
 import { EditMultipleTransactionsModal } from './EditMultipleTransactionsModal';
 import { formatAmount, formatDateHeading } from '../utils/format';
@@ -54,9 +55,10 @@ const dailyTotal = (transactions: Transaction[]): number =>
     .filter((transaction) => transaction.category_type === 'expense')
     .reduce((sum, transaction) => sum + Number(transaction.amount), 0);
 
-/** The row's directly-editable text fields. Category is
- * edited through `CategoryPicker` instead, since it's a pick-from-a-list field, not free text. */
-type EditableField = 'merchant' | 'account' | 'amount';
+/** The row's directly-editable text fields. Category and merchant are edited through
+ * `CategoryPicker`/`MerchantPicker` instead, since they're pick-from-a-list fields, not free
+ * text. */
+type EditableField = 'account' | 'amount';
 
 const TransactionRow = ({
   transaction,
@@ -156,6 +158,11 @@ const TransactionRow = ({
     save({ category_id: categoryId });
   };
 
+  const handleMerchantSelect = (merchantId: number) => {
+    if (merchantId === transaction.merchant_id) return;
+    save({ merchant_id: merchantId });
+  };
+
   const tagIds = transaction.tags.map((tag) => tag.id);
   // TODO: this computes `next` straight from `transaction.tags` (this render's server data), so
   // two rapid toggles can both read the pre-save tag set and the second save can clobber the
@@ -186,11 +193,11 @@ const TransactionRow = ({
           onChange={() => onToggleSelect(transaction.id)}
           onClick={(event) => event.stopPropagation()}
           aria-label={t('transactions.edit.selectTransaction', {
-            merchant: transaction.merchant,
+            merchant: transaction.merchant_name,
           })}
         />
         <span className="transactions-row-cell transactions-row-merchant">
-          {transaction.merchant}
+          {transaction.merchant_name}
         </span>
         {columnVisibility.category && (
           <span className="transactions-row-cell transactions-row-category">
@@ -237,25 +244,13 @@ const TransactionRow = ({
         }),
       }}
     >
-      {editingField === 'merchant' ? (
-        <input
-          className="transactions-row-cell transactions-row-input"
-          aria-label={t('transactions.add.merchant', 'Merchant')}
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={handleKeyDown}
-          onBlur={commit}
-          autoFocus
-        />
-      ) : (
-        <button
-          type="button"
-          className="transactions-row-cell transactions-row-merchant transactions-row-cell--editable"
-          onClick={() => startEdit('merchant', transaction.merchant)}
-        >
-          {transaction.merchant}
-        </button>
-      )}
+      <MerchantPicker
+        merchantId={transaction.merchant_id}
+        label={transaction.merchant_name}
+        className="transactions-row-cell transactions-row-merchant transactions-row-cell--editable"
+        onSelect={handleMerchantSelect}
+        ariaLabel={t('transactions.add.merchant', 'Merchant')}
+      />
 
       {columnVisibility.category && (
         <CategoryPicker

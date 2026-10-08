@@ -77,10 +77,30 @@ async fn create_transaction(
         Err(response) => return response,
     };
 
+    let has_statement = new_transaction
+        .original_statement
+        .as_deref()
+        .is_some_and(|s| !s.trim().is_empty());
+    if new_transaction.merchant_id.is_none() && !has_statement {
+        return error_response(
+            &l10n,
+            &locale,
+            StatusCode::BAD_REQUEST,
+            "transaction-merchant-required",
+        );
+    }
+
     match repository::create(&pool, household_id, household_member_id, &new_transaction).await {
         Ok(transaction) => HttpResponse::Created()
             .insert_header(("Location", format!("/transactions/{}", transaction.id)))
             .json(transaction),
+        Err(sqlx::Error::RowNotFound) => error_response_with_n(
+            &l10n,
+            &locale,
+            StatusCode::BAD_REQUEST,
+            "merchant-not-found",
+            new_transaction.merchant_id.unwrap_or_default() as u32,
+        ),
         Err(e) if is_foreign_key_violation(&e) => error_response_with_n(
             &l10n,
             &locale,
@@ -96,9 +116,9 @@ async fn create_transaction(
 }
 
 /// `GET /transactions` — list transactions, optionally filtered by `date`, a `start_date`/
-/// `end_date` range, `merchant`, and/or a free-text `search` matched against merchant, category,
-/// tag names, and amount. Accepts `order` (`date`, `inverse_date`, `amount`, `inverse_amount`) to
-/// control sort order.
+/// `end_date` range, `merchant_id`, and/or a free-text `search` matched against merchant name,
+/// original statement, category, tag names, and amount. Accepts `order` (`date`, `inverse_date`,
+/// `amount`, `inverse_amount`) to control sort order.
 async fn list_transactions(
     filter: web::Query<TransactionFilter>,
     current_user: CurrentUser,
@@ -122,7 +142,7 @@ async fn list_transactions(
 
 /// `GET /transactions/download` — download the same (filtered/sorted) transactions as
 /// `GET /transactions`, rendered as a CSV or Excel file. Accepts the same `date`, `start_date`,
-/// `end_date`, `merchant`, `search`, and `order` query params, plus `format` (`csv` or `xlsx`).
+/// `end_date`, `merchant_id`, `search`, and `order` query params, plus `format` (`csv` or `xlsx`).
 async fn download_transactions(
     filter: web::Query<TransactionFilter>,
     format: web::Query<DownloadFormatQuery>,
@@ -362,6 +382,13 @@ async fn update_transaction(
     match repository::update(&pool, household_id, i64::from(id), &patch).await {
         Ok(Some(transaction)) => HttpResponse::Ok().json(transaction),
         Ok(None) => not_found_response(&l10n, &locale, "transaction-not-found", id),
+        Err(sqlx::Error::RowNotFound) => error_response_with_n(
+            &l10n,
+            &locale,
+            StatusCode::BAD_REQUEST,
+            "merchant-not-found",
+            patch.merchant_id.unwrap_or_default() as u32,
+        ),
         Err(e) if is_foreign_key_violation(&e) => error_response_with_n(
             &l10n,
             &locale,
@@ -421,6 +448,13 @@ async fn bulk_update_transactions(
 
     match repository::bulk_update(&pool, household_id, &body.ids, &body.patch).await {
         Ok(transactions) => HttpResponse::Ok().json(transactions),
+        Err(sqlx::Error::RowNotFound) => error_response_with_n(
+            &l10n,
+            &locale,
+            StatusCode::BAD_REQUEST,
+            "merchant-not-found",
+            body.patch.merchant_id.unwrap_or_default() as u32,
+        ),
         Err(e) if is_foreign_key_violation(&e) => error_response_with_n(
             &l10n,
             &locale,

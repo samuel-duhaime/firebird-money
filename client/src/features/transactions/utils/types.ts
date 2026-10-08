@@ -10,7 +10,13 @@ export interface TransactionTag {
 export interface Transaction {
   id: number;
   date: string;
-  merchant: string;
+  /** The raw payee/merchant text from the bank or import file — kept forever as the immutable
+   * historical record, never user-editable after creation. `merchant_id`/`merchant_name` are what
+   * the UI reads/writes. */
+  original_statement: string;
+  merchant_id: number;
+  merchant_name: string;
+  merchant_logo_url: string | null;
   amount: string;
   category_id: number;
   category_name_en: string;

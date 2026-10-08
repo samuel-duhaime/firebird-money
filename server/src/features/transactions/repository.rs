@@ -6,13 +6,16 @@ use super::model::{
     BulkTransactionPatch, NewTransaction, SortOrder, Transaction, TransactionFilter,
     TransactionPatch, TransactionTag,
 };
+use crate::features::merchants::repository as merchants_repository;
 
 const SELECT_COLUMNS: &str = "
-    t.id, t.household_id, t.household_member_id, t.date, t.merchant, t.amount, t.category_id,
+    t.id, t.household_id, t.household_member_id, t.date, t.original_statement, t.merchant_id,
+    mch.name AS merchant_name, mch.logo_url AS merchant_logo_url, t.amount, t.category_id,
     c.name_en AS category_name_en, c.name_fr AS category_name_fr, g.type AS category_type,
     t.account, t.reviewed, t.created_at";
 
 const FROM_JOIN: &str = "FROM transactions t
+    JOIN merchants mch ON mch.id = t.merchant_id
     JOIN categories c ON c.id = t.category_id
     JOIN category_groups g ON g.id = c.group_id";
 
@@ -124,32 +127,67 @@ async fn add_transaction_tags(
 }
 
 /// Inserts a new transaction — scoped to `household_id` and attributed to `household_member_id` —
-/// and returns the created row, joined with its category and (if `new_transaction.tag_ids` was
-/// given) its tags.
+/// and returns the created row, joined with its merchant, category, and (if
+/// `new_transaction.tag_ids` was given) its tags.
+///
+/// Resolves the merchant per `NewTransaction`'s doc comment: an explicit `merchant_id` is looked up
+/// against the caller's household (`Err(sqlx::Error::RowNotFound)` if it isn't visible — the
+/// handler maps this to a 400, distinct from a `category_id` foreign-key violation); otherwise
+/// `merchants::repository::resolve_or_create` matches-or-creates one from `original_statement`. The
+/// explicit-id lookup runs on `pool`, before `tx` opens below — same reasoning `update`/`bulk_update`
+/// already follow for their own visibility check — so it never ties up a second pool connection
+/// while the insert transaction is in flight.
 pub async fn create(
     pool: &PgPool,
     household_id: i32,
     household_member_id: i32,
     new_transaction: &NewTransaction,
 ) -> Result<Transaction, sqlx::Error> {
+    let explicit_merchant = match new_transaction.merchant_id {
+        Some(id) => Some(
+            merchants_repository::get(pool, household_id, id)
+                .await?
+                .ok_or(sqlx::Error::RowNotFound)?,
+        ),
+        None => None,
+    };
+
     let mut tx = pool.begin().await?;
+
+    let merchant_id = match &explicit_merchant {
+        Some(merchant) => merchant.id,
+        None => {
+            let statement = new_transaction.original_statement.as_deref().unwrap_or("");
+            merchants_repository::resolve_or_create(&mut tx, household_id, statement).await?
+        }
+    };
+
+    // Only reached when original_statement was omitted, which only happens when merchant_id was
+    // given explicitly (the handler requires at least one) — so explicit_merchant is already Some.
+    let original_statement = match &new_transaction.original_statement {
+        Some(statement) => statement.clone(),
+        None => explicit_merchant.map(|m| m.name).unwrap_or_default(),
+    };
 
     let mut transaction = sqlx::query_as::<_, Transaction>(&format!(
         "WITH inserted AS (
             INSERT INTO transactions
-                (household_id, household_member_id, date, merchant, amount, category_id, account, reviewed)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                (household_id, household_member_id, date, original_statement, merchant_id, amount,
+                 category_id, account, reviewed)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             RETURNING *
          )
          SELECT {SELECT_COLUMNS}
          FROM inserted t
+         JOIN merchants mch ON mch.id = t.merchant_id
          JOIN categories c ON c.id = t.category_id
          JOIN category_groups g ON g.id = c.group_id"
     ))
     .bind(household_id)
     .bind(household_member_id)
     .bind(new_transaction.date)
-    .bind(&new_transaction.merchant)
+    .bind(&original_statement)
+    .bind(merchant_id)
     .bind(new_transaction.amount)
     .bind(new_transaction.category_id)
     .bind(&new_transaction.account)
@@ -168,8 +206,8 @@ pub async fn create(
 }
 
 /// Lists a household's transactions, optionally narrowed by an exact date match, a
-/// `start_date`/`end_date` range, a case-insensitive merchant substring match, and/or a free-text
-/// search across merchant, category name, tag name, and amount. Sorted per `filter.order` (most
+/// `start_date`/`end_date` range, an exact `merchant_id`, and/or a free-text search across merchant
+/// name, original statement, category name, tag name, and amount. Sorted per `filter.order` (most
 /// recent first by default).
 pub async fn list(
     pool: &PgPool,
@@ -190,9 +228,10 @@ pub async fn list(
         "SELECT {SELECT_COLUMNS} {FROM_JOIN}
          WHERE t.household_id = $1
            AND ($2::date IS NULL OR t.date = $2)
-           AND ($3::text IS NULL OR t.merchant ILIKE '%' || $3 || '%')
+           AND ($3::integer IS NULL OR t.merchant_id = $3)
            AND ($4::text IS NULL OR (
-                 t.merchant ILIKE '%' || $4 || '%' ESCAPE E'\\\\'
+                 mch.name ILIKE '%' || $4 || '%' ESCAPE E'\\\\'
+              OR t.original_statement ILIKE '%' || $4 || '%' ESCAPE E'\\\\'
               OR c.name_en ILIKE '%' || $4 || '%' ESCAPE E'\\\\'
               OR c.name_fr ILIKE '%' || $4 || '%' ESCAPE E'\\\\'
               OR t.amount::text ILIKE '%' || $4 || '%' ESCAPE E'\\\\'
@@ -209,7 +248,7 @@ pub async fn list(
     ))
     .bind(household_id)
     .bind(filter.date)
-    .bind(&filter.merchant)
+    .bind(filter.merchant_id)
     .bind(&escaped_search)
     .bind(filter.start_date)
     .bind(filter.end_date)
@@ -242,22 +281,30 @@ pub async fn get(
 }
 
 /// Applies a partial update (only `Some` fields change), scoped to `household_id`, and returns the
-/// updated row (joined with its category and tags), or `None` if the id doesn't exist (including
-/// when it belongs to a different household). `patch.tag_ids`, if given, *replaces* the full tag
-/// set.
+/// updated row (joined with its merchant, category, and tags), or `None` if the id doesn't exist
+/// (including when it belongs to a different household). `patch.tag_ids`, if given, *replaces* the
+/// full tag set. `patch.merchant_id`, if given, is validated against the caller's household first —
+/// `Err(sqlx::Error::RowNotFound)` if it isn't visible, distinct from `Ok(None)` (unknown
+/// transaction id), same convention `create` uses.
 pub async fn update(
     pool: &PgPool,
     household_id: i32,
     id: i64,
     patch: &TransactionPatch,
 ) -> Result<Option<Transaction>, sqlx::Error> {
+    if let Some(merchant_id) = patch.merchant_id {
+        if !merchants_repository::is_visible_to_household(pool, household_id, merchant_id).await? {
+            return Err(sqlx::Error::RowNotFound);
+        }
+    }
+
     let mut tx = pool.begin().await?;
 
     let updated = sqlx::query_as::<_, Transaction>(&format!(
         "WITH updated AS (
             UPDATE transactions
             SET date = COALESCE($3, date),
-                merchant = COALESCE($4, merchant),
+                merchant_id = COALESCE($4, merchant_id),
                 amount = COALESCE($5, amount),
                 category_id = COALESCE($6, category_id),
                 account = COALESCE($7, account)
@@ -266,13 +313,14 @@ pub async fn update(
          )
          SELECT {SELECT_COLUMNS}
          FROM updated t
+         JOIN merchants mch ON mch.id = t.merchant_id
          JOIN categories c ON c.id = t.category_id
          JOIN category_groups g ON g.id = c.group_id"
     ))
     .bind(id)
     .bind(household_id)
     .bind(patch.date)
-    .bind(&patch.merchant)
+    .bind(patch.merchant_id)
     .bind(patch.amount)
     .bind(patch.category_id)
     .bind(&patch.account)
@@ -306,34 +354,43 @@ pub async fn delete(pool: &PgPool, household_id: i32, id: i64) -> Result<bool, s
 
 /// Applies a partial update (only `Some` fields change) to every id in `ids`, scoped to
 /// `household_id` — ids that don't exist or belong to a different household are silently skipped.
-/// Returns the updated rows (joined with their category and tags). `patch.tag_ids`, if given, is
-/// *added* to each updated transaction's existing tags (see `BulkTransactionPatch::tag_ids`).
+/// Returns the updated rows (joined with their merchant, category, and tags). `patch.tag_ids`, if
+/// given, is *added* to each updated transaction's existing tags (see
+/// `BulkTransactionPatch::tag_ids`). `patch.merchant_id`, if given, is validated the same way as
+/// `update` before touching any row.
 pub async fn bulk_update(
     pool: &PgPool,
     household_id: i32,
     ids: &[i64],
     patch: &BulkTransactionPatch,
 ) -> Result<Vec<Transaction>, sqlx::Error> {
+    if let Some(merchant_id) = patch.merchant_id {
+        if !merchants_repository::is_visible_to_household(pool, household_id, merchant_id).await? {
+            return Err(sqlx::Error::RowNotFound);
+        }
+    }
+
     let mut tx = pool.begin().await?;
 
     let mut transactions = sqlx::query_as::<_, Transaction>(&format!(
         "WITH updated AS (
             UPDATE transactions
             SET date = COALESCE($3, date),
-                merchant = COALESCE($4, merchant),
+                merchant_id = COALESCE($4, merchant_id),
                 category_id = COALESCE($5, category_id)
             WHERE id = ANY($1) AND household_id = $2
             RETURNING *
          )
          SELECT {SELECT_COLUMNS}
          FROM updated t
+         JOIN merchants mch ON mch.id = t.merchant_id
          JOIN categories c ON c.id = t.category_id
          JOIN category_groups g ON g.id = c.group_id"
     ))
     .bind(ids)
     .bind(household_id)
     .bind(patch.date)
-    .bind(&patch.merchant)
+    .bind(patch.merchant_id)
     .bind(patch.category_id)
     .fetch_all(&mut *tx)
     .await?;

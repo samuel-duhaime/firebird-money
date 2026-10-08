@@ -4,7 +4,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test, expect } from '../fixtures';
-import { getCategoryId, seedTransaction } from '../lib/seed';
+import { getCategoryId, getTagId, seedTransaction } from '../lib/seed';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const screenshotPath = path.resolve(
@@ -20,13 +20,18 @@ const DEMO_TRANSACTIONS: {
   amount: string;
   category: string;
   account: string;
+  tags?: string[];
 }[] = [
   {
+    // Not "Whole Foods Market" — common merchants (seeded for every household, including this
+    // worker's) now match substrings of raw statement text, and "Whole Foods" is one of them, so
+    // that text would resolve to the common merchant and display as "Whole Foods" instead.
     date: '2026-06-14',
-    merchant: 'Whole Foods Market',
+    merchant: 'Riverside Market',
     amount: '86.42',
     category: 'Groceries',
     account: 'Chequing',
+    tags: ['Split'],
   },
   {
     date: '2026-06-14',
@@ -48,6 +53,7 @@ const DEMO_TRANSACTIONS: {
     amount: '16.99',
     category: 'Entertainment & Recreation',
     account: 'Credit Card',
+    tags: ['Subscription'],
   },
   {
     date: '2026-06-13',
@@ -62,6 +68,7 @@ const DEMO_TRANSACTIONS: {
     amount: '62.15',
     category: 'Restaurants & Bars',
     account: 'Credit Card',
+    tags: ['Business'],
   },
   {
     date: '2026-06-10',
@@ -83,25 +90,34 @@ test('transactions page, for the README', { tag: '@screenshot' }, async ({
     amount,
     category,
     account,
+    tags,
   } of DEMO_TRANSACTIONS) {
     const categoryId = await getCategoryId(
       context.request,
       workerInfra.apiOrigin,
       category,
     );
+    const tagIds = tags
+      ? await Promise.all(
+          tags.map((tag) =>
+            getTagId(context.request, workerInfra.apiOrigin, tag),
+          ),
+        )
+      : undefined;
     await seedTransaction(context.request, workerInfra.apiOrigin, {
       date,
       merchant,
       amount,
       categoryId,
       account,
+      tagIds,
     });
   }
 
   await authedPage.goto('/transactions');
   await expect(
     authedPage.locator('li.transactions-row', {
-      hasText: 'Whole Foods Market',
+      hasText: 'Riverside Market',
     }),
   ).toBeVisible();
 

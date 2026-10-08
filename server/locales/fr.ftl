@@ -1,6 +1,7 @@
 # Chaînes visibles de l’API
 
 transaction-not-found = Aucune transaction avec l’id { $n }
+transaction-merchant-required = merchant_id ou original_statement est requis
 category-not-found = Aucune catégorie avec l’id { $n }
 category-duplicate-name = Une catégorie avec ce nom existe déjà
 category-in-use = La catégorie { $n } est toujours utilisée par des transactions existantes
@@ -9,7 +10,7 @@ category-group-duplicate-name = Un groupe de catégories avec ce nom existe déj
 category-group-invalid-type = type doit être income, expense ou transfer
 category-group-in-use = Le groupe de catégories { $n } est toujours utilisé par des catégories existantes
 household-not-found = Aucun ménage avec l’id { $n }
-household-in-use = Le ménage { $n } a encore des données qui y sont connectées (membres, groupes de catégories, catégories, étiquettes ou transactions)
+household-in-use = Le ménage { $n } a encore des données qui y sont connectées (membres, groupes de catégories, catégories, étiquettes, marchands ou transactions)
 user-not-found = Aucun utilisateur avec l’id { $n }
 user-duplicate-email = Un utilisateur avec ce courriel existe déjà
 user-invalid-status = status doit être verified, pending ou suspended
@@ -21,6 +22,10 @@ household-member-requires-manager = Seul un gestionnaire familial peut ajouter d
 tag-not-found = Aucune étiquette avec l’id { $n }
 tag-duplicate-name = Une étiquette avec ce nom existe déjà
 tag-in-use = L’étiquette { $n } est toujours utilisée par des transactions existantes
+merchant-not-found = Aucun marchand avec l’id { $n }
+merchant-duplicate-name = Un marchand avec ce nom existe déjà
+merchant-in-use = Le marchand { $n } est toujours utilisé par des transactions existantes
+merchant-name-required = Un nom est requis
 # Courriel de connexion. Le lien est inséré entre les instructions et la signature.
 auth-email-subject = Ton lien de connexion FireBird Money
 auth-email-greeting = Bonjour,

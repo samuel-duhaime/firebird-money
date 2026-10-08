@@ -1,0 +1,12 @@
+.merchant-modal {
+  width: 420px;
+  max-width: 90vw;
+  max-height: calc(100dvh - 2rem);
+  display: flex;
+  flex-direction: column;
+  background: var(--color-dark);
+  color: var(--color-white);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+}

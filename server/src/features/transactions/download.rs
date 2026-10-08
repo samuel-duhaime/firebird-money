@@ -16,8 +16,8 @@ fn tags_cell(transaction: &Transaction) -> String {
         .join(", ")
 }
 
-/// Builds a filename like `transactions_starbucks_highest-amount.csv` from the filters that were
-/// actually applied, so the downloaded file's name reflects what's inside it.
+/// Builds a filename like `transactions_highest-amount.csv` from the filters that were actually
+/// applied, so the downloaded file's name reflects what's inside it.
 pub fn filename(filter: &TransactionFilter, extension: &str) -> String {
     let mut parts = vec!["transactions".to_string()];
 
@@ -29,9 +29,6 @@ pub fn filename(filter: &TransactionFilter, extension: &str) -> String {
         (Some(start), None) => parts.push(format!("from_{start}")),
         (None, Some(end)) => parts.push(format!("until_{end}")),
         (None, None) => {}
-    }
-    if let Some(merchant) = &filter.merchant {
-        parts.push(slugify(merchant));
     }
     if let Some(search) = &filter.search {
         parts.push(slugify(search));
@@ -85,7 +82,7 @@ pub fn to_csv(transactions: &[Transaction]) -> Result<Vec<u8>, csv::Error> {
     for transaction in transactions {
         writer.write_record([
             transaction.date.to_string(),
-            escape_formula(&transaction.merchant),
+            escape_formula(&transaction.merchant_name),
             escape_formula(&transaction.category_name_en),
             escape_formula(&tags_cell(transaction)),
             transaction.amount.to_string(),
@@ -106,7 +103,7 @@ pub fn to_xlsx(transactions: &[Transaction]) -> Result<Vec<u8>, XlsxError> {
     for (index, transaction) in transactions.iter().enumerate() {
         let row = index as u32 + 1;
         worksheet.write(row, 0, transaction.date.to_string())?;
-        worksheet.write(row, 1, &transaction.merchant)?;
+        worksheet.write(row, 1, &transaction.merchant_name)?;
         worksheet.write(row, 2, &transaction.category_name_en)?;
         worksheet.write(row, 3, tags_cell(transaction))?;
         worksheet.write(row, 4, transaction.amount)?;

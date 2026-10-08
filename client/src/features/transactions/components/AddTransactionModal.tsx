@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCategories } from '../../categories/hooks/use-categories';
+import { useMerchants } from '../../merchants/hooks/use-merchants';
 import { TagPicker } from '../../tags/components/TagPicker';
 import { useCreateTransaction } from '../hooks/use-create-transaction';
 import { normalizeAmount, sanitizeAmountInput } from '../utils/amount';
 import { CategoryPicker } from './CategoryPicker';
+import { MerchantPicker } from './MerchantPicker';
 import './AddTransactionModal.css';
 
 /**
@@ -24,8 +26,9 @@ const FOCUSABLE_SELECTOR =
 export const AddTransactionModal = ({ onClose }: AddTransactionModalProps) => {
   const { t, i18n } = useTranslation();
   const { data: categories } = useCategories();
+  const { data: merchants } = useMerchants();
   const [amount, setAmount] = useState('');
-  const [merchant, setMerchant] = useState('');
+  const [merchantId, setMerchantId] = useState<number | null>(null);
   const [date, setDate] = useState('');
   const [categoryId, setCategoryId] = useState<number | null>(null);
   const [tagIds, setTagIds] = useState<number[]>([]);
@@ -49,7 +52,7 @@ export const AddTransactionModal = ({ onClose }: AddTransactionModalProps) => {
         [],
     );
     const popovers = document.querySelectorAll(
-      '.category-picker-popover, .tag-picker-popover',
+      '.category-picker-popover, .merchant-picker-popover, .tag-picker-popover',
     );
     const popoverFocusable = Array.from(popovers).flatMap((popover) =>
       Array.from(popover.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)),
@@ -85,11 +88,6 @@ export const AddTransactionModal = ({ onClose }: AddTransactionModalProps) => {
     setAmount(sanitizeAmountInput(e.target.value));
   };
 
-  const handleMerchantChange = (e: ChangeEvent<HTMLInputElement>) => {
-    setError('');
-    setMerchant(e.target.value);
-  };
-
   const handleDateChange = (e: ChangeEvent<HTMLInputElement>) => {
     setError('');
     setDate(e.target.value);
@@ -98,6 +96,21 @@ export const AddTransactionModal = ({ onClose }: AddTransactionModalProps) => {
   const handleCategorySelect = (id: number) => {
     setError('');
     setCategoryId(id);
+  };
+
+  const handleMerchantSelect = (id: number) => {
+    setError('');
+    setMerchantId(id);
+    // A nice shortcut, not a requirement: if the picked merchant has a recommended category (the
+    // most-used one for it in this household's own history — see merchants::repository) and the
+    // user hasn't picked a category themselves yet, use it as a starting point. Never overrides a
+    // category the user already chose.
+    if (categoryId === null) {
+      const merchant = merchants?.find((m) => m.id === id);
+      if (merchant?.recommended_category_id != null) {
+        setCategoryId(merchant.recommended_category_id);
+      }
+    }
   };
 
   const handleTagToggle = (tagId: number) => {
@@ -111,7 +124,7 @@ export const AddTransactionModal = ({ onClose }: AddTransactionModalProps) => {
   const handleSubmit = () => {
     if (
       !amount.trim() ||
-      !merchant.trim() ||
+      merchantId === null ||
       !date.trim() ||
       categoryId === null
     ) {
@@ -139,7 +152,7 @@ export const AddTransactionModal = ({ onClose }: AddTransactionModalProps) => {
     createTransactionMutation.mutate(
       {
         date,
-        merchant: merchant.trim(),
+        merchant_id: merchantId,
         amount: amountResult.value,
         category_id: categoryId,
         account: MANUAL_ACCOUNT,
@@ -148,7 +161,7 @@ export const AddTransactionModal = ({ onClose }: AddTransactionModalProps) => {
       {
         onSuccess: () => {
           setAmount('');
-          setMerchant('');
+          setMerchantId(null);
           setDate('');
           setCategoryId(null);
           setTagIds([]);
@@ -172,6 +185,11 @@ export const AddTransactionModal = ({ onClose }: AddTransactionModalProps) => {
       ? selectedCategory.name_fr
       : selectedCategory.name_en
     : t('transactions.add.selectCategory', 'Select category');
+
+  const selectedMerchant = merchants?.find((m) => m.id === merchantId);
+  const merchantLabel =
+    selectedMerchant?.name ??
+    t('transactions.add.selectMerchant', 'Select merchant');
 
   return (
     <div
@@ -222,24 +240,24 @@ export const AddTransactionModal = ({ onClose }: AddTransactionModalProps) => {
             />
           </div>
 
-          <label htmlFor="merchant">
-            {t('transactions.add.merchant', 'Merchant')}
-          </label>
-          <input
-            id="merchant"
-            type="text"
-            placeholder={t(
-              'transactions.add.merchantPlaceholder',
-              'Merchant Name',
-            )}
-            value={merchant}
-            onChange={handleMerchantChange}
+          <label>{t('transactions.add.merchant', 'Merchant')}</label>
+          <MerchantPicker
+            merchantId={merchantId}
+            label={merchantLabel}
+            className={
+              selectedMerchant
+                ? 'modal-category-trigger'
+                : 'modal-category-trigger modal-category-trigger--placeholder'
+            }
+            onSelect={handleMerchantSelect}
+            ariaLabel={t('transactions.add.merchant', 'Merchant')}
           />
 
           <label htmlFor="date">{t('transactions.add.date', 'Date')}</label>
           <input
             id="date"
             type="date"
+            className={date ? undefined : 'date-input--empty'}
             value={date}
             onChange={handleDateChange}
           />

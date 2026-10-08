@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCategories } from '../../categories/hooks/use-categories';
+import { useMerchants } from '../../merchants/hooks/use-merchants';
 import { TagPicker } from '../../tags/components/TagPicker';
 import { useBulkUpdateTransactions } from '../hooks/use-bulk-update-transactions';
 import { useBulkDeleteTransactions } from '../hooks/use-bulk-delete-transactions';
@@ -12,6 +13,7 @@ import {
   noBulkChangesToast,
 } from '../../../lib/toast';
 import { CategoryPicker } from './CategoryPicker';
+import { MerchantPicker } from './MerchantPicker';
 import type { BulkTransactionPatch } from '../utils/api';
 import './AddTransactionModal.css';
 import './EditTransactionModal.css';
@@ -34,13 +36,15 @@ export const EditMultipleTransactionsModal = ({
 }: EditMultipleTransactionsModalProps) => {
   const { t, i18n } = useTranslation();
   const { data: categories } = useCategories();
+  const { data: merchants } = useMerchants();
   const count = transactionIds.length;
 
   // Each field is `undefined` ("no change") until the user activates it. Activating commits to
   // sending a value on Save — there's no separate per-field auto-save like the single-transaction
-  // panel, everything here is buffered until Save is clicked.
-  const [merchantActive, setMerchantActive] = useState(false);
-  const [merchant, setMerchant] = useState('');
+  // panel, everything here is buffered until Save is clicked. merchant is a pick-from-a-list field
+  // (like category), so its "no change" sentinel is `undefined` directly rather than an
+  // active/text pair the way the old free-text merchant field needed.
+  const [merchantId, setMerchantId] = useState<number | undefined>(undefined);
   const [dateActive, setDateActive] = useState(false);
   const [date, setDate] = useState('');
   const [categoryId, setCategoryId] = useState<number | undefined>(undefined);
@@ -77,7 +81,7 @@ export const EditMultipleTransactionsModal = ({
         [],
     );
     const popovers = document.querySelectorAll(
-      '.category-picker-popover, .tag-picker-popover',
+      '.category-picker-popover, .merchant-picker-popover, .tag-picker-popover',
     );
     const popoverFocusable = Array.from(popovers).flatMap((popover) =>
       Array.from(popover.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)),
@@ -108,17 +112,8 @@ export const EditMultipleTransactionsModal = ({
     }
   };
 
-  const handleMerchantChange = (e: ChangeEvent<HTMLInputElement>) => {
-    setMerchant(e.target.value);
-  };
-
   const handleDateChange = (e: ChangeEvent<HTMLInputElement>) => {
     setDate(e.target.value);
-  };
-
-  const clearMerchant = () => {
-    setMerchantActive(false);
-    setMerchant('');
   };
 
   const clearDate = () => {
@@ -136,14 +131,19 @@ export const EditMultipleTransactionsModal = ({
           : selectedCategory.name_en
         : t('transactions.add.selectCategory');
 
+  const selectedMerchant = merchants?.find((m) => m.id === merchantId);
+  const merchantLabel =
+    merchantId === undefined
+      ? t('transactions.editMultiple.noChange')
+      : (selectedMerchant?.name ?? t('transactions.add.selectMerchant'));
+
   // A field counts as changed only once it actually holds a value — merely activating it (e.g.
   // clicking the Date trigger without picking a date yet) stays equivalent to "no change".
-  const merchantHasValue = merchantActive && merchant.trim() !== '';
   const dateHasValue = dateActive && date !== '';
 
   const handleSave = () => {
     const patch: BulkTransactionPatch = {};
-    if (merchantHasValue) patch.merchant = merchant.trim();
+    if (merchantId !== undefined) patch.merchant_id = merchantId;
     if (dateHasValue) patch.date = date;
     if (categoryId !== undefined) patch.category_id = categoryId;
     if (tagIds.length > 0) patch.tag_ids = tagIds;
@@ -207,38 +207,30 @@ export const EditMultipleTransactionsModal = ({
           </h2>
 
           <div className="edit-transaction-field">
-            <label htmlFor="bulk-edit-merchant">
-              {t('transactions.add.merchant')}
-            </label>
-            {merchantActive ? (
-              <div className="edit-multiple-field-control">
-                <input
-                  id="bulk-edit-merchant"
-                  type="text"
-                  value={merchant}
-                  onChange={handleMerchantChange}
-                  autoFocus
-                />
+            <label>{t('transactions.add.merchant')}</label>
+            <div className="edit-multiple-field-control">
+              <MerchantPicker
+                merchantId={merchantId ?? null}
+                label={merchantLabel}
+                className={
+                  merchantId !== undefined
+                    ? 'modal-category-trigger'
+                    : 'modal-category-trigger modal-category-trigger--placeholder'
+                }
+                onSelect={(id) => setMerchantId(id)}
+                ariaLabel={t('transactions.add.merchant')}
+              />
+              {merchantId !== undefined && (
                 <button
                   type="button"
                   className="edit-multiple-field-clear"
-                  onClick={clearMerchant}
+                  onClick={() => setMerchantId(undefined)}
                   aria-label={t('transactions.editMultiple.noChange')}
                 >
                   ×
                 </button>
-              </div>
-            ) : (
-              <button
-                ref={firstFieldRef}
-                type="button"
-                className="edit-multiple-field-trigger"
-                onClick={() => setMerchantActive(true)}
-                aria-label={t('transactions.add.merchant')}
-              >
-                {t('transactions.editMultiple.noChange')}
-              </button>
-            )}
+              )}
+            </div>
           </div>
 
           <div className="edit-transaction-field">
@@ -263,6 +255,7 @@ export const EditMultipleTransactionsModal = ({
               </div>
             ) : (
               <button
+                ref={firstFieldRef}
                 type="button"
                 className="edit-multiple-field-trigger"
                 onClick={() => setDateActive(true)}
