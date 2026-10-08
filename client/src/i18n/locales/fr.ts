@@ -68,7 +68,6 @@ export const fr: typeof en = {
     household: {
       members: 'Membres',
       preferences: 'Préférences',
-      institutions: 'Institutions',
       accounts: 'Comptes',
       categories: 'Catégories',
       merchants: 'Marchands',

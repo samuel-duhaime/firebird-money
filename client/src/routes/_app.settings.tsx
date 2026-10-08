@@ -22,7 +22,6 @@ const HOUSEHOLD_NAV_ITEMS: HouseholdNavItem[] = [
     to: '/settings/members',
   },
   { key: 'preferences', labelKey: 'settings.household.preferences' },
-  { key: 'institutions', labelKey: 'settings.household.institutions' },
   { key: 'accounts', labelKey: 'settings.household.accounts' },
   {
     key: 'categories',

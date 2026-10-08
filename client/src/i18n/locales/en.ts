@@ -66,7 +66,6 @@ export const en = {
     household: {
       members: 'Members',
       preferences: 'Preferences',
-      institutions: 'Institutions',
       accounts: 'Accounts',
       categories: 'Categories',
       merchants: 'Merchants',
