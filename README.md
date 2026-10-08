@@ -9,7 +9,7 @@
 - [Configuration](#configuration)
 - [How to run](#how-to-run)
 - [API](#api)
-- [Data model](#data-model)
+- [Data schema](#data-schema)
 - [Tests](#tests)
 - [Lint & Format](#lint--format)
 - [License](#license)
@@ -130,7 +130,7 @@ Magic links last 15 minutes and work once. The session cookie is httpOnly and Sa
 
 - `GET /transactions` — list the caller's household's transactions, optionally filtered with `?date=YYYY-MM-DD`, `?start_date=`/`?end_date=` (inclusive range), `?merchant_id=`, and/or `?search=` (case-insensitive match against merchant name, original statement, category, tag names, or amount). Accepts `?order=` (`date` [default], `inverse_date`, `amount`, `inverse_amount`).
 - `GET /transactions/{id}` — fetch a single transaction.
-- `POST /transactions` — create a transaction (`date`, `amount`, `category_id`, `account`, optional `tag_ids`, and either `merchant_id` and/or `original_statement`). `household_id` and `household_member_id` are never read from the body — they're always the caller's own household and membership.
+- `POST /transactions` — create a transaction (`date`, `amount`, `category_id`, `account`, optional `tag_ids`, optional `reviewed` [defaults to `true`; the budget importer sets it `false`], and either `merchant_id` and/or `original_statement`). `household_id` and `household_member_id` are never read from the body — they're always the caller's own household and membership.
 - `PATCH /transactions/{id}` — partially update a transaction (only the fields you send change). `tag_ids`, if given, *replaces* the full tag set (`[]` clears it). There's no `original_statement` here — it's immutable after creation; only `merchant_id` is editable.
 - `DELETE /transactions/{id}` — delete a transaction.
 - `PATCH /transactions/bulk` — partially update several transactions at once (`ids`, `patch` — `patch` supports `date`, `merchant_id`, `category_id`, and `tag_ids`). Unlike the single-transaction `PATCH`, `tag_ids` here *adds* to each transaction's existing tags rather than replacing them. Ids the household doesn't own are silently skipped.
@@ -138,6 +138,7 @@ Magic links last 15 minutes and work once. The session cookie is httpOnly and Sa
 - `GET /transactions/download` — download the same filtered/sorted transactions as `GET /transactions`, rendered as a file (including a Tags column). Accepts the same query params plus `?format=` (`csv` or `xlsx`, required).
 - `POST /transactions/import` — upload a budget file (multipart, field `file`, 10 MB max) to import as transactions. Kicks off an async job and returns `202 Accepted` with a `Location` header pointing at the job. Requires the `claude` CLI (see [Install](#install)); the unattended subprocess it spawns authenticates as the caller via a forwarded session cookie.
 - `GET /transactions/import/jobs/{id}` — poll an import job's status (`pending`, `running`, `succeeded`, `failed`) and, once terminal, its `created_count`/`failed_count`/`skipped_count`/`error_message`.
+- `PATCH /transactions/import/jobs/{id}` — internal only: how the unattended import subprocess reports its own final result back to the server. Not intended to be called from the client.
 
 Every transaction response includes its joined category (`category_name_en`, `category_name_fr`, `category_type`), its joined merchant (`merchant_name`, `merchant_logo_url`), the immutable `original_statement` it was created from, and its attached tags (`tags`, each `{id, name, color}`). `category_id` must belong to the caller's own household; any `tag_ids` outside it are silently dropped rather than rejected.
 
@@ -177,7 +178,7 @@ New households are seeded with starter groups and categories automatically.
 
 `/tags`:
 
-- `GET /tags` — list the caller's household's tags, in their display order.
+- `GET /tags` — list the caller's household's tags, in their display order, with each tag's `transaction_count`.
 - `GET /tags/{id}` — fetch a single tag.
 - `POST /tags` — create a tag (`name`, `color`). Unlike categories, a tag has a single free-form `name` — no `name_en`/`name_fr` pair. Appended at the end of the household's order.
 - `PATCH /tags/{id}` — partially update a tag (only the fields you send change).
@@ -205,16 +206,50 @@ A user is a standalone login identity — how they relate to their (at most one)
 
 `/household-members`:
 
-- `GET /household-members` — list memberships, optionally filtered by `?household_id=` and/or `?user_id=`.
+- `GET /household-members` — list the caller's household's memberships, optionally filtered by `?user_id=`.
 - `GET /household-members/{id}` — fetch a single membership.
-- `POST /household-members` — connect a user to a household with a role (`household_id`, `user_id`, `type`, where `type` is `family_manager` or `family_member`). A user belongs to at most one household, ever — not just one per `household_id`.
+- `POST /household-members` — connect a user to the caller's own household with a role (`user_id`, `type`, where `type` is `family_manager` or `family_member`). Only an existing `family_manager` of that household may do this; `household_id` is never read from the body — it's always the caller's own. A user belongs to at most one household, ever — not just one per `household_id`.
 - `PATCH /household-members/{id}` — change a membership's role (`type`).
 - `DELETE /household-members/{id}` — remove a membership.
 
-## Data model
+`/settings`:
 
-The currently implemented API exposes `Category`, `CategoryGroup`, `Transaction`, `Household`, `User`, `HouseholdMember`, `Tag`, and `Merchant` (see [API](#api) above). The diagram below predates `CategoryGroup`, household scoping, `Tag`, and `Merchant` — Account, Institution, and Rule are still design-stage, and `HouseholdMember`/`Tag`/`Merchant` aren't pictured either:
-![API class diagram](docs/images/api-diagram.png)
+- `GET /settings` — the signed-in user's display preferences (`show_category_column`, `show_tags_column`, `show_account_column`), defaulted to every column visible if they've never saved any.
+- `PATCH /settings` — partially update the signed-in user's display preferences (only the fields you send change). Creates the row on the user's first write.
+
+Settings are per-user, not per-household: which optional columns show on the transactions list.
+
+## Data schema
+
+Every table in the Postgres schema (see `server/migrations/`) and how they relate. `Account`, `Institution`, and `Rule` are still design-stage — not real tables yet — so they aren't pictured; `transactions.account` is plain text until it lands.
+
+**People & access:**
+
+```mermaid
+erDiagram
+    HOUSEHOLDS ||--o{ HOUSEHOLD_MEMBERS : has
+    USERS ||--o| HOUSEHOLD_MEMBERS : has
+    USERS ||--o{ LOGIN_TOKENS : has
+    USERS ||--o{ SESSIONS : has
+    USERS ||--o| SETTINGS : has
+```
+
+**Household finances:**
+
+```mermaid
+erDiagram
+    HOUSEHOLDS ||--o{ CATEGORY_GROUPS : has
+    HOUSEHOLDS ||--o{ CATEGORIES : has
+    CATEGORY_GROUPS ||--o{ CATEGORIES : has
+    HOUSEHOLDS ||--o{ TRANSACTIONS : has
+    CATEGORIES ||--o{ TRANSACTIONS : categorizes
+    HOUSEHOLD_MEMBERS ||--o{ TRANSACTIONS : creates
+    MERCHANTS ||--o{ TRANSACTIONS : identifies
+    HOUSEHOLDS ||--o{ MERCHANTS : "owns custom"
+    HOUSEHOLDS ||--o{ TAGS : has
+    TRANSACTIONS ||--o{ TRANSACTION_TAGS : has
+    TAGS ||--o{ TRANSACTION_TAGS : has
+```
 
 ## Tests
 
