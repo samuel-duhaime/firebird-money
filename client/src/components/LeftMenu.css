@@ -67,6 +67,8 @@
   align-items: center;
   gap: var(--spacing-s);
   width: 100%;
+  /* Breathing room from the language switcher just above. */
+  margin-top: var(--spacing-xs);
   padding: var(--spacing-xs);
   border: none;
   border-radius: 8px;

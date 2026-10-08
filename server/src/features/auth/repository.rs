@@ -5,7 +5,7 @@ use super::model::Membership;
 use crate::features::users::model::User;
 
 const USER_COLUMNS: &str = "users.id, users.email, users.google_id, users.status, \
-     users.first_name, users.last_name, users.avatar_url, users.created_at";
+     users.first_name, users.last_name, users.avatar_url, users.onboarding_steps, users.created_at";
 
 /// Stores a freshly issued magic-link token (by hash) for this user.
 pub async fn create_login_token(
@@ -115,5 +115,34 @@ pub async fn get_membership(
     )
     .bind(user_id)
     .fetch_optional(pool)
+    .await
+}
+
+/// Saves the name a user gave during onboarding and records `steps` as finished (on top of any
+/// already recorded), returning the updated user. The last step of `POST /auth/onboarding`, run
+/// once their household is settled.
+pub async fn complete_onboarding(
+    pool: &PgPool,
+    user_id: i32,
+    first_name: &str,
+    last_name: Option<&str>,
+    steps: &[&str],
+) -> Result<User, sqlx::Error> {
+    sqlx::query_as::<_, User>(&format!(
+        "UPDATE users
+         SET first_name = $2,
+             last_name = $3,
+             onboarding_steps = ARRAY(
+                 SELECT DISTINCT step FROM unnest(onboarding_steps || $4::text[]) AS step
+                 ORDER BY step
+             )
+         WHERE id = $1
+         RETURNING {USER_COLUMNS}"
+    ))
+    .bind(user_id)
+    .bind(first_name)
+    .bind(last_name)
+    .bind(steps)
+    .fetch_one(pool)
     .await
 }

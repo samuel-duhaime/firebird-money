@@ -14,21 +14,21 @@ import {
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { useAnchoredPopover } from '../lib/use-anchored-popover';
 import { useSignOut } from '../features/auth/hooks/use-sign-out';
+import { useCurrentUser } from '../features/auth/hooks/use-current-user';
 import './Popover.css';
 import './LeftMenu.css';
 
 const navItems = [
   { to: '/dashboard', labelKey: 'nav.dashboard', icon: faHouse },
   { to: '/transactions', labelKey: 'nav.transactions', icon: faReceipt },
-  // TODO: point this at '/settings/members' instead once the Household > Members settings page
-  // exists — Tags is just the first Household settings page that's actually built.
-  { to: '/settings/tags', labelKey: 'nav.household', icon: faPeopleRoof },
+  { to: '/settings/members', labelKey: 'nav.household', icon: faPeopleRoof },
 ] as const;
 
 export const LeftMenu = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const signOut = useSignOut();
+  const { data: session } = useCurrentUser();
   const { isOpen, setIsOpen, position, triggerRef, popoverRef } =
     useAnchoredPopover<HTMLButtonElement>();
 
@@ -64,7 +64,9 @@ export const LeftMenu = () => {
           icon={faCircleUser}
           className="left-menu-profile-icon"
         />
-        <span className="left-menu-profile-name">{t('leftMenu.username')}</span>
+        <span className="left-menu-profile-name">
+          {session?.user.first_name ?? session?.user.email}
+        </span>
         <FontAwesomeIcon
           icon={faChevronUp}
           className="left-menu-profile-chevron"
@@ -85,10 +87,7 @@ export const LeftMenu = () => {
               className="left-menu-profile-popover-option"
               onClick={() => {
                 setIsOpen(false);
-                // TODO: point this at '/settings/members' instead once the Household > Members
-                // settings page exists — Tags is just the first Household settings page that's
-                // actually built.
-                navigate({ to: '/settings/tags' });
+                navigate({ to: '/settings/members' });
               }}
             >
               <FontAwesomeIcon icon={faGear} />

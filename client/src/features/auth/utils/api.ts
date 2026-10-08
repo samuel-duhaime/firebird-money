@@ -26,9 +26,25 @@ export const fetchCurrentUser = (): Promise<CurrentUser> =>
 export const logout = (): Promise<void> =>
   apiFetch<void>('/auth/logout', { method: 'POST' });
 
-/** Creates a household (no code) or joins an existing one (with a code). */
-export const submitOnboarding = (joinCode?: string): Promise<CurrentUser> =>
+export interface OnboardingRequest {
+  firstName: string;
+  lastName: string;
+  /** Joins that household; without one, a new household is created (or, if the user already
+   * belongs to one, only the name is saved). */
+  joinCode?: string;
+}
+
+/** Saves the user's name, settles their household, and marks onboarding as finished. */
+export const submitOnboarding = ({
+  firstName,
+  lastName,
+  joinCode,
+}: OnboardingRequest): Promise<CurrentUser> =>
   apiFetch<CurrentUser>('/auth/onboarding', {
     method: 'POST',
-    body: JSON.stringify({ join_code: joinCode ?? null }),
+    body: JSON.stringify({
+      first_name: firstName,
+      last_name: lastName === '' ? null : lastName,
+      join_code: joinCode ?? null,
+    }),
   });

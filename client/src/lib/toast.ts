@@ -14,6 +14,15 @@ export const signOutFailedToast = () =>
 export const onboardingFailedToast = () =>
   toast.error(i18n.t('toast.onboardingFailed'));
 
+export const firstNameRequiredToast = () =>
+  toast.error(i18n.t('toast.firstNameRequired'));
+
+export const copyInviteCodeSucceededToast = () =>
+  toast.success(i18n.t('toast.copyInviteCodeSucceeded'));
+
+export const copyInviteCodeFailedToast = () =>
+  toast.error(i18n.t('toast.copyInviteCodeFailed'));
+
 export const joinCodeNotFoundToast = () =>
   toast.error(i18n.t('toast.joinCodeNotFound'));
 
