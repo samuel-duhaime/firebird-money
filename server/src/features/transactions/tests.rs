@@ -1758,6 +1758,50 @@ async fn create_transaction_reuses_a_merchant_matched_from_a_second_statement(po
 }
 
 #[sqlx::test]
+async fn create_transaction_matching_requires_a_word_boundary(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    let td_id = create_via_api(&app, &cookie, category_id, "2024-01-15", "TD", "12.34").await;
+    let td_merchant_id = transaction_merchant_id(&app, &cookie, td_id).await;
+
+    // "LTD" contains "TD" as a raw substring, but not at a word boundary, so it must not match the
+    // "TD" merchant — it should fall back to creating its own new custom merchant instead.
+    let req = test::TestRequest::post()
+        .uri("/transactions")
+        .insert_header(("Cookie", cookie.clone()))
+        .set_json(serde_json::json!({
+            "date": "2024-01-16",
+            "original_statement": "PAYMENT TO LTD COMPANY",
+            "amount": "5.00",
+            "category_id": category_id,
+            "account": "User 1",
+        }))
+        .to_request();
+    let body: serde_json::Value = test::call_and_read_body_json(&app, req).await;
+
+    assert_ne!(body["merchant_id"].as_i64().unwrap(), td_merchant_id);
+    assert_eq!(body["merchant_name"], "PAYMENT TO LTD COMPANY");
+
+    // "MY TD BANK VISA" does have "TD" at a word boundary, so it should match the existing merchant.
+    let req = test::TestRequest::post()
+        .uri("/transactions")
+        .insert_header(("Cookie", cookie))
+        .set_json(serde_json::json!({
+            "date": "2024-01-17",
+            "original_statement": "MY TD BANK VISA",
+            "amount": "5.00",
+            "category_id": category_id,
+            "account": "User 1",
+        }))
+        .to_request();
+    let body: serde_json::Value = test::call_and_read_body_json(&app, req).await;
+
+    assert_eq!(body["merchant_id"].as_i64().unwrap(), td_merchant_id);
+    assert_eq!(body["merchant_name"], "TD");
+}
+
+#[sqlx::test]
 async fn create_transaction_with_explicit_merchant_id_defaults_original_statement_to_its_name(
     pool: PgPool,
 ) {

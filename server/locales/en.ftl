@@ -25,6 +25,7 @@ tag-in-use = Tag { $n } is still used by existing transactions
 merchant-not-found = No merchant with id { $n }
 merchant-duplicate-name = A merchant with this name already exists
 merchant-in-use = Merchant { $n } is still used by existing transactions
+merchant-name-required = A name is required
 # Magic-link email. The link itself is inserted between the instructions and the sign-off.
 auth-email-subject = Your FireBird Money sign-in link
 auth-email-greeting = Hi,

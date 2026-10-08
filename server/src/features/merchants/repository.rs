@@ -168,15 +168,38 @@ pub async fn is_visible_to_household(
     Ok(exists)
 }
 
+/// Whether `needle` occurs in `haystack` bounded by a non-alphanumeric character (or the start/end
+/// of the string) on both sides — e.g. "td" matches "my td bank" but not "ltd" or "today". Without
+/// this, short merchant names like "TD" or "Bell" would match substrings of unrelated words ("LTD",
+/// "CAMPBELL").
+fn contains_word_boundary(haystack: &str, needle: &str) -> bool {
+    if needle.is_empty() {
+        return false;
+    }
+    haystack.match_indices(needle).any(|(start, matched)| {
+        let before_ok = haystack[..start]
+            .chars()
+            .next_back()
+            .is_none_or(|c| !c.is_alphanumeric());
+        let after_ok = haystack[start + matched.len()..]
+            .chars()
+            .next()
+            .is_none_or(|c| !c.is_alphanumeric());
+        before_ok && after_ok
+    })
+}
+
 /// Pure matching logic, split out from `find_match` so it's unit-testable without a database:
-/// case-insensitive substring containment of a candidate's `name` inside `statement`, longest
-/// candidate name wins on a tie (most specific match, and — since a name can't be longer than the
-/// text it's found inside — an exact match always wins outright).
+/// case-insensitive, word-bounded containment of a candidate's `name` inside `statement` (see
+/// `contains_word_boundary`), longest candidate name wins on a tie (most specific match, and — since
+/// a name can't be longer than the text it's found inside — an exact match always wins outright).
 fn best_match(statement: &str, candidates: &[(i32, String)]) -> Option<i32> {
     let lower_statement = statement.to_lowercase();
     candidates
         .iter()
-        .filter(|(_, name)| !name.is_empty() && lower_statement.contains(&name.to_lowercase()))
+        .filter(|(_, name)| {
+            !name.is_empty() && contains_word_boundary(&lower_statement, &name.to_lowercase())
+        })
         .max_by_key(|(_, name)| name.len())
         .map(|(id, _)| *id)
 }
@@ -261,5 +284,19 @@ mod tests {
     fn best_match_ignores_candidates_with_a_blank_name() {
         let candidates = vec![candidate(1, "")];
         assert_eq!(best_match("anything", &candidates), None);
+    }
+
+    #[test]
+    fn best_match_does_not_match_a_short_name_inside_an_unrelated_word() {
+        let candidates = vec![candidate(1, "TD"), candidate(2, "Bell")];
+        assert_eq!(best_match("PAYMENT TO LTD COMPANY", &candidates), None);
+        assert_eq!(best_match("CAMPBELL SOUP CO", &candidates), None);
+    }
+
+    #[test]
+    fn best_match_still_matches_a_short_name_at_a_word_boundary() {
+        let candidates = vec![candidate(1, "TD")];
+        assert_eq!(best_match("MY TD BANK VISA", &candidates), Some(1));
+        assert_eq!(best_match("TD", &candidates), Some(1));
     }
 }

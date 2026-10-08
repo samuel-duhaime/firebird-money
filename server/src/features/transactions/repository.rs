@@ -130,25 +130,32 @@ async fn add_transaction_tags(
 /// and returns the created row, joined with its merchant, category, and (if
 /// `new_transaction.tag_ids` was given) its tags.
 ///
-/// Resolves the merchant per `NewTransaction`'s doc comment: an explicit `merchant_id` is validated
+/// Resolves the merchant per `NewTransaction`'s doc comment: an explicit `merchant_id` is looked up
 /// against the caller's household (`Err(sqlx::Error::RowNotFound)` if it isn't visible — the
 /// handler maps this to a 400, distinct from a `category_id` foreign-key violation); otherwise
-/// `merchants::repository::resolve_or_create` matches-or-creates one from `original_statement`.
+/// `merchants::repository::resolve_or_create` matches-or-creates one from `original_statement`. The
+/// explicit-id lookup runs on `pool`, before `tx` opens below — same reasoning `update`/`bulk_update`
+/// already follow for their own visibility check — so it never ties up a second pool connection
+/// while the insert transaction is in flight.
 pub async fn create(
     pool: &PgPool,
     household_id: i32,
     household_member_id: i32,
     new_transaction: &NewTransaction,
 ) -> Result<Transaction, sqlx::Error> {
+    let explicit_merchant = match new_transaction.merchant_id {
+        Some(id) => Some(
+            merchants_repository::get(pool, household_id, id)
+                .await?
+                .ok_or(sqlx::Error::RowNotFound)?,
+        ),
+        None => None,
+    };
+
     let mut tx = pool.begin().await?;
 
-    let merchant_id = match new_transaction.merchant_id {
-        Some(id) => {
-            if !merchants_repository::is_visible_to_household(pool, household_id, id).await? {
-                return Err(sqlx::Error::RowNotFound);
-            }
-            id
-        }
+    let merchant_id = match &explicit_merchant {
+        Some(merchant) => merchant.id,
         None => {
             let statement = new_transaction.original_statement.as_deref().unwrap_or("");
             merchants_repository::resolve_or_create(&mut tx, household_id, statement).await?
@@ -156,14 +163,10 @@ pub async fn create(
     };
 
     // Only reached when original_statement was omitted, which only happens when merchant_id was
-    // given explicitly (the handler requires at least one) — so merchant_id above is already a
-    // validated, existing id here.
+    // given explicitly (the handler requires at least one) — so explicit_merchant is already Some.
     let original_statement = match &new_transaction.original_statement {
         Some(statement) => statement.clone(),
-        None => merchants_repository::get(pool, household_id, merchant_id)
-            .await?
-            .map(|m| m.name)
-            .unwrap_or_default(),
+        None => explicit_merchant.map(|m| m.name).unwrap_or_default(),
     };
 
     let mut transaction = sqlx::query_as::<_, Transaction>(&format!(

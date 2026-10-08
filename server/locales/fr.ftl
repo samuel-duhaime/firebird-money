@@ -25,6 +25,7 @@ tag-in-use = L’étiquette { $n } est toujours utilisée par des transactions e
 merchant-not-found = Aucun marchand avec l’id { $n }
 merchant-duplicate-name = Un marchand avec ce nom existe déjà
 merchant-in-use = Le marchand { $n } est toujours utilisé par des transactions existantes
+merchant-name-required = Un nom est requis
 # Courriel de connexion. Le lien est inséré entre les instructions et la signature.
 auth-email-subject = Ton lien de connexion FireBird Money
 auth-email-greeting = Bonjour,

@@ -36,7 +36,25 @@ async fn create_merchant(
         Err(response) => return response,
     };
 
-    match repository::create(&pool, household_id, &new_merchant).await {
+    let name = new_merchant.name.trim();
+    if name.is_empty() {
+        return error_response(
+            &l10n,
+            &locale,
+            StatusCode::BAD_REQUEST,
+            "merchant-name-required",
+        );
+    }
+
+    match repository::create(
+        &pool,
+        household_id,
+        &NewMerchant {
+            name: name.to_string(),
+        },
+    )
+    .await
+    {
         Ok(merchant) => HttpResponse::Created()
             .insert_header(("Location", format!("/merchants/{}", merchant.id)))
             .json(merchant),
@@ -117,7 +135,20 @@ async fn update_merchant(
         Err(response) => return response,
     };
 
-    match repository::update(&pool, household_id, id as i32, &patch).await {
+    let name = match &patch.name {
+        Some(name) if name.trim().is_empty() => {
+            return error_response(
+                &l10n,
+                &locale,
+                StatusCode::BAD_REQUEST,
+                "merchant-name-required",
+            );
+        }
+        Some(name) => Some(name.trim().to_string()),
+        None => None,
+    };
+
+    match repository::update(&pool, household_id, id as i32, &MerchantPatch { name }).await {
         Ok(Some(merchant)) => HttpResponse::Ok().json(merchant),
         Ok(None) => not_found_response(&l10n, &locale, "merchant-not-found", id),
         Err(e) if is_unique_violation(&e) => error_response(

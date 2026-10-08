@@ -230,6 +230,38 @@ async fn create_merchant_returns_created_row(pool: PgPool) {
 }
 
 #[sqlx::test]
+async fn create_merchant_rejects_a_blank_name(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+
+    let req = test::TestRequest::post()
+        .uri("/merchants")
+        .insert_header(("Cookie", cookie))
+        .set_json(serde_json::json!({ "name": "   " }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 400);
+}
+
+#[sqlx::test]
+async fn create_merchant_trims_the_name(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+
+    let req = test::TestRequest::post()
+        .uri("/merchants")
+        .insert_header(("Cookie", cookie))
+        .set_json(serde_json::json!({ "name": "  Corner Store  " }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 201);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["name"], "Corner Store");
+}
+
+#[sqlx::test]
 async fn create_merchant_rejects_a_duplicate_name(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
     let cookie = sign_in_with_household(&app, "sam@example.com").await;
@@ -316,6 +348,22 @@ async fn update_merchant_renames_a_custom_merchant(pool: PgPool) {
     assert_eq!(resp.status(), 200);
     let body: serde_json::Value = test::read_body_json(resp).await;
     assert_eq!(body["name"], "New Name");
+}
+
+#[sqlx::test]
+async fn update_merchant_rejects_a_blank_name(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let id = create_via_api(&app, &cookie, "Old Name").await;
+
+    let req = test::TestRequest::patch()
+        .uri(&format!("/merchants/{id}"))
+        .insert_header(("Cookie", cookie))
+        .set_json(serde_json::json!({ "name": "   " }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 400);
 }
 
 #[sqlx::test]
