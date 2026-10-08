@@ -22,8 +22,11 @@ const DEMO_TRANSACTIONS: {
   account: string;
 }[] = [
   {
+    // Not "Whole Foods Market" — common merchants (seeded for every household, including this
+    // worker's) now match substrings of raw statement text, and "Whole Foods" is one of them, so
+    // that text would resolve to the common merchant and display as "Whole Foods" instead.
     date: '2026-06-14',
-    merchant: 'Whole Foods Market',
+    merchant: 'Riverside Market',
     amount: '86.42',
     category: 'Groceries',
     account: 'Chequing',
@@ -101,7 +104,7 @@ test('transactions page, for the README', { tag: '@screenshot' }, async ({
   await authedPage.goto('/transactions');
   await expect(
     authedPage.locator('li.transactions-row', {
-      hasText: 'Whole Foods Market',
+      hasText: 'Riverside Market',
     }),
   ).toBeVisible();
 

@@ -1,6 +1,30 @@
 import type { APIRequestContext, Page } from '@playwright/test';
 import { test, expect } from '../fixtures';
-import { getCategoryId, getTagId, seedTransaction } from '../lib/seed';
+import {
+  createMerchant,
+  getCategoryId,
+  getTagId,
+  seedTransaction,
+} from '../lib/seed';
+
+/** The add-transaction/edit-panel/row merchant field is the same searchable `MerchantPicker`
+ * popover everywhere, portaled to `document.body`. Unlike `CategoryPicker`'s trigger, its
+ * accessible name is always the fixed "Merchant" (an explicit aria-label), not text that changes
+ * with the current selection, so selecting is always `click trigger, click option` — no need to
+ * know what the trigger currently reads. The option must already exist (see `createMerchant` in
+ * `lib/seed.ts`) — unlike the old free-text field, the picker can't create-and-select a brand-new
+ * name inline. */
+const selectMerchant = async (
+  page: Page,
+  trigger: ReturnType<Page['getByRole']>,
+  optionName: string,
+): Promise<void> => {
+  await trigger.click();
+  await page
+    .locator('.merchant-picker-popover')
+    .getByRole('button', { name: optionName, exact: true })
+    .click();
+};
 
 /** The tags field is the same multi-select `TagPicker` popover everywhere it appears (add form,
  * edit panel, edit-multiple panel, and inline in the transactions-list row) — portaled to
@@ -36,13 +60,20 @@ const hideDevtools = (page: Page) =>
 test.describe('add transaction with tags', () => {
   test('adding a transaction with tags shows them as chips in the row', async ({
     authedPage,
+    context,
+    workerInfra,
   }) => {
+    await createMerchant(context.request, workerInfra.apiOrigin, 'Corner Store');
     await authedPage.goto('/transactions');
     await authedPage.getByRole('button', { name: 'Add', exact: true }).click();
 
     const dialog = authedPage.getByRole('dialog', { name: 'Add transaction' });
     await dialog.getByLabel('Amount').fill('12.50');
-    await dialog.getByLabel('Merchant').fill('Corner Store');
+    await selectMerchant(
+      authedPage,
+      dialog.getByRole('button', { name: 'Merchant', exact: true }),
+      'Corner Store',
+    );
     await dialog.getByLabel('Date').fill('2023-03-01');
     await dialog
       .getByRole('button', { name: 'Select category', exact: true })
@@ -73,13 +104,20 @@ test.describe('add transaction with tags', () => {
 
   test('tags are optional — a transaction can be added with none', async ({
     authedPage,
+    context,
+    workerInfra,
   }) => {
+    await createMerchant(context.request, workerInfra.apiOrigin, 'No Tags Store');
     await authedPage.goto('/transactions');
     await authedPage.getByRole('button', { name: 'Add', exact: true }).click();
 
     const dialog = authedPage.getByRole('dialog', { name: 'Add transaction' });
     await dialog.getByLabel('Amount').fill('12.50');
-    await dialog.getByLabel('Merchant').fill('No Tags Store');
+    await selectMerchant(
+      authedPage,
+      dialog.getByRole('button', { name: 'Merchant', exact: true }),
+      'No Tags Store',
+    );
     await dialog.getByLabel('Date').fill('2023-03-01');
     await dialog
       .getByRole('button', { name: 'Select category', exact: true })
@@ -330,16 +368,19 @@ test.describe('search matches tag names', () => {
       'Groceries',
     );
     const taxId = await getTagId(context.request, workerInfra.apiOrigin, 'Tax');
+    // Not "Whole Foods Market"/"Netflix Subscription" — common merchants (seeded for every
+    // household) now match substrings of raw statement text, which would resolve these to the
+    // common "Whole Foods"/"Netflix" merchants and display as those instead.
     await seedTransaction(context.request, workerInfra.apiOrigin, {
       date: '2023-04-01',
-      merchant: 'Whole Foods Market',
+      merchant: 'Riverside Market',
       amount: '30.00',
       categoryId: groceries,
       tagIds: [taxId],
     });
     await seedTransaction(context.request, workerInfra.apiOrigin, {
       date: '2023-04-01',
-      merchant: 'Netflix Subscription',
+      merchant: 'Streamflix Monthly',
       amount: '15.00',
       categoryId: groceries,
     });
@@ -353,12 +394,12 @@ test.describe('search matches tag names', () => {
 
     await expect(
       authedPage.locator('li.transactions-row', {
-        hasText: 'Whole Foods Market',
+        hasText: 'Riverside Market',
       }),
     ).toBeVisible();
     await expect(
       authedPage.locator('li.transactions-row', {
-        hasText: 'Netflix Subscription',
+        hasText: 'Streamflix Monthly',
       }),
     ).not.toBeVisible();
   });

@@ -1,6 +1,6 @@
-import type { APIRequestContext, Page } from '@playwright/test';
+import type { APIRequestContext, Locator, Page } from '@playwright/test';
 import { test, expect } from '../fixtures';
-import { getCategoryId, seedTransaction } from '../lib/seed';
+import { createMerchant, getCategoryId, seedTransaction } from '../lib/seed';
 import {
   DATE_RANGE_PRESETS,
   resolvePreset,
@@ -49,6 +49,24 @@ const selectCategory = async (
   await page.getByRole('button', { name: triggerName, exact: true }).click();
   await page
     .locator('.category-picker-popover')
+    .getByRole('button', { name: optionName, exact: true })
+    .click();
+};
+
+/** The merchant field's `MerchantPicker` popover, same shape as `selectCategory` above. Unlike
+ * `CategoryPicker`'s trigger, its accessible name is always the fixed "Merchant" (an explicit
+ * aria-label), not text that changes with the current selection, so the trigger is always found
+ * the same way regardless of whether something's already picked — callers don't need to track a
+ * separate "current label". The option must already exist (`createMerchant` in `lib/seed.ts`) —
+ * unlike the old free-text field, the picker can't create-and-select a brand-new name inline. */
+const selectMerchant = async (
+  scope: Page | Locator,
+  page: Page,
+  optionName: string,
+): Promise<void> => {
+  await scope.getByRole('button', { name: 'Merchant', exact: true }).click();
+  await page
+    .locator('.merchant-picker-popover')
     .getByRole('button', { name: optionName, exact: true })
     .click();
 };
@@ -264,13 +282,18 @@ test.describe('add transaction', () => {
     await expect(addButton).toBeFocused();
   });
 
-  test('adds a transaction through the modal', async ({ authedPage }) => {
+  test('adds a transaction through the modal', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await createMerchant(context.request, workerInfra.apiOrigin, 'Corner Store');
     await authedPage.goto('/transactions');
     await authedPage.getByRole('button', { name: 'Add', exact: true }).click();
 
     const dialog = authedPage.getByRole('dialog', { name: 'Add transaction' });
     await dialog.getByLabel('Amount').fill('12.50');
-    await dialog.getByLabel('Merchant').fill('Corner Store');
+    await selectMerchant(dialog, authedPage, 'Corner Store');
     await dialog.getByLabel('Date').fill('2023-03-01');
     await selectCategory(authedPage, 'Select category', 'Groceries');
     await dialog
@@ -301,7 +324,10 @@ test.describe('add transaction', () => {
 
   test('shows an inline error, not a toast, when the create request fails', async ({
     authedPage,
+    context,
+    workerInfra,
   }) => {
+    await createMerchant(context.request, workerInfra.apiOrigin, 'Corner Store');
     await authedPage.route('**/transactions', async (route) => {
       if (route.request().method() === 'POST') {
         await route.fulfill({
@@ -319,7 +345,7 @@ test.describe('add transaction', () => {
 
     const dialog = authedPage.getByRole('dialog', { name: 'Add transaction' });
     await dialog.getByLabel('Amount').fill('12.50');
-    await dialog.getByLabel('Merchant').fill('Corner Store');
+    await selectMerchant(dialog, authedPage, 'Corner Store');
     await dialog.getByLabel('Date').fill('2023-03-01');
     await selectCategory(authedPage, 'Select category', 'Groceries');
     await dialog
@@ -336,13 +362,16 @@ test.describe('add transaction', () => {
   test.describe('amount normalization', () => {
     const fillAndSubmit = async (
       page: import('@playwright/test').Page,
+      context: { request: APIRequestContext },
+      apiOrigin: string,
       rawAmount: string,
     ) => {
+      await createMerchant(context.request, apiOrigin, 'Normalization Check');
       await page.goto('/transactions');
       await page.getByRole('button', { name: 'Add', exact: true }).click();
       const dialog = page.getByRole('dialog', { name: 'Add transaction' });
       await dialog.getByLabel('Amount').fill(rawAmount);
-      await dialog.getByLabel('Merchant').fill('Normalization Check');
+      await selectMerchant(dialog, page, 'Normalization Check');
       await dialog.getByLabel('Date').fill('2023-03-01');
       await selectCategory(page, 'Select category', 'Groceries');
       await dialog
@@ -351,8 +380,17 @@ test.describe('add transaction', () => {
       return dialog;
     };
 
-    test('accepts a period decimal separator', async ({ authedPage }) => {
-      const dialog = await fillAndSubmit(authedPage, '12.50');
+    test('accepts a period decimal separator', async ({
+      authedPage,
+      context,
+      workerInfra,
+    }) => {
+      const dialog = await fillAndSubmit(
+        authedPage,
+        context,
+        workerInfra.apiOrigin,
+        '12.50',
+      );
       await expect(dialog).not.toBeVisible();
       await expect(
         authedPage.locator('li.transactions-row', {
@@ -363,8 +401,15 @@ test.describe('add transaction', () => {
 
     test('accepts and normalizes a comma decimal separator', async ({
       authedPage,
+      context,
+      workerInfra,
     }) => {
-      const dialog = await fillAndSubmit(authedPage, '12,50');
+      const dialog = await fillAndSubmit(
+        authedPage,
+        context,
+        workerInfra.apiOrigin,
+        '12,50',
+      );
       await expect(dialog).not.toBeVisible();
       await expect(
         authedPage.locator('li.transactions-row', {
@@ -375,16 +420,32 @@ test.describe('add transaction', () => {
 
     test('rejects a value that reads as thousands-grouped', async ({
       authedPage,
+      context,
+      workerInfra,
     }) => {
-      const dialog = await fillAndSubmit(authedPage, '1,234');
+      const dialog = await fillAndSubmit(
+        authedPage,
+        context,
+        workerInfra.apiOrigin,
+        '1,234',
+      );
       await expect(dialog.getByRole('alert')).toHaveText(
         'Enter a plain amount, e.g. 12.50, without thousands separators.',
       );
       await expect(dialog).toBeVisible();
     });
 
-    test('rejects a value with two separators', async ({ authedPage }) => {
-      const dialog = await fillAndSubmit(authedPage, '1,234.56');
+    test('rejects a value with two separators', async ({
+      authedPage,
+      context,
+      workerInfra,
+    }) => {
+      const dialog = await fillAndSubmit(
+        authedPage,
+        context,
+        workerInfra.apiOrigin,
+        '1,234.56',
+      );
       await expect(dialog.getByRole('alert')).toHaveText(
         'Enter a plain amount, e.g. 12.50, without thousands separators.',
       );
@@ -393,8 +454,15 @@ test.describe('add transaction', () => {
 
     test('rejects a whole-number part longer than the server can store (NUMERIC(12,2))', async ({
       authedPage,
+      context,
+      workerInfra,
     }) => {
-      const dialog = await fillAndSubmit(authedPage, '12345678901.50');
+      const dialog = await fillAndSubmit(
+        authedPage,
+        context,
+        workerInfra.apiOrigin,
+        '12345678901.50',
+      );
       await expect(dialog.getByRole('alert')).toHaveText(
         'Enter an amount with at most 10 digits before the decimal point.',
       );
@@ -490,7 +558,9 @@ test.describe('edit and delete transaction', () => {
     await expect(dialog).toBeVisible();
     await expect(authedPage).toHaveURL(/\/transactions\/\d+$/);
     await expect(dialog.getByLabel('Amount')).toHaveValue('20.00');
-    await expect(dialog.getByLabel('Merchant')).toHaveValue('Corner Store');
+    await expect(
+      dialog.getByRole('button', { name: 'Merchant', exact: true }),
+    ).toHaveText('Corner Store');
     await expect(dialog.getByLabel('Date')).toHaveValue('2023-04-01');
     await expect(
       dialog.getByRole('button', { name: 'Groceries', exact: true }),
@@ -537,68 +607,23 @@ test.describe('edit and delete transaction', () => {
     await expect(dialog.getByLabel('Amount')).toBeFocused();
   });
 
-  test('autosaves the merchant on blur', async ({
+  test('autosaves the merchant immediately on selection', async ({
     authedPage,
     context,
     workerInfra,
   }) => {
     await seedCornerStore(context.request, workerInfra.apiOrigin);
+    await createMerchant(context.request, workerInfra.apiOrigin, 'Uptown Store');
     const dialog = await openEditPanel(authedPage);
 
-    await dialog.getByLabel('Merchant').fill('Uptown Store');
-    // Clicking another field blurs the merchant input without pressing Enter.
-    await dialog.getByLabel('Date').click();
+    await selectMerchant(dialog, authedPage, 'Uptown Store');
 
+    await expect(
+      dialog.getByRole('button', { name: 'Merchant', exact: true }),
+    ).toHaveText('Uptown Store');
     await expect(
       authedPage.locator('li.transactions-row', { hasText: 'Uptown Store' }),
     ).toBeVisible();
-  });
-
-  test('autosaves the merchant on Enter', async ({
-    authedPage,
-    context,
-    workerInfra,
-  }) => {
-    await seedCornerStore(context.request, workerInfra.apiOrigin);
-    const dialog = await openEditPanel(authedPage);
-
-    await dialog.getByLabel('Merchant').fill('Uptown Store');
-    await dialog.getByLabel('Merchant').press('Enter');
-
-    await expect(dialog).toBeVisible();
-    await expect(
-      authedPage.locator('li.transactions-row', { hasText: 'Uptown Store' }),
-    ).toBeVisible();
-  });
-
-  test('reverts the merchant on Escape, without closing the panel or saving', async ({
-    authedPage,
-    context,
-    workerInfra,
-  }) => {
-    await seedCornerStore(context.request, workerInfra.apiOrigin);
-    const dialog = await openEditPanel(authedPage);
-
-    await dialog.getByLabel('Merchant').fill('Should Not Save');
-    await authedPage.keyboard.press('Escape');
-
-    await expect(dialog).toBeVisible();
-    await expect(dialog.getByLabel('Merchant')).toHaveValue('Corner Store');
-  });
-
-  test('requires a non-empty merchant, reverting and showing a toast', async ({
-    authedPage,
-    context,
-    workerInfra,
-  }) => {
-    await seedCornerStore(context.request, workerInfra.apiOrigin);
-    const dialog = await openEditPanel(authedPage);
-
-    await dialog.getByLabel('Merchant').fill('');
-    await dialog.getByLabel('Date').click();
-
-    await expect(authedPage.getByText('All fields are required.')).toBeVisible();
-    await expect(dialog.getByLabel('Merchant')).toHaveValue('Corner Store');
   });
 
   test('autosaves the amount on blur, normalizing a comma decimal separator', async ({
@@ -693,40 +718,11 @@ test.describe('edit and delete transaction', () => {
     ).toBeVisible();
   });
 
-  test('preserves an in-progress edit in one field while saving another triggers a refetch', async ({
-    authedPage,
-    context,
-    workerInfra,
-  }) => {
-    await seedCornerStore(context.request, workerInfra.apiOrigin);
-    const dialog = await openEditPanel(authedPage);
-
-    // Saving the amount invalidates the transaction query, which refetches it — delaying that GET
-    // opens a window to start editing the merchant field before the refetch's response would
-    // otherwise land mid-keystroke and overwrite it with the pre-edit server value.
-    await authedPage.route('**/transactions/*', async (route) => {
-      if (route.request().method() === 'GET') {
-        await new Promise((resolve) => setTimeout(resolve, 500));
-      }
-      await route.continue();
-    });
-
-    await dialog.getByLabel('Amount').fill('35.50');
-    // Focusing the merchant field blurs the amount field, saving it and kicking off the
-    // (delayed) refetch above.
-    await dialog.getByLabel('Merchant').fill('Uptown Store');
-
-    // Give the delayed refetch time to resolve and re-render while merchant is still focused,
-    // unsaved — the exact window where a naive hydration effect would stomp the typed value back
-    // to the pre-edit server value.
-    await authedPage.waitForTimeout(700);
-    await expect(dialog.getByLabel('Merchant')).toHaveValue('Uptown Store');
-
-    await dialog.getByLabel('Date').click();
-    await expect(
-      authedPage.locator('li.transactions-row', { hasText: 'Uptown Store' }),
-    ).toBeVisible();
-  });
+  // The old "preserves an in-progress edit in one field while saving another triggers a refetch"
+  // test lived here, protecting the free-text merchant input against a slow refetch landing
+  // mid-keystroke (see EditTransactionModal's activeElementId guard, still in place for amount).
+  // A `MerchantPicker` selection is a single atomic commit with no "mid-typing" state for a
+  // refetch to stomp, so that race can no longer happen for merchant — nothing to test here now.
 
   test('shows a toast and keeps the old value when an autosave fails', async ({
     authedPage,
@@ -734,6 +730,7 @@ test.describe('edit and delete transaction', () => {
     workerInfra,
   }) => {
     await seedCornerStore(context.request, workerInfra.apiOrigin);
+    await createMerchant(context.request, workerInfra.apiOrigin, 'Uptown Store');
     const dialog = await openEditPanel(authedPage);
 
     await authedPage.route('**/transactions/*', async (route) => {
@@ -748,14 +745,16 @@ test.describe('edit and delete transaction', () => {
       }
     });
 
-    await dialog.getByLabel('Merchant').fill('Uptown Store');
-    await dialog.getByLabel('Date').click();
+    await selectMerchant(dialog, authedPage, 'Uptown Store');
 
     await expect(
       authedPage.getByText(
         'Failed to update the transaction. Please try again.',
       ),
     ).toBeVisible();
+    await expect(
+      dialog.getByRole('button', { name: 'Merchant', exact: true }),
+    ).toHaveText('Corner Store');
     await expect(
       authedPage.locator('li.transactions-row', { hasText: 'Corner Store' }),
     ).toBeVisible();
@@ -1144,17 +1143,16 @@ test.describe('edit multiple transactions', () => {
     const dialog = authedPage.getByRole('dialog', {
       name: 'Edit 1 transaction',
     });
-    await dialog.getByRole('button', { name: 'Merchant', exact: true }).click();
-    await dialog.getByLabel('Merchant').fill('Should Not Save');
+    // Picks the other seeded transaction's merchant — an option that already exists, since the
+    // picker (unlike the old free-text field) can't create-and-select an arbitrary new name.
+    await selectMerchant(dialog, authedPage, 'Downtown Store');
     await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
 
     await expect(dialog).not.toBeVisible();
+    // The Corner Store row is still named Corner Store — the pick above never got saved.
     await expect(
       authedPage.locator('li.transactions-row', { hasText: 'Corner Store' }),
-    ).toBeVisible();
-    await expect(
-      authedPage.getByText('Should Not Save'),
-    ).not.toBeVisible();
+    ).toHaveCount(1);
   });
 
   test('saving with nothing changed shows a "select at least one change" error, not the add-form\'s generic one', async ({
@@ -1302,6 +1300,10 @@ test.describe('search', () => {
       workerInfra.apiOrigin,
       'Groceries',
     );
+    // "Whole Foods Market" matches the common "Whole Foods" merchant (seeded for every
+    // household — see merchants::defaults) as a substring, so it resolves to that merchant and
+    // displays as "Whole Foods", not the raw text given here — a side effect of the same matching
+    // this test is implicitly also exercising.
     await seedTransaction(context.request, workerInfra.apiOrigin, {
       date: '2023-04-01',
       merchant: 'Whole Foods Market',
@@ -1324,12 +1326,12 @@ test.describe('search', () => {
 
     await expect(
       authedPage.locator('li.transactions-row', {
-        hasText: 'Whole Foods Market',
+        hasText: 'Whole Foods',
       }),
     ).toBeVisible();
     await expect(
       authedPage.locator('li.transactions-row', {
-        hasText: 'Netflix Subscription',
+        hasText: 'Netflix',
       }),
     ).not.toBeVisible();
     expect(authedPage.url()).toContain('search=foods');
@@ -1366,6 +1368,8 @@ test.describe('search', () => {
       workerInfra.apiOrigin,
       'Groceries',
     );
+    // "Whole Foods Market" matches the common "Whole Foods" merchant (seeded for every
+    // household) as a substring, so it resolves to that merchant and displays as "Whole Foods".
     await seedTransaction(context.request, workerInfra.apiOrigin, {
       date: '2023-04-01',
       merchant: 'Whole Foods Market',
@@ -1391,12 +1395,12 @@ test.describe('search', () => {
 
     await expect(
       authedPage.locator('li.transactions-row', {
-        hasText: 'Whole Foods Market',
+        hasText: 'Whole Foods',
       }),
     ).toBeVisible();
     await expect(
       authedPage.locator('li.transactions-row', {
-        hasText: 'Netflix Subscription',
+        hasText: 'Netflix',
       }),
     ).not.toBeVisible();
     await expect(authedPage.locator('.top-menu-clear-all')).toBeVisible();
@@ -1838,30 +1842,28 @@ test.describe('edit 1 field directly', () => {
     });
   };
 
-  test('rewrites the merchant on Enter', async ({
+  test('updates the merchant immediately on selection', async ({
     authedPage,
     context,
     workerInfra,
   }) => {
     await seedCornerStore(context.request, workerInfra.apiOrigin);
+    await createMerchant(context.request, workerInfra.apiOrigin, 'Uptown Store');
     await authedPage.goto('/transactions');
 
     const row = authedPage.locator('li.transactions-row', {
       hasText: 'Corner Store',
     });
-    await row
-      .getByRole('button', { name: 'Corner Store', exact: true })
-      .click();
-    const input = authedPage.locator('.transactions-row-input');
-    await input.fill('Uptown Store');
-    await input.press('Enter');
+    await selectMerchant(row, authedPage, 'Uptown Store');
 
     const updatedRow = authedPage.locator('li.transactions-row', {
       hasText: 'Uptown Store',
     });
+    // The trigger's accessible name is the fixed "Merchant" (an explicit aria-label) regardless
+    // of what's selected, so the displayed text — not the accessible name — is what changes here.
     await expect(
-      updatedRow.getByRole('button', { name: 'Uptown Store', exact: true }),
-    ).toBeVisible();
+      updatedRow.getByRole('button', { name: 'Merchant', exact: true }),
+    ).toHaveText('Uptown Store');
   });
 
   test('rewrites the account on blur', async ({
@@ -1921,29 +1923,10 @@ test.describe('edit 1 field directly', () => {
     await expect(input).toHaveValue('35.50');
   });
 
-  test('cancels an edit on Escape without saving', async ({
-    authedPage,
-    context,
-    workerInfra,
-  }) => {
-    await seedCornerStore(context.request, workerInfra.apiOrigin);
-    await authedPage.goto('/transactions');
-
-    const row = authedPage.locator('li.transactions-row', {
-      hasText: 'Corner Store',
-    });
-    await row
-      .getByRole('button', { name: 'Corner Store', exact: true })
-      .click();
-    const input = authedPage.locator('.transactions-row-input');
-    await input.fill('Should Not Save');
-    await authedPage.keyboard.press('Escape');
-
-    await expect(
-      row.getByRole('button', { name: 'Corner Store', exact: true }),
-    ).toBeVisible();
-    await expect(authedPage.getByText('Should Not Save')).not.toBeVisible();
-  });
+  // The old "cancels an edit on Escape without saving" test for merchant lived here, protecting
+  // the free-text input against an Escape-triggered revert. A `MerchantPicker` selection has no
+  // in-progress text to revert — Escape just closes its popover (the same generic behavior every
+  // anchored popover in the app already has) — so there's nothing merchant-specific left to test.
 
   test('cancels an account edit on Escape without saving', async ({
     authedPage,
@@ -2059,18 +2042,14 @@ test.describe('edit 1 field directly', () => {
       workerInfra,
     }) => {
       await seedCornerStore(context.request, workerInfra.apiOrigin);
+      await createMerchant(context.request, workerInfra.apiOrigin, 'Uptown Store');
       await authedPage.goto('/transactions');
       await routeAllPatchesToFail(authedPage);
 
       const row = authedPage.locator('li.transactions-row', {
         hasText: 'Corner Store',
       });
-      await row
-        .getByRole('button', { name: 'Corner Store', exact: true })
-        .click();
-      const input = authedPage.locator('.transactions-row-input');
-      await input.fill('Uptown Store');
-      await input.press('Enter');
+      await selectMerchant(row, authedPage, 'Uptown Store');
 
       await expect(
         authedPage.getByText(
@@ -2078,8 +2057,8 @@ test.describe('edit 1 field directly', () => {
         ),
       ).toBeVisible();
       await expect(
-        row.getByRole('button', { name: 'Corner Store', exact: true }),
-      ).toBeVisible();
+        row.getByRole('button', { name: 'Merchant', exact: true }),
+      ).toHaveText('Corner Store');
     });
 
     test('shows a toast and keeps the old account', async ({

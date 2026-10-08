@@ -28,6 +28,28 @@ export const getTagId = async (
   return match.id;
 };
 
+/** Creates a custom merchant for the signed-in household via `POST /merchants` and returns its
+ * id. Needed wherever a test drives the UI's `MerchantPicker` directly (it only selects from
+ * existing merchants — unlike the old free-text field, there's no "type a brand-new name and
+ * submit" path in the picker itself; "Create new merchant" opens the settings page in a new tab
+ * instead), so the name has to already exist before the picker is opened. */
+export const createMerchant = async (
+  request: APIRequestContext,
+  apiOrigin: string,
+  name: string,
+): Promise<number> => {
+  const response = await request.post(`${apiOrigin}/merchants`, {
+    data: { name },
+  });
+  if (!response.ok()) {
+    throw new Error(
+      `failed to seed merchant "${name}": ${response.status()} ${await response.text()}`,
+    );
+  }
+  const body: { id: number } = await response.json();
+  return body.id;
+};
+
 export type SeedTransaction = {
   date: string;
   merchant: string;
@@ -52,7 +74,13 @@ export const seedTransaction = async (
   const response = await request.post(`${apiOrigin}/transactions`, {
     data: {
       date,
-      merchant,
+      // Sent as original_statement, not merchant_id — the server's own matching/creation
+      // resolves a merchant from it, same as a real import would. The real server binary runs
+      // here (see fixtures/worker-infra.ts), so the common merchants ARE seeded — pick fixture
+      // text that doesn't contain one of their names as a substring (e.g. not "Whole Foods
+      // Market"/"Netflix Subscription"), or this will match the common merchant instead of
+      // creating a new custom one, and `merchant_name` will differ from the text given here.
+      original_statement: merchant,
       amount,
       category_id: categoryId,
       account,
