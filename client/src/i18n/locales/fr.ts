@@ -80,6 +80,7 @@ export const fr: typeof en = {
       loading: 'Chargement des membres…',
       error: 'Impossible de charger les membres.',
       manager: 'Gestionnaire',
+      member: 'Membre',
       status: {
         verified: 'Vérifié',
         pending: 'En attente',

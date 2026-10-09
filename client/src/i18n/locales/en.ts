@@ -78,6 +78,7 @@ export const en = {
       loading: 'Loading members…',
       error: 'Failed to load members.',
       manager: 'Manager',
+      member: 'Member',
       status: {
         verified: 'Verified',
         pending: 'Pending',

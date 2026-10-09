@@ -154,6 +154,11 @@ test.describe('Onboarding', () => {
     await expect(
       page.locator('li.members-list-row', { hasText: 'Marie Manager' }),
     ).toContainText('Manager');
+    await expect(
+      page
+        .locator('li.members-list-row', { hasText: 'Jane' })
+        .locator('.members-list-role'),
+    ).toHaveText('Member');
     await expect(page.locator('.invite-code-value')).toHaveText(joinCode);
   });
 

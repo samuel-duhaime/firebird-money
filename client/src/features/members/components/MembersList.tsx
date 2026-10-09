@@ -29,11 +29,11 @@ export const MembersList = () => {
             <div className="members-list-identity">
               <span className="members-list-name">
                 {name}
-                {member.type === 'family_manager' && (
-                  <span className="members-list-role">
-                    {t('settings.members.manager')}
-                  </span>
-                )}
+                <span className="members-list-role">
+                  {member.type === 'family_manager'
+                    ? t('settings.members.manager')
+                    : t('settings.members.member')}
+                </span>
               </span>
               <span className="members-list-email">{member.email}</span>
             </div>
