@@ -12,4 +12,4 @@ WHERE EXISTS (SELECT 1 FROM household_members WHERE household_members.user_id = 
 -- A blank first name (e.g. set through `PATCH /users/{id}`) doesn't count: onboarding would reject
 -- it, so they're asked again. `btrim(NULL)` is NULL, which also leaves out users with no name.
 UPDATE users SET onboarding_steps = array_append(onboarding_steps, 'name')
-WHERE btrim(first_name) <> '';
+WHERE first_name ~ '[^[:space:]]';
