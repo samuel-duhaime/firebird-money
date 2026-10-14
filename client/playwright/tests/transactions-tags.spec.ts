@@ -2,6 +2,7 @@ import type { APIRequestContext, Page } from '@playwright/test';
 import { test, expect } from '../fixtures';
 import {
   createMerchant,
+  ensureAccount,
   getCategoryId,
   getTagId,
   seedTransaction,
@@ -58,6 +59,12 @@ const hideDevtools = (page: Page) =>
   });
 
 test.describe('add transaction with tags', () => {
+  // Every transaction needs an account now, and a fresh test household starts with none.
+  test.beforeEach(async ({ authedPage, context, workerInfra }) => {
+    void authedPage; // signs in, so `context.request` carries the session
+    await ensureAccount(context.request, workerInfra.apiOrigin, 'Seed');
+  });
+
   test('adding a transaction with tags shows them as chips in the row', async ({
     authedPage,
     context,
@@ -356,8 +363,8 @@ test.describe('edit multiple transactions — tags add on top, never replace', (
   });
 });
 
-test.describe('search matches tag names', () => {
-  test('a search term matching only a tag name finds that transaction', async ({
+test.describe('search ignores tag names', () => {
+  test('a search term matching only a tag name finds nothing', async ({
     authedPage,
     context,
     workerInfra,
@@ -368,9 +375,8 @@ test.describe('search matches tag names', () => {
       'Groceries',
     );
     const taxId = await getTagId(context.request, workerInfra.apiOrigin, 'Tax');
-    // Not "Whole Foods Market"/"Netflix Subscription" — common merchants (seeded for every
-    // household) now match substrings of raw statement text, which would resolve these to the
-    // common "Whole Foods"/"Netflix" merchants and display as those instead.
+    // Not "Whole Foods Market" — common merchants (seeded for every household) match substrings
+    // of raw statement text, which would resolve it to the common "Whole Foods" merchant instead.
     await seedTransaction(context.request, workerInfra.apiOrigin, {
       date: '2023-04-01',
       merchant: 'Riverside Market',
@@ -378,29 +384,19 @@ test.describe('search matches tag names', () => {
       categoryId: groceries,
       tagIds: [taxId],
     });
-    await seedTransaction(context.request, workerInfra.apiOrigin, {
-      date: '2023-04-01',
-      merchant: 'Streamflix Monthly',
-      amount: '15.00',
-      categoryId: groceries,
-    });
 
     await authedPage.goto('/transactions');
+    const row = authedPage.locator('li.transactions-row', {
+      hasText: 'Riverside Market',
+    });
+    await expect(row).toBeVisible();
+
     await authedPage
       .getByRole('button', { name: 'Search', exact: true })
       .click();
     await authedPage.getByPlaceholder('Enter a search term...').fill('tax');
     await authedPage.getByPlaceholder('Enter a search term...').press('Enter');
 
-    await expect(
-      authedPage.locator('li.transactions-row', {
-        hasText: 'Riverside Market',
-      }),
-    ).toBeVisible();
-    await expect(
-      authedPage.locator('li.transactions-row', {
-        hasText: 'Streamflix Monthly',
-      }),
-    ).not.toBeVisible();
+    await expect(row).not.toBeVisible();
   });
 });

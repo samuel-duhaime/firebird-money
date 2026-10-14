@@ -5,6 +5,7 @@ import { ApiError } from '../../../lib/api-client';
 import { useCreateCategoryGroup } from '../hooks/use-create-category-group';
 import { useUpdateCategoryGroup } from '../hooks/use-update-category-group';
 import type { CategoryGroup } from '../utils/types';
+import { Select } from '../../../components/Select';
 import '../../transactions/components/AddTransactionModal.css';
 import './CategoryGroupModal.css';
 
@@ -167,12 +168,10 @@ export const CategoryGroupModal = ({
           <label htmlFor="category-group-type">
             {t('settings.categories.groupModal.type')}
           </label>
-          <select
+          <Select
             id="category-group-type"
             value={type}
-            onChange={(e) =>
-              setType(e.target.value as CategoryGroup['type'])
-            }
+            onChange={(e) => setType(e.target.value as CategoryGroup['type'])}
           >
             <option value="income">
               {t('settings.categories.types.income')}
@@ -183,7 +182,7 @@ export const CategoryGroupModal = ({
             <option value="transfer">
               {t('settings.categories.types.transfer')}
             </option>
-          </select>
+          </Select>
 
           {error && (
             <p className="modal-error" role="alert">

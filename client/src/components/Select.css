@@ -1,0 +1,106 @@
+.select {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.select-input {
+  width: 100%;
+  margin: 0;
+  box-sizing: border-box;
+  color: var(--color-white);
+  font: inherit;
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  transition:
+    border-color 0.2s ease,
+    background-color 0.15s ease;
+}
+
+.select-input--placeholder {
+  color: var(--color-lightest);
+}
+
+/* The open list shouldn't inherit a placeholder's grey. */
+.select-input option {
+  color: var(--color-white);
+  background: var(--color-dark);
+}
+
+/* Same look as `.category-picker-trigger-chevron`. */
+.select-chevron {
+  position: absolute;
+  right: 14px;
+  color: var(--color-lightest);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+/* field — matches `.modal-category-trigger` */
+
+.select--field {
+  display: flex;
+  width: 100%;
+}
+
+.select--field .select-input {
+  padding: 11px 36px 11px 14px;
+  border: 1px solid var(--color-medium);
+  border-radius: 8px;
+  background: var(--color-background);
+  font-size: 15px;
+}
+
+.select--field .select-input:focus-visible {
+  border-color: var(--color-primary);
+}
+
+/* cell — matches `.transactions-row-cell--editable` */
+
+.select--cell {
+  display: flex;
+  width: 100%;
+}
+
+.select--cell .select-input {
+  padding: 4px 26px 4px 6px;
+  border: 1px solid transparent;
+  border-radius: var(--spacing-xs);
+  background: none;
+  color: inherit;
+  text-overflow: ellipsis;
+}
+
+.select--cell .select-input:hover,
+.select--cell .select-input:focus-visible {
+  border-color: var(--color-light);
+  background: var(--color-medium);
+}
+
+.select--cell .select-chevron {
+  right: 8px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.select--cell:hover .select-chevron,
+.select--cell:focus-within .select-chevron {
+  opacity: 1;
+}
+
+/* compact — a toolbar control */
+
+.select--compact .select-input {
+  padding: 6px 34px 6px 12px;
+  border: 1px solid var(--color-medium);
+  border-radius: 8px;
+  background: var(--color-dark);
+  font-size: 14px;
+}
+
+.select--compact .select-chevron {
+  right: 12px;
+}

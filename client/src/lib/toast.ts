@@ -79,6 +79,15 @@ export const deleteMerchantFailedToast = () =>
 export const deleteMerchantInUseToast = () =>
   toast.error(i18n.t('toast.deleteMerchantInUse'));
 
+export const deleteAccountFailedToast = () =>
+  toast.error(i18n.t('toast.deleteAccountFailed'));
+
+export const deleteAccountInUseToast = () =>
+  toast.error(i18n.t('toast.deleteAccountInUse'));
+
+export const deleteInstitutionFailedToast = () =>
+  toast.error(i18n.t('toast.deleteInstitutionFailed'));
+
 export const updateSettingsFailedToast = () =>
   toast.error(i18n.t('toast.updateSettingsFailed'));
 

@@ -177,3 +177,13 @@
 .modal-button--primary:hover {
   filter: brightness(1.2);
 }
+
+.modal-hint {
+  margin: 0;
+  color: var(--color-lightest);
+  font-size: 14px;
+}
+
+.modal-hint a {
+  color: var(--color-primary);
+}

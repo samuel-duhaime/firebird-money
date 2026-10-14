@@ -4,6 +4,8 @@ import { getRouteApi, useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faChevronRight } from '@fortawesome/free-solid-svg-icons';
+import { useAccounts } from '../../accounts/hooks/use-accounts';
+import { accountLabel } from '../../accounts/utils/format';
 import { useTransactions } from '../hooks/use-transactions';
 import { useUpdateTransaction } from '../hooks/use-update-transaction';
 import { useSettings } from '../../settings/hooks/use-settings';
@@ -21,16 +23,19 @@ import {
   rowGridTemplateColumns,
   toggleColumnPatch,
 } from '../utils/column-visibility';
-import type { ColumnVisibility, OptionalColumn } from '../utils/column-visibility';
+import type {
+  ColumnVisibility,
+  OptionalColumn,
+} from '../utils/column-visibility';
 import {
   amountTooLongToast,
   invalidAmountToast,
-  requiredFieldToast,
   updateSettingsFailedToast,
   updateTransactionFailedToast,
 } from '../../../lib/toast';
 import type { Transaction } from '../utils/types';
 import type { TransactionPatch } from '../utils/api';
+import { Select } from '../../../components/Select';
 import './TransactionsList.css';
 
 /** Groups transactions by date, assuming they already arrive sorted with same-date rows adjacent. */
@@ -55,10 +60,9 @@ const dailyTotal = (transactions: Transaction[]): number =>
     .filter((transaction) => transaction.category_type === 'expense')
     .reduce((sum, transaction) => sum + Number(transaction.amount), 0);
 
-/** The row's directly-editable text fields. Category and merchant are edited through
- * `CategoryPicker`/`MerchantPicker` instead, since they're pick-from-a-list fields, not free
- * text. */
-type EditableField = 'account' | 'amount';
+/** The row's click-to-edit text field. Category, merchant, and account are pick-from-a-list fields
+ * (`CategoryPicker`, `MerchantPicker`, `Select`) that commit on pick instead. */
+type EditableField = 'amount';
 
 const TransactionRow = ({
   transaction,
@@ -86,6 +90,7 @@ const TransactionRow = ({
       : transaction.category_name_en;
 
   const updateTransactionMutation = useUpdateTransaction();
+  const { data: accounts } = useAccounts();
   const [editingField, setEditingField] = useState<EditableField | null>(null);
   const [draft, setDraft] = useState('');
   // Guards against the field's input firing a second, native blur-on-unmount once editing has
@@ -112,35 +117,24 @@ const TransactionRow = ({
       return;
     }
 
-    const field = editingField;
-    if (!field) return;
+    if (!editingField) return;
     commitInFlightRef.current = true;
     queueMicrotask(() => {
       commitInFlightRef.current = false;
     });
 
-    const trimmed = draft.trim();
-
-    if (field === 'amount') {
-      const result = normalizeAmount(trimmed);
-      if (!result.valid) {
-        if (result.error === 'tooLong') amountTooLongToast();
-        else invalidAmountToast();
-        return;
-      }
-      setEditingField(null);
-      if (result.value !== transaction.amount) save({ amount: result.value });
-      return;
-    }
-
-    if (trimmed === '') {
-      requiredFieldToast();
+    const result = normalizeAmount(draft.trim());
+    if (!result.valid) {
+      if (result.error === 'tooLong') amountTooLongToast();
+      else invalidAmountToast();
       return;
     }
     setEditingField(null);
-    if (trimmed !== transaction[field]) {
-      save({ [field]: trimmed });
-    }
+    if (result.value !== transaction.amount) save({ amount: result.value });
+  };
+
+  const handleAccountChange = (accountId: number) => {
+    if (accountId !== transaction.account_id) save({ account_id: accountId });
   };
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
@@ -218,7 +212,7 @@ const TransactionRow = ({
         )}
         {columnVisibility.account && (
           <span className="transactions-row-cell transactions-row-account">
-            {transaction.account}
+            {transaction.account_name}
           </span>
         )}
         <span
@@ -270,26 +264,27 @@ const TransactionRow = ({
         />
       )}
 
-      {columnVisibility.account &&
-        (editingField === 'account' ? (
-          <input
-            className="transactions-row-cell transactions-row-input"
-            aria-label={t('transactions.add.account', 'Account')}
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={handleKeyDown}
-            onBlur={commit}
-            autoFocus
-          />
-        ) : (
-          <button
-            type="button"
-            className="transactions-row-cell transactions-row-account transactions-row-cell--editable"
-            onClick={() => startEdit('account', transaction.account)}
-          >
-            {transaction.account}
-          </button>
-        ))}
+      {columnVisibility.account && (
+        <Select
+          variant="cell"
+          className="transactions-row-cell transactions-row-account"
+          aria-label={t('transactions.add.account', 'Account')}
+          value={transaction.account_id}
+          onChange={(event) => handleAccountChange(Number(event.target.value))}
+        >
+          {/* Until the accounts list loads, still show the current one. */}
+          {!accounts && (
+            <option value={transaction.account_id}>
+              {transaction.account_name}
+            </option>
+          )}
+          {accounts?.map((account) => (
+            <option key={account.id} value={account.id}>
+              {accountLabel(account)}
+            </option>
+          ))}
+        </Select>
+      )}
 
       {editingField === 'amount' ? (
         <input

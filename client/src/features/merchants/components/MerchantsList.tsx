@@ -8,6 +8,7 @@ import {
   deleteMerchantInUseToast,
 } from '../../../lib/toast';
 import type { Merchant, MerchantSortOrder } from '../utils/types';
+import { Select } from '../../../components/Select';
 import './MerchantsList.css';
 
 type MerchantsListProps = {
@@ -60,8 +61,8 @@ export const MerchantsList = ({ onEdit }: MerchantsListProps) => {
           placeholder={t('settings.merchants.search', { count: total })}
         />
 
-        <select
-          className="merchants-list-sort"
+        <Select
+          variant="compact"
           aria-label={t('settings.merchants.sort.label')}
           value={order}
           onChange={(e) => setOrder(e.target.value as MerchantSortOrder)}
@@ -72,7 +73,7 @@ export const MerchantsList = ({ onEdit }: MerchantsListProps) => {
           <option value="alphabetical">
             {t('settings.merchants.sort.alphabetical')}
           </option>
-        </select>
+        </Select>
       </div>
 
       {!isPending && !isError && (

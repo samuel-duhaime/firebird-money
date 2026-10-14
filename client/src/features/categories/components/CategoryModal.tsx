@@ -6,6 +6,7 @@ import { useCategoryGroups } from '../hooks/use-category-groups';
 import { useCreateCategory } from '../hooks/use-create-category';
 import { useUpdateCategory } from '../hooks/use-update-category';
 import type { Category } from '../utils/types';
+import { Select } from '../../../components/Select';
 import '../../transactions/components/AddTransactionModal.css';
 import './CategoryGroupModal.css';
 
@@ -169,7 +170,7 @@ export const CategoryModal = ({ category, onClose }: CategoryModalProps) => {
           <label htmlFor="category-group">
             {t('settings.categories.categoryModal.group')}
           </label>
-          <select
+          <Select
             id="category-group"
             value={groupId}
             onChange={(e) => setGroupId(Number(e.target.value))}
@@ -179,7 +180,7 @@ export const CategoryModal = ({ category, onClose }: CategoryModalProps) => {
                 {language === 'fr' ? group.name_fr : group.name_en}
               </option>
             ))}
-          </select>
+          </Select>
 
           {error && (
             <p className="modal-error" role="alert">

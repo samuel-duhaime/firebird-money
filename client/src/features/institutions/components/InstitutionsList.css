@@ -1,0 +1,105 @@
+.institutions-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-m);
+}
+
+.institutions-list-empty {
+  color: var(--color-lightest);
+}
+
+.institutions-list-card {
+  border: 1px solid var(--color-medium);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.institutions-list-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-s) var(--spacing-m);
+  background: var(--color-dark);
+}
+
+.institutions-list-card-title {
+  display: flex;
+  flex-direction: column;
+}
+
+.institutions-list-institution-name {
+  font-weight: 700;
+}
+
+.institutions-list-meta {
+  color: var(--color-lightest);
+  font-size: 13px;
+}
+
+.institutions-list-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.institutions-list-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-s) var(--spacing-m);
+  border-top: 1px solid var(--color-medium);
+}
+
+.institutions-list-account {
+  display: flex;
+  flex-direction: column;
+}
+
+.institutions-list-account-name {
+  font-weight: 600;
+}
+
+.institutions-list-actions {
+  display: flex;
+  gap: var(--spacing-xs);
+  margin-left: auto;
+}
+
+.institutions-list-action {
+  padding: 6px 14px;
+  border: 1px solid var(--color-light);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-white);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.institutions-list-action:hover {
+  background: var(--color-medium);
+}
+
+.institutions-list-action--danger {
+  border-color: var(--color-error);
+  color: var(--color-error);
+}
+
+.institutions-list-action--danger:hover {
+  background: color-mix(in srgb, var(--color-error) 15%, transparent);
+}
+
+.institutions-list-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-s);
+  flex: 1;
+}
+
+.institutions-list-confirm-text {
+  color: var(--color-lightest);
+  font-size: 14px;
+}

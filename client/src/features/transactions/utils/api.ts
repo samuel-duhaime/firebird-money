@@ -10,7 +10,7 @@ export interface NewTransaction {
   merchant_id?: number;
   amount: string;
   category_id: number;
-  account: string;
+  account_id: number;
   /** Optional; absent or `[]` means no tags. */
   tag_ids?: number[];
 }
@@ -31,7 +31,7 @@ export interface TransactionPatch {
   merchant_id?: number;
   amount?: string;
   category_id?: number;
-  account?: string;
+  account_id?: number;
   tag_ids?: number[];
 }
 
@@ -51,12 +51,12 @@ export const deleteTransaction = (id: number): Promise<void> =>
   apiFetch<void>(`/transactions/${id}`, { method: 'DELETE' });
 
 /** Body for `PATCH /transactions/bulk` — the "edit multiple" panel's field set, a subset of
- * `TransactionPatch`: no `amount`/`account`, since setting one value across several different
- * transactions doesn't make sense for those fields. `tag_ids` here *adds* to each transaction's
+ * `TransactionPatch`: no `amount`, since setting one amount across several different transactions
+ * doesn't make sense. `tag_ids` here *adds* to each transaction's
  * existing tags rather than replacing them, unlike `TransactionPatch.tag_ids`. */
 export type BulkTransactionPatch = Pick<
   TransactionPatch,
-  'date' | 'merchant_id' | 'category_id' | 'tag_ids'
+  'date' | 'merchant_id' | 'category_id' | 'account_id' | 'tag_ids'
 >;
 
 export const bulkUpdateTransactions = (
