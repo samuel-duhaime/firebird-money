@@ -1,0 +1,112 @@
+.account-modal {
+  width: 460px;
+  max-width: 90vw;
+  max-height: calc(100dvh - 2rem);
+  display: flex;
+  flex-direction: column;
+  background: var(--color-dark);
+  color: var(--color-white);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+}
+
+.account-modal-title {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.account-modal-back {
+  border: none;
+  background: transparent;
+  color: var(--color-lightest);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.account-modal-back:hover {
+  color: var(--color-white);
+}
+
+.account-modal-institutions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 360px;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.account-modal-institution {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 8px;
+  background: var(--color-medium);
+  color: var(--color-white);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: filter 0.15s ease;
+}
+
+.account-modal-institution:hover,
+.account-modal-institution:focus-visible {
+  filter: brightness(1.2);
+}
+
+.account-modal-institution-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.account-modal-institution-name {
+  font-weight: 600;
+}
+
+.account-modal-institution-url {
+  color: var(--color-lightest);
+  font-size: 13px;
+}
+
+.account-modal-empty {
+  color: var(--color-lightest);
+  font-size: 14px;
+  padding: var(--spacing-xs) 0;
+}
+
+.account-modal-custom {
+  align-self: center;
+}
+
+.account-modal-hint {
+  margin: 0;
+  color: var(--color-lightest);
+  font-size: 14px;
+}
+
+.account-modal-selected-institution {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  font-weight: 600;
+}
+
+.account-modal-row {
+  display: flex;
+  gap: var(--spacing-s);
+}
+
+.account-modal-field {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 14px;
+}

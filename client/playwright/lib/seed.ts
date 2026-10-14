@@ -50,11 +50,58 @@ export const createMerchant = async (
   return body.id;
 };
 
+/** The id of the signed-in household's account named `name`, creating it first (inside a custom
+ * "Seed Bank" institution) if it doesn't exist yet — so a test can refer to accounts by name the
+ * way it used to with the old free-text `account` field. */
+export const ensureAccount = async (
+  request: APIRequestContext,
+  apiOrigin: string,
+  name: string,
+): Promise<number> => {
+  const accounts: { id: number; name: string }[] = await (
+    await request.get(`${apiOrigin}/accounts`)
+  ).json();
+  const existing = accounts.find((account) => account.name === name);
+  if (existing) return existing.id;
+
+  const institutions: {
+    id: number;
+    name: string;
+    household_id: number | null;
+  }[] = await (await request.get(`${apiOrigin}/institutions`)).json();
+  let institutionId = institutions.find(
+    (institution) =>
+      institution.name === 'Seed Bank' && institution.household_id !== null,
+  )?.id;
+  if (institutionId === undefined) {
+    const response = await request.post(`${apiOrigin}/institutions`, {
+      data: { name: 'Seed Bank' },
+    });
+    if (!response.ok()) {
+      throw new Error(
+        `failed to seed institution: ${response.status()} ${await response.text()}`,
+      );
+    }
+    institutionId = ((await response.json()) as { id: number }).id;
+  }
+
+  const response = await request.post(`${apiOrigin}/accounts`, {
+    data: { institution_id: institutionId, name, type: 'checking' },
+  });
+  if (!response.ok()) {
+    throw new Error(
+      `failed to seed account "${name}": ${response.status()} ${await response.text()}`,
+    );
+  }
+  return ((await response.json()) as { id: number }).id;
+};
+
 export type SeedTransaction = {
   date: string;
   merchant: string;
   amount: string;
   categoryId: number;
+  /** Name of the account to put it in, created on first use — see `ensureAccount`. */
   account?: string;
   tagIds?: number[];
 };
@@ -71,6 +118,7 @@ export const seedTransaction = async (
     tagIds,
   }: SeedTransaction,
 ): Promise<void> => {
+  const accountId = await ensureAccount(request, apiOrigin, account);
   const response = await request.post(`${apiOrigin}/transactions`, {
     data: {
       date,
@@ -83,7 +131,7 @@ export const seedTransaction = async (
       original_statement: merchant,
       amount,
       category_id: categoryId,
-      account,
+      account_id: accountId,
       tag_ids: tagIds,
     },
   });

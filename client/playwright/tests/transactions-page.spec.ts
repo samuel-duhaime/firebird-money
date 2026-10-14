@@ -1,6 +1,11 @@
 import type { APIRequestContext, Locator, Page } from '@playwright/test';
 import { test, expect } from '../fixtures';
-import { createMerchant, getCategoryId, seedTransaction } from '../lib/seed';
+import {
+  createMerchant,
+  ensureAccount,
+  getCategoryId,
+  seedTransaction,
+} from '../lib/seed';
 import {
   DATE_RANGE_PRESETS,
   resolvePreset,
@@ -183,6 +188,12 @@ test.describe('list, grouping, and daily subtotal', () => {
 });
 
 test.describe('add transaction', () => {
+  // Every transaction needs an account now, and a fresh test household starts with none.
+  test.beforeEach(async ({ authedPage, context, workerInfra }) => {
+    void authedPage; // signs in, so `context.request` carries the session
+    await ensureAccount(context.request, workerInfra.apiOrigin, 'Seed');
+  });
+
   test('opens at /transactions/add-transaction', async ({ authedPage }) => {
     await authedPage.goto('/transactions');
     await authedPage.getByRole('button', { name: 'Add', exact: true }).click();
@@ -1866,26 +1877,28 @@ test.describe('edit 1 field directly', () => {
     ).toHaveText('Uptown Store');
   });
 
-  test('rewrites the account on blur', async ({
+  test('moves the transaction to another account', async ({
     authedPage,
     context,
     workerInfra,
   }) => {
     await seedCornerStore(context.request, workerInfra.apiOrigin);
+    await ensureAccount(context.request, workerInfra.apiOrigin, 'Chequing');
     await authedPage.goto('/transactions');
 
     const row = authedPage.locator('li.transactions-row', {
       hasText: 'Corner Store',
     });
-    await row.getByRole('button', { name: 'Seed', exact: true }).click();
-    const input = authedPage.locator('.transactions-row-input');
-    await input.fill('Chequing');
-    // Clicking elsewhere blurs the input without pressing Enter.
-    await authedPage.locator('.top-menu-title').click();
+    await row
+      .getByRole('combobox', { name: 'Account' })
+      .selectOption({ label: 'Chequing' });
 
+    // Saved, not just picked: still there after a reload.
+    await expect(authedPage.getByText('Failed to update')).not.toBeVisible();
+    await authedPage.reload();
     await expect(
-      row.getByRole('button', { name: 'Chequing', exact: true }),
-    ).toBeVisible();
+      row.getByRole('combobox', { name: 'Account' }).locator('option:checked'),
+    ).toHaveText('Chequing');
   });
 
   test('rewrites the amount', async ({ authedPage, context, workerInfra }) => {
@@ -1927,28 +1940,6 @@ test.describe('edit 1 field directly', () => {
   // the free-text input against an Escape-triggered revert. A `MerchantPicker` selection has no
   // in-progress text to revert — Escape just closes its popover (the same generic behavior every
   // anchored popover in the app already has) — so there's nothing merchant-specific left to test.
-
-  test('cancels an account edit on Escape without saving', async ({
-    authedPage,
-    context,
-    workerInfra,
-  }) => {
-    await seedCornerStore(context.request, workerInfra.apiOrigin);
-    await authedPage.goto('/transactions');
-
-    const row = authedPage.locator('li.transactions-row', {
-      hasText: 'Corner Store',
-    });
-    await row.getByRole('button', { name: 'Seed', exact: true }).click();
-    const input = authedPage.locator('.transactions-row-input');
-    await input.fill('Should Not Save');
-    await authedPage.keyboard.press('Escape');
-
-    await expect(
-      row.getByRole('button', { name: 'Seed', exact: true }),
-    ).toBeVisible();
-    await expect(authedPage.getByText('Should Not Save')).not.toBeVisible();
-  });
 
   test('cancels an amount edit on Escape without saving', async ({
     authedPage,
@@ -2067,16 +2058,16 @@ test.describe('edit 1 field directly', () => {
       workerInfra,
     }) => {
       await seedCornerStore(context.request, workerInfra.apiOrigin);
+      await ensureAccount(context.request, workerInfra.apiOrigin, 'Chequing');
       await authedPage.goto('/transactions');
       await routeAllPatchesToFail(authedPage);
 
       const row = authedPage.locator('li.transactions-row', {
         hasText: 'Corner Store',
       });
-      await row.getByRole('button', { name: 'Seed', exact: true }).click();
-      const input = authedPage.locator('.transactions-row-input');
-      await input.fill('Chequing');
-      await input.press('Enter');
+      await row
+        .getByRole('combobox', { name: 'Account' })
+        .selectOption({ label: 'Chequing' });
 
       await expect(
         authedPage.getByText(
@@ -2084,8 +2075,10 @@ test.describe('edit 1 field directly', () => {
         ),
       ).toBeVisible();
       await expect(
-        row.getByRole('button', { name: 'Seed', exact: true }),
-      ).toBeVisible();
+        row
+          .getByRole('combobox', { name: 'Account' })
+          .locator('option:checked'),
+      ).toHaveText('Seed');
     });
 
     test('shows a toast and keeps the old amount', async ({

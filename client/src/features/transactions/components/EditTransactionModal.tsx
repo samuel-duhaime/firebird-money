@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useAccounts } from '../../accounts/hooks/use-accounts';
+import { accountLabel } from '../../accounts/utils/format';
 import { useCategories } from '../../categories/hooks/use-categories';
 import { useMerchants } from '../../merchants/hooks/use-merchants';
 import { TagPicker } from '../../tags/components/TagPicker';
@@ -19,6 +21,7 @@ import { normalizeAmount, sanitizeAmountInput } from '../utils/amount';
 import { CategoryPicker } from './CategoryPicker';
 import { MerchantPicker } from './MerchantPicker';
 import type { TransactionPatch } from '../utils/api';
+import { Select } from '../../../components/Select';
 import './AddTransactionModal.css';
 import './EditTransactionModal.css';
 
@@ -37,6 +40,7 @@ export const EditTransactionModal = ({
   const { t, i18n } = useTranslation();
   const { data: categories } = useCategories();
   const { data: merchants } = useMerchants();
+  const { data: accounts } = useAccounts();
   const {
     data: transaction,
     isPending,
@@ -184,6 +188,13 @@ export const EditTransactionModal = ({
     }
   };
 
+  const handleAccountChange = (e: ChangeEvent<HTMLSelectElement>) => {
+    const id = Number(e.target.value);
+    if (transaction && id !== transaction.account_id) {
+      save({ account_id: id });
+    }
+  };
+
   const handleDateChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (!transaction) return;
     const value = e.target.value;
@@ -241,7 +252,8 @@ export const EditTransactionModal = ({
   const selectedMerchant = merchants?.find(
     (m) => m.id === transaction?.merchant_id,
   );
-  const merchantLabel = selectedMerchant?.name ?? transaction?.merchant_name ?? '';
+  const merchantLabel =
+    selectedMerchant?.name ?? transaction?.merchant_name ?? '';
 
   return (
     <div
@@ -335,6 +347,29 @@ export const EditTransactionModal = ({
                   }
                   onSelect={handleCategorySelect}
                 />
+              </div>
+
+              <div className="edit-transaction-field">
+                <label htmlFor="edit-account">
+                  {t('transactions.add.account')}
+                </label>
+                <Select
+                  id="edit-account"
+                  value={transaction.account_id}
+                  onChange={handleAccountChange}
+                >
+                  {/* Until the accounts list loads, still show the current one. */}
+                  {!accounts && (
+                    <option value={transaction.account_id}>
+                      {transaction.account_name}
+                    </option>
+                  )}
+                  {accounts?.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.institution_name} — {accountLabel(account)}
+                    </option>
+                  ))}
+                </Select>
               </div>
 
               <div className="edit-transaction-field">

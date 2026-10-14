@@ -91,3 +91,8 @@
 .settings-panel-primary-button:hover {
   filter: brightness(1.2);
 }
+
+.settings-panel-description {
+  margin: 0 0 var(--spacing-m);
+  color: var(--color-lightest);
+}

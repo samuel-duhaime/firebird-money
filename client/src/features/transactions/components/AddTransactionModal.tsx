@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { Link } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
+import { useAccounts } from '../../accounts/hooks/use-accounts';
+import { accountLabel } from '../../accounts/utils/format';
 import { useCategories } from '../../categories/hooks/use-categories';
 import { useMerchants } from '../../merchants/hooks/use-merchants';
 import { TagPicker } from '../../tags/components/TagPicker';
@@ -8,13 +11,8 @@ import { useCreateTransaction } from '../hooks/use-create-transaction';
 import { normalizeAmount, sanitizeAmountInput } from '../utils/amount';
 import { CategoryPicker } from './CategoryPicker';
 import { MerchantPicker } from './MerchantPicker';
+import { Select } from '../../../components/Select';
 import './AddTransactionModal.css';
-
-/**
- * The form doesn't collect an account (there's no multi-account UI yet), but the API requires
- * one — this is the value manually-added transactions carry until accounts exist.
- */
-const MANUAL_ACCOUNT = 'Manual entry';
 
 type AddTransactionModalProps = {
   onClose: () => void;
@@ -27,7 +25,11 @@ export const AddTransactionModal = ({ onClose }: AddTransactionModalProps) => {
   const { t, i18n } = useTranslation();
   const { data: categories } = useCategories();
   const { data: merchants } = useMerchants();
+  const { data: accounts } = useAccounts();
   const [amount, setAmount] = useState('');
+  // `null` until picked — except a household with a single account, which gets it preselected (see
+  // `effectiveAccountId`), since there's nothing to choose between.
+  const [accountId, setAccountId] = useState<number | null>(null);
   const [merchantId, setMerchantId] = useState<number | null>(null);
   const [date, setDate] = useState('');
   const [categoryId, setCategoryId] = useState<number | null>(null);
@@ -121,12 +123,17 @@ export const AddTransactionModal = ({ onClose }: AddTransactionModalProps) => {
     );
   };
 
+  const effectiveAccountId =
+    accountId ?? (accounts?.length === 1 ? accounts[0].id : null);
+  const hasNoAccounts = accounts !== undefined && accounts.length === 0;
+
   const handleSubmit = () => {
     if (
       !amount.trim() ||
       merchantId === null ||
       !date.trim() ||
-      categoryId === null
+      categoryId === null ||
+      effectiveAccountId === null
     ) {
       setError(t('transactions.add.required', 'All fields are required.'));
       return;
@@ -155,7 +162,7 @@ export const AddTransactionModal = ({ onClose }: AddTransactionModalProps) => {
         merchant_id: merchantId,
         amount: amountResult.value,
         category_id: categoryId,
-        account: MANUAL_ACCOUNT,
+        account_id: effectiveAccountId,
         tag_ids: tagIds,
       },
       {
@@ -164,6 +171,7 @@ export const AddTransactionModal = ({ onClose }: AddTransactionModalProps) => {
           setMerchantId(null);
           setDate('');
           setCategoryId(null);
+          setAccountId(null);
           setTagIds([]);
           onClose();
         },
@@ -274,6 +282,37 @@ export const AddTransactionModal = ({ onClose }: AddTransactionModalProps) => {
             onSelect={handleCategorySelect}
           />
 
+          <label htmlFor="account">{t('transactions.add.account')}</label>
+          {hasNoAccounts ? (
+            <p className="modal-hint">
+              {t('transactions.add.noAccounts')}{' '}
+              <Link to="/settings/institutions" onClick={onClose}>
+                {t('transactions.add.noAccountsLink')}
+              </Link>
+            </p>
+          ) : (
+            <Select
+              id="account"
+              isPlaceholder={effectiveAccountId === null}
+              value={effectiveAccountId ?? ''}
+              onChange={(e) => {
+                setError('');
+                setAccountId(Number(e.target.value));
+              }}
+            >
+              {effectiveAccountId === null && (
+                <option value="" disabled>
+                  {t('transactions.add.selectAccount')}
+                </option>
+              )}
+              {accounts?.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.institution_name} — {accountLabel(account)}
+                </option>
+              ))}
+            </Select>
+          )}
+
           <label>{t('transactions.add.tags')}</label>
           <TagPicker
             selectedTagIds={tagIds}
@@ -302,7 +341,7 @@ export const AddTransactionModal = ({ onClose }: AddTransactionModalProps) => {
             type="button"
             className="modal-button modal-button--primary"
             onClick={handleSubmit}
-            disabled={createTransactionMutation.isPending}
+            disabled={createTransactionMutation.isPending || hasNoAccounts}
           >
             {t('transactions.add.submit', 'Add transaction')}
           </button>

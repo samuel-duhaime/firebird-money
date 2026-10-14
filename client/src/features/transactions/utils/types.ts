@@ -22,7 +22,9 @@ export interface Transaction {
   category_name_en: string;
   category_name_fr: string;
   category_type: 'income' | 'expense' | 'transfer';
-  account: string;
+  /** The household account (see Settings → Institutions) it's in. */
+  account_id: number;
+  account_name: string;
   reviewed: boolean;
   created_at: string;
   tags: TransactionTag[];
