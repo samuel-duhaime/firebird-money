@@ -44,6 +44,8 @@ fn app_with(
         .configure(configure)
         .configure(auth::configure)
         .configure(crate::features::transactions::configure)
+        .configure(crate::features::institutions::configure)
+        .configure(crate::features::accounts::configure)
 }
 
 /// Signs in and completes onboarding (creating a fresh household), returning the session cookie.
@@ -539,6 +541,7 @@ async fn delete_tag_rejects_when_referenced_by_transaction(pool: PgPool) {
     let tag_id = create_via_api(&app, &cookie, "Vacation 2026", "#2F80ED").await;
     let category_id = any_seeded_category_id(&pool).await;
 
+    let account_id = crate::shared::test_support::test_account_id(&app, &cookie).await;
     let txn_req = test::TestRequest::post()
         .uri("/transactions")
         .insert_header(("Cookie", cookie.clone()))
@@ -547,7 +550,7 @@ async fn delete_tag_rejects_when_referenced_by_transaction(pool: PgPool) {
             "original_statement": "STARBUCKS",
             "amount": "12.34",
             "category_id": category_id,
-            "account": "User 1",
+            "account_id": account_id,
             "tag_ids": [tag_id],
         }))
         .to_request();
@@ -579,6 +582,7 @@ async fn tag_transaction_count_reflects_attached_transactions(pool: PgPool) {
     assert_eq!(before["transaction_count"], 0);
 
     for merchant in ["STARBUCKS", "IGA"] {
+        let account_id = crate::shared::test_support::test_account_id(&app, &cookie).await;
         let txn_req = test::TestRequest::post()
             .uri("/transactions")
             .insert_header(("Cookie", cookie.clone()))
@@ -587,7 +591,7 @@ async fn tag_transaction_count_reflects_attached_transactions(pool: PgPool) {
                 "original_statement": merchant,
                 "amount": "12.34",
                 "category_id": category_id,
-                "account": "User 1",
+                "account_id": account_id,
                 "tag_ids": [tag_id],
             }))
             .to_request();

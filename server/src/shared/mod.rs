@@ -3,6 +3,8 @@ pub mod email;
 pub mod http_error;
 pub mod l10n;
 pub mod postgres;
+#[cfg(test)]
+pub mod test_support;
 
 const DEFAULT_PORT: u16 = 3055;
 

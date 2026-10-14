@@ -1,8 +1,10 @@
+pub mod accounts;
 pub mod auth;
 pub mod categories;
 pub mod category_groups;
 pub mod household_members;
 pub mod households;
+pub mod institutions;
 pub mod merchants;
 pub mod settings;
 pub mod tags;

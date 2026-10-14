@@ -61,6 +61,13 @@ async fn main() -> std::io::Result<()> {
         )));
     }
 
+    // Same for the common institutions (Desjardins, RBC, ...) — see institutions::repository.
+    if let Err(e) = features::institutions::repository::seed_defaults(pool.get_ref()).await {
+        return Err(std::io::Error::other(format!(
+            "failed to seed default institutions: {e}"
+        )));
+    }
+
     let import_jobs = web::Data::new(JobStore::default());
     let auth_config = web::Data::new(auth_config);
     // One client, shared by every magic-link send, so the TLS connection pool is reused. Short
@@ -100,6 +107,8 @@ async fn main() -> std::io::Result<()> {
             .configure(features::category_groups::configure)
             .configure(features::households::configure)
             .configure(features::merchants::configure)
+            .configure(features::institutions::configure)
+            .configure(features::accounts::configure)
             .configure(features::settings::configure)
             .configure(features::tags::configure)
             .configure(features::users::configure)
