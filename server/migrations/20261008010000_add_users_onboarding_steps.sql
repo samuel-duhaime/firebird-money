@@ -9,5 +9,7 @@ ALTER TABLE users ADD COLUMN onboarding_steps TEXT[] NOT NULL DEFAULT '{}'
 UPDATE users SET onboarding_steps = array_append(onboarding_steps, 'household')
 WHERE EXISTS (SELECT 1 FROM household_members WHERE household_members.user_id = users.id);
 
+-- A blank first name (e.g. set through `PATCH /users/{id}`) doesn't count: onboarding would reject
+-- it, so they're asked again. `btrim(NULL)` is NULL, which also leaves out users with no name.
 UPDATE users SET onboarding_steps = array_append(onboarding_steps, 'name')
-WHERE first_name IS NOT NULL;
+WHERE btrim(first_name) <> '';
