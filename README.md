@@ -128,19 +128,19 @@ Magic links last 15 minutes and work once. The session cookie is httpOnly and Sa
 
 `/transactions`:
 
-- `GET /transactions` — list the caller's household's transactions, optionally filtered with `?date=YYYY-MM-DD`, `?start_date=`/`?end_date=` (inclusive range), `?merchant_id=`, and/or `?search=` (case-insensitive match against merchant name, original statement, category, tag names, or amount). Accepts `?order=` (`date` [default], `inverse_date`, `amount`, `inverse_amount`).
+- `GET /transactions` — list the caller's household's transactions, optionally filtered with `?date=YYYY-MM-DD`, `?start_date=`/`?end_date=` (inclusive range), `?merchant_id=`, `?account_id=`, and/or `?search=` (case-insensitive match against merchant name, original statement, category, or amount). Accepts `?order=` (`date` [default], `inverse_date`, `amount`, `inverse_amount`).
 - `GET /transactions/{id}` — fetch a single transaction.
-- `POST /transactions` — create a transaction (`date`, `amount`, `category_id`, `account`, optional `tag_ids`, optional `reviewed` [defaults to `true`; the budget importer sets it `false`], and either `merchant_id` and/or `original_statement`). `household_id` and `household_member_id` are never read from the body — they're always the caller's own household and membership.
+- `POST /transactions` — create a transaction (`date`, `amount`, `category_id`, `account_id`, optional `tag_ids`, optional `reviewed` [defaults to `true`; the budget importer sets it `false`], and either `merchant_id` and/or `original_statement`). `household_id` and `household_member_id` are never read from the body — they're always the caller's own household and membership.
 - `PATCH /transactions/{id}` — partially update a transaction (only the fields you send change). `tag_ids`, if given, *replaces* the full tag set (`[]` clears it). There's no `original_statement` here — it's immutable after creation; only `merchant_id` is editable.
 - `DELETE /transactions/{id}` — delete a transaction.
-- `PATCH /transactions/bulk` — partially update several transactions at once (`ids`, `patch` — `patch` supports `date`, `merchant_id`, `category_id`, and `tag_ids`). Unlike the single-transaction `PATCH`, `tag_ids` here *adds* to each transaction's existing tags rather than replacing them. Ids the household doesn't own are silently skipped.
+- `PATCH /transactions/bulk` — partially update several transactions at once (`ids`, `patch` — `patch` supports `date`, `merchant_id`, `category_id`, `account_id`, and `tag_ids`). Unlike the single-transaction `PATCH`, `tag_ids` here *adds* to each transaction's existing tags rather than replacing them. Ids the household doesn't own are silently skipped.
 - `DELETE /transactions/bulk` — delete several transactions at once (`ids`). Ids the household doesn't own are silently skipped.
-- `GET /transactions/download` — download the same filtered/sorted transactions as `GET /transactions`, rendered as a file (including a Tags column). Accepts the same query params plus `?format=` (`csv` or `xlsx`, required).
+- `GET /transactions/download` — download the same filtered/sorted transactions as `GET /transactions`, rendered as a file (including Tags and Account columns). Accepts the same query params plus `?format=` (`csv` or `xlsx`, required).
 - `POST /transactions/import` — upload a budget file (multipart, field `file`, 10 MB max) to import as transactions. Kicks off an async job and returns `202 Accepted` with a `Location` header pointing at the job. Requires the `claude` CLI (see [Install](#install)); the unattended subprocess it spawns authenticates as the caller via a forwarded session cookie.
 - `GET /transactions/import/jobs/{id}` — poll an import job's status (`pending`, `running`, `succeeded`, `failed`) and, once terminal, its `created_count`/`failed_count`/`skipped_count`/`error_message`.
 - `PATCH /transactions/import/jobs/{id}` — internal only: how the unattended import subprocess reports its own final result back to the server. Not intended to be called from the client.
 
-Every transaction response includes its joined category (`category_name_en`, `category_name_fr`, `category_type`), its joined merchant (`merchant_name`, `merchant_logo_url`), the immutable `original_statement` it was created from, and its attached tags (`tags`, each `{id, name, color}`). `category_id` must belong to the caller's own household; any `tag_ids` outside it are silently dropped rather than rejected.
+Every transaction response includes its joined category (`category_name_en`, `category_name_fr`, `category_type`), its joined merchant (`merchant_name`, `merchant_logo_url`), its account (`account_id`, `account_name`), the immutable `original_statement` it was created from, and its attached tags (`tags`, each `{id, name, color}`). `category_id` and `account_id` must belong to the caller's own household (`400` otherwise); any `tag_ids` outside it are silently dropped rather than rejected.
 
 On create, `merchant_id` and `original_statement` are both optional but at least one is required: given `merchant_id` alone, `original_statement` defaults to that merchant's own name (the manual "Add Transaction" shape); given `original_statement` alone, the server matches an existing merchant by case-insensitive substring (checking common merchants and the household's own, including each one's aliases) or creates a new custom merchant named exactly the given text (the budget-file importer's shape — see [`/merchants`](#api)). A `merchant_id` that doesn't belong to the caller's household (and isn't common) is rejected with `400`, same as an unknown `category_id`.
 
@@ -153,6 +153,26 @@ On create, `merchant_id` and `original_statement` are both optional but at least
 - `DELETE /merchants/{id}` — delete a custom merchant. Fails while it's still used by existing transactions; common merchants can't be deleted at all.
 
 A merchant with `household_id: null` is common — seeded once at server startup (not per household, unlike categories/tags), shared by every household, and immune to the household-scoped update/delete above. Everything else belongs to exactly one household. A common merchant may also carry `aliases` (alternate spellings it also matches on, e.g. "McDonalds" for "McDonald's") — curated server-side, not settable through this API.
+
+`/institutions`:
+
+- `GET /institutions` — list institutions visible to the caller's household (the shared common set plus this household's own), A-Z, each with how many of the household's accounts are held there (`account_count`).
+- `GET /institutions/{id}` — fetch a single institution.
+- `POST /institutions` — create a custom institution for the caller's household (`name`, optional `website_url` — must start with `http://` or `https://`).
+- `PATCH /institutions/{id}` — rename a custom institution or change its `website_url` (`""` clears it). Common institutions 404, same as merchants.
+- `DELETE /institutions/{id}` — delete a custom institution. Fails while it still has accounts; common institutions can't be deleted at all.
+
+An institution is the bank, credit union, or brokerage an account is held at. Like merchants, one with `household_id: null` is common — seeded once at server startup (Desjardins, RBC, TD, National Bank, Wealthsimple, …) and shared by every household, with `aliases` it's also searchable by (e.g. "Banque Nationale"). Everything else belongs to exactly one household.
+
+`/accounts`:
+
+- `GET /accounts` — list the caller's household's accounts, grouped by institution (A-Z), each with its `institution_name` and `transaction_count`.
+- `GET /accounts/{id}` — fetch a single account.
+- `POST /accounts` — create an account (`institution_id`, `name`, `type`, optional `last_four`, optional `currency` [defaults to `CAD`]). `type` is one of `checking`, `savings`, `credit_card`, `investment`, `loan`, `mortgage`, `cash`, or `other`; `last_four` is 1-4 letters or digits; `currency` is a 3-letter code. `institution_id` must be common or the household's own.
+- `PATCH /accounts/{id}` — partially update an account (only the fields you send change; `last_four: ""` clears it).
+- `DELETE /accounts/{id}` — delete an account. Fails while it's still used by existing transactions.
+
+Every transaction is in exactly one account (`account_id` on [`/transactions`](#api)). No balances or bank sync yet.
 
 `/categories`:
 
@@ -191,7 +211,7 @@ A tag is a free-form label attached to transactions (see `tag_ids` on [`/transac
 
 - `GET /households/{id}` — fetch a single household.
 - `POST /households` — create a new household, seeded with its starter category groups, categories, and tags.
-- `DELETE /households/{id}` — delete a household. Fails while it still has data connected to it (members, category groups, categories, tags, custom merchants, or transactions).
+- `DELETE /households/{id}` — delete a household. Fails while it still has data connected to it (members, category groups, categories, tags, custom merchants, custom institutions, accounts, or transactions).
 
 Beyond `id`/`created_at`, a household carries only a `join_code`, generated on creation: the code an existing member shares so someone else can join through `POST /auth/onboarding`. Who belongs to it, and with what role, lives in `/household-members`.
 
@@ -221,7 +241,7 @@ Settings are per-user, not per-household: which optional columns show on the tra
 
 ## Data schema
 
-Every table in the Postgres schema (see `server/migrations/`) and how they relate. `Account`, `Institution`, and `Rule` are still design-stage — not real tables yet — so they aren't pictured; `transactions.account` is plain text until it lands.
+Every table in the Postgres schema (see `server/migrations/`) and how they relate. `Rule` is still design-stage — not a real table yet — so it isn't pictured.
 
 **People & access:**
 
@@ -246,6 +266,10 @@ erDiagram
     HOUSEHOLD_MEMBERS ||--o{ TRANSACTIONS : creates
     MERCHANTS ||--o{ TRANSACTIONS : identifies
     HOUSEHOLDS ||--o{ MERCHANTS : "owns custom"
+    HOUSEHOLDS ||--o{ INSTITUTIONS : "owns custom"
+    HOUSEHOLDS ||--o{ ACCOUNTS : has
+    INSTITUTIONS ||--o{ ACCOUNTS : holds
+    ACCOUNTS ||--o{ TRANSACTIONS : contains
     HOUSEHOLDS ||--o{ TAGS : has
     TRANSACTIONS ||--o{ TRANSACTION_TAGS : has
     TAGS ||--o{ TRANSACTION_TAGS : has

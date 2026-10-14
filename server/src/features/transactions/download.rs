@@ -4,7 +4,7 @@ use rust_xlsxwriter::{Workbook, XlsxError};
 
 use super::model::{SortOrder, Transaction, TransactionFilter};
 
-const HEADERS: [&str; 5] = ["Date", "Merchant", "Category", "Tags", "Amount"];
+const HEADERS: [&str; 6] = ["Date", "Merchant", "Category", "Tags", "Account", "Amount"];
 
 /// Comma-joins a transaction's tag names for a single spreadsheet cell, e.g. "Tax, Reimburse".
 fn tags_cell(transaction: &Transaction) -> String {
@@ -85,6 +85,7 @@ pub fn to_csv(transactions: &[Transaction]) -> Result<Vec<u8>, csv::Error> {
             escape_formula(&transaction.merchant_name),
             escape_formula(&transaction.category_name_en),
             escape_formula(&tags_cell(transaction)),
+            escape_formula(&transaction.account_name),
             transaction.amount.to_string(),
         ])?;
     }
@@ -106,7 +107,8 @@ pub fn to_xlsx(transactions: &[Transaction]) -> Result<Vec<u8>, XlsxError> {
         worksheet.write(row, 1, &transaction.merchant_name)?;
         worksheet.write(row, 2, &transaction.category_name_en)?;
         worksheet.write(row, 3, tags_cell(transaction))?;
-        worksheet.write(row, 4, transaction.amount)?;
+        worksheet.write(row, 4, &transaction.account_name)?;
+        worksheet.write(row, 5, transaction.amount)?;
     }
 
     workbook.save_to_buffer()

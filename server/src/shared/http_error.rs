@@ -87,3 +87,10 @@ pub fn is_foreign_key_violation(err: &sqlx::Error) -> bool {
     err.as_database_error()
         .is_some_and(|e| e.is_foreign_key_violation())
 }
+
+/// `true` if `err` is a foreign key violation on the named constraint specifically — for queries
+/// where more than one FK could fail and each deserves its own error message.
+pub fn is_foreign_key_violation_on(err: &sqlx::Error, constraint: &str) -> bool {
+    err.as_database_error()
+        .is_some_and(|e| e.is_foreign_key_violation() && e.constraint() == Some(constraint))
+}

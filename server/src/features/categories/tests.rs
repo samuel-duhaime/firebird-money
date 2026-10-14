@@ -689,7 +689,9 @@ async fn delete_category_rejects_when_referenced_by_transaction(pool: PgPool) {
             .configure(configure)
             .configure(auth::configure)
             .configure(crate::features::category_groups::configure)
-            .configure(crate::features::transactions::configure),
+            .configure(crate::features::transactions::configure)
+            .configure(crate::features::institutions::configure)
+            .configure(crate::features::accounts::configure),
     )
     .await;
     let cookie = sign_in_with_household(&app, "sam@example.com").await;
@@ -697,6 +699,7 @@ async fn delete_category_rejects_when_referenced_by_transaction(pool: PgPool) {
     let category_id =
         create_via_api(&app, &cookie, group_id, "Test Category", "Catégorie test").await;
 
+    let account_id = crate::shared::test_support::test_account_id(&app, &cookie).await;
     let txn_req = test::TestRequest::post()
         .uri("/transactions")
         .insert_header(("Cookie", cookie.clone()))
@@ -705,7 +708,7 @@ async fn delete_category_rejects_when_referenced_by_transaction(pool: PgPool) {
             "original_statement": "STARBUCKS",
             "amount": "12.34",
             "category_id": category_id,
-            "account": "User 1",
+            "account_id": account_id,
         }))
         .to_request();
     let txn_resp = test::call_service(&app, txn_req).await;
@@ -733,7 +736,9 @@ async fn category_transaction_count_reflects_attached_transactions(pool: PgPool)
             .configure(configure)
             .configure(auth::configure)
             .configure(crate::features::category_groups::configure)
-            .configure(crate::features::transactions::configure),
+            .configure(crate::features::transactions::configure)
+            .configure(crate::features::institutions::configure)
+            .configure(crate::features::accounts::configure),
     )
     .await;
     let cookie = sign_in_with_household(&app, "sam@example.com").await;
@@ -749,6 +754,7 @@ async fn category_transaction_count_reflects_attached_transactions(pool: PgPool)
     assert_eq!(before["transaction_count"], 0);
 
     for merchant in ["STARBUCKS", "IGA"] {
+        let account_id = crate::shared::test_support::test_account_id(&app, &cookie).await;
         let txn_req = test::TestRequest::post()
             .uri("/transactions")
             .insert_header(("Cookie", cookie.clone()))
@@ -757,7 +763,7 @@ async fn category_transaction_count_reflects_attached_transactions(pool: PgPool)
                 "original_statement": merchant,
                 "amount": "12.34",
                 "category_id": category_id,
-                "account": "User 1",
+                "account_id": account_id,
             }))
             .to_request();
         assert_eq!(test::call_service(&app, txn_req).await.status(), 201);

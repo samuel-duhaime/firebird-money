@@ -22,7 +22,7 @@ use super::repository;
 use crate::features::auth::{session_token, CurrentUser};
 use crate::shared::http_error::{
     error_response, error_response_with_n, internal_error_response, is_foreign_key_violation,
-    not_found_response,
+    is_foreign_key_violation_on, not_found_response,
 };
 use crate::shared::l10n::L10n;
 
@@ -44,6 +44,11 @@ struct ImportUploadForm {
     #[multipart(limit = "10MB")]
     file: TempFile,
 }
+
+/// The FK on `transactions (household_id, account_id)` — see the
+/// `replace_transactions_account_with_account_id` migration. Every other FK a transaction write can
+/// trip is the category one, so this is how a 400 tells the two apart.
+const ACCOUNT_FKEY: &str = "transactions_household_account_fkey";
 
 /// File format for `GET /transactions/download`.
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
@@ -101,6 +106,13 @@ async fn create_transaction(
             "merchant-not-found",
             new_transaction.merchant_id.unwrap_or_default() as u32,
         ),
+        Err(e) if is_foreign_key_violation_on(&e, ACCOUNT_FKEY) => error_response_with_n(
+            &l10n,
+            &locale,
+            StatusCode::BAD_REQUEST,
+            "account-not-found",
+            new_transaction.account_id as u32,
+        ),
         Err(e) if is_foreign_key_violation(&e) => error_response_with_n(
             &l10n,
             &locale,
@@ -116,9 +128,9 @@ async fn create_transaction(
 }
 
 /// `GET /transactions` — list transactions, optionally filtered by `date`, a `start_date`/
-/// `end_date` range, `merchant_id`, and/or a free-text `search` matched against merchant name,
-/// original statement, category, tag names, and amount. Accepts `order` (`date`, `inverse_date`,
-/// `amount`, `inverse_amount`) to control sort order.
+/// `end_date` range, `merchant_id`, `account_id`, and/or a free-text `search` matched against
+/// merchant name, original statement, category, and amount. Accepts
+/// `order` (`date`, `inverse_date`, `amount`, `inverse_amount`) to control sort order.
 async fn list_transactions(
     filter: web::Query<TransactionFilter>,
     current_user: CurrentUser,
@@ -142,7 +154,8 @@ async fn list_transactions(
 
 /// `GET /transactions/download` — download the same (filtered/sorted) transactions as
 /// `GET /transactions`, rendered as a CSV or Excel file. Accepts the same `date`, `start_date`,
-/// `end_date`, `merchant_id`, `search`, and `order` query params, plus `format` (`csv` or `xlsx`).
+/// `end_date`, `merchant_id`, `account_id`, `search`, and `order` query params, plus `format`
+/// (`csv` or `xlsx`).
 async fn download_transactions(
     filter: web::Query<TransactionFilter>,
     format: web::Query<DownloadFormatQuery>,
@@ -389,6 +402,13 @@ async fn update_transaction(
             "merchant-not-found",
             patch.merchant_id.unwrap_or_default() as u32,
         ),
+        Err(e) if is_foreign_key_violation_on(&e, ACCOUNT_FKEY) => error_response_with_n(
+            &l10n,
+            &locale,
+            StatusCode::BAD_REQUEST,
+            "account-not-found",
+            patch.account_id.unwrap_or_default() as u32,
+        ),
         Err(e) if is_foreign_key_violation(&e) => error_response_with_n(
             &l10n,
             &locale,
@@ -454,6 +474,13 @@ async fn bulk_update_transactions(
             StatusCode::BAD_REQUEST,
             "merchant-not-found",
             body.patch.merchant_id.unwrap_or_default() as u32,
+        ),
+        Err(e) if is_foreign_key_violation_on(&e, ACCOUNT_FKEY) => error_response_with_n(
+            &l10n,
+            &locale,
+            StatusCode::BAD_REQUEST,
+            "account-not-found",
+            body.patch.account_id.unwrap_or_default() as u32,
         ),
         Err(e) if is_foreign_key_violation(&e) => error_response_with_n(
             &l10n,

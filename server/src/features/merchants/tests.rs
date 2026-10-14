@@ -191,20 +191,59 @@ async fn insert_transaction(
     category_id: i32,
     date: &str,
 ) {
+    let account_id = insert_account(pool, household_id).await;
     sqlx::query(
         "INSERT INTO transactions
             (household_id, household_member_id, date, original_statement, merchant_id, amount,
-             category_id, account, reviewed)
-         VALUES ($1, $2, $3::date, 'test', $4, 10.00, $5, 'Test Account', true)",
+             category_id, account_id, reviewed)
+         VALUES ($1, $2, $3::date, 'test', $4, 10.00, $5, $6, true)",
     )
     .bind(household_id)
     .bind(household_member_id)
     .bind(date)
     .bind(merchant_id)
     .bind(category_id)
+    .bind(account_id)
     .execute(pool)
     .await
     .unwrap();
+}
+
+/// The household's "Test Account", inserted directly via SQL (with its own custom institution) the
+/// first time it's needed — accounts aren't wired into this module's `app_with`.
+async fn insert_account(pool: &PgPool, household_id: i32) -> i32 {
+    let (institution_id,): (i32,) = sqlx::query_as(
+        "INSERT INTO institutions (household_id, name) VALUES ($1, 'Test Bank')
+         ON CONFLICT (household_id, name) WHERE household_id IS NOT NULL
+         DO UPDATE SET name = EXCLUDED.name
+         RETURNING id",
+    )
+    .bind(household_id)
+    .fetch_one(pool)
+    .await
+    .unwrap();
+
+    let existing: Option<(i32,)> =
+        sqlx::query_as("SELECT id FROM accounts WHERE household_id = $1 AND institution_id = $2")
+            .bind(household_id)
+            .bind(institution_id)
+            .fetch_optional(pool)
+            .await
+            .unwrap();
+    if let Some((id,)) = existing {
+        return id;
+    }
+
+    let (id,): (i32,) = sqlx::query_as(
+        "INSERT INTO accounts (household_id, institution_id, name, type)
+         VALUES ($1, $2, 'Test Account', 'checking') RETURNING id",
+    )
+    .bind(household_id)
+    .bind(institution_id)
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    id
 }
 
 // --- POST /merchants ---

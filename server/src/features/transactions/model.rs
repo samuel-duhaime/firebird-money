@@ -20,8 +20,7 @@ pub struct Transaction {
     pub id: i64,
     pub household_id: i32,
     /// Which household member this transaction is attributed to — the `household_members` row of
-    /// whoever created it, not the free-text `account` column (a placeholder for a future *bank*
-    /// account concept).
+    /// whoever created it. Not to be confused with `account_id`, the bank account it's in.
     pub household_member_id: i32,
     pub date: NaiveDate,
     /// The raw payee/merchant text from the bank or import file, e.g. "STARBUCKS STORE #4521" —
@@ -36,7 +35,9 @@ pub struct Transaction {
     pub category_name_en: String,
     pub category_name_fr: String,
     pub category_type: String,
-    pub account: String,
+    /// The household's account (see `accounts`) this transaction is in.
+    pub account_id: i32,
+    pub account_name: String,
     pub reviewed: bool,
     pub created_at: DateTime<Utc>,
     /// Never read directly off a `transactions` row — there's no such column. Always populated
@@ -67,7 +68,9 @@ pub struct NewTransaction {
     pub merchant_id: Option<i32>,
     pub amount: Decimal,
     pub category_id: i32,
-    pub account: String,
+    /// Must be one of the caller's own household's accounts (enforced by the composite
+    /// `transactions_household_account_fkey`).
+    pub account_id: i32,
     pub reviewed: Option<bool>,
     /// Optional; absent or `[]` means no tags. Ids outside the caller's own household are
     /// silently dropped rather than rejected, same as `BulkUpdateRequest`'s `ids`.
@@ -120,8 +123,9 @@ pub struct ImportJobReport {
 pub struct TransactionFilter {
     pub date: Option<NaiveDate>,
     pub merchant_id: Option<i32>,
+    pub account_id: Option<i32>,
     /// Case-insensitive substring match against merchant name, original statement, category name,
-    /// tag name, or amount.
+    /// or amount.
     pub search: Option<String>,
     /// Inclusive lower bound on `date`.
     pub start_date: Option<NaiveDate>,
@@ -153,21 +157,22 @@ pub struct TransactionPatch {
     pub merchant_id: Option<i32>,
     pub amount: Option<Decimal>,
     pub category_id: Option<i32>,
-    pub account: Option<String>,
+    pub account_id: Option<i32>,
     /// `None` leaves tags unchanged. `Some(ids)` *replaces* the full tag set with exactly `ids`
     /// (so `Some([])` clears every tag) — unlike `BulkTransactionPatch::tag_ids`, which only adds.
     /// Ids outside the caller's own household are silently dropped.
     pub tag_ids: Option<Vec<i32>>,
 }
 
-/// The subset of [`TransactionPatch`] fields the bulk "edit multiple" panel exposes — no `amount`
-/// or `account`, since setting one dollar amount or account across several different transactions
-/// isn't a sensible bulk operation.
+/// The subset of [`TransactionPatch`] fields the bulk "edit multiple" panel exposes — no `amount`,
+/// since setting one dollar amount across several different transactions isn't a sensible bulk
+/// operation.
 #[derive(Debug, Deserialize)]
 pub struct BulkTransactionPatch {
     pub date: Option<NaiveDate>,
     pub merchant_id: Option<i32>,
     pub category_id: Option<i32>,
+    pub account_id: Option<i32>,
     /// `None` (or `Some([])`) leaves tags unchanged. `Some(ids)` *adds* `ids` to each selected
     /// transaction's existing tags — unlike `TransactionPatch::tag_ids`, nothing already on a
     /// transaction is ever removed this way. Ids outside the caller's own household are silently

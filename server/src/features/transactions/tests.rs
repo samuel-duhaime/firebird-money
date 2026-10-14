@@ -66,6 +66,8 @@ fn app_with_jobs(
         .configure(crate::features::category_groups::configure)
         .configure(crate::features::categories::configure)
         .configure(crate::features::tags::configure)
+        .configure(crate::features::institutions::configure)
+        .configure(crate::features::accounts::configure)
 }
 
 /// Signs in and completes onboarding (creating a fresh household), returning the session cookie.
@@ -230,6 +232,7 @@ where
     S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
     B: MessageBody,
 {
+    let account_id = crate::shared::test_support::test_account_id(app, cookie).await;
     let req = test::TestRequest::post()
         .uri("/transactions")
         .insert_header(("Cookie", cookie))
@@ -238,7 +241,7 @@ where
             "original_statement": statement,
             "amount": amount,
             "category_id": category_id,
-            "account": "User 1",
+            "account_id": account_id,
         }))
         .to_request();
     let resp = test::call_service(app, req).await;
@@ -318,6 +321,7 @@ async fn list_transactions_includes_tags(pool: PgPool) {
     let tag_a_id = create_tag_via_api(&app, &cookie, "Test Tag A").await;
     let tag_b_id = create_tag_via_api(&app, &cookie, "Test Tag B").await;
 
+    let account_id = crate::shared::test_support::test_account_id(&app, &cookie).await;
     let create_req = test::TestRequest::post()
         .uri("/transactions")
         .insert_header(("Cookie", cookie.clone()))
@@ -326,7 +330,7 @@ async fn list_transactions_includes_tags(pool: PgPool) {
             "original_statement": "STARBUCKS",
             "amount": "12.34",
             "category_id": category_id,
-            "account": "User 1",
+            "account_id": account_id,
             "tag_ids": [tag_a_id, tag_b_id],
         }))
         .to_request();
@@ -360,12 +364,13 @@ async fn list_transactions_includes_tags(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn list_transactions_search_matches_tag_name(pool: PgPool) {
+async fn list_transactions_search_does_not_match_tag_name(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
     let cookie = sign_in_with_household(&app, "sam@example.com").await;
     let category_id = create_other_category(&app, &cookie).await;
     let vacation_id = create_tag_via_api(&app, &cookie, "Vacation 2026").await;
 
+    let account_id = crate::shared::test_support::test_account_id(&app, &cookie).await;
     let create_req = test::TestRequest::post()
         .uri("/transactions")
         .insert_header(("Cookie", cookie.clone()))
@@ -374,7 +379,7 @@ async fn list_transactions_search_matches_tag_name(pool: PgPool) {
             "original_statement": "AIR CANADA",
             "amount": "250.00",
             "category_id": category_id,
-            "account": "User 1",
+            "account_id": account_id,
             "tag_ids": [vacation_id],
         }))
         .to_request();
@@ -386,10 +391,36 @@ async fn list_transactions_search_matches_tag_name(pool: PgPool) {
         .insert_header(("Cookie", cookie))
         .to_request();
     let body: serde_json::Value = test::call_and_read_body_json(&app, req).await;
+
+    assert_eq!(body.as_array().unwrap().len(), 0);
+}
+
+#[sqlx::test]
+async fn list_transactions_search_matches_original_statement(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    let id = create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS STORE #4521",
+        "12.34",
+    )
+    .await;
+    create_via_api(&app, &cookie, category_id, "2024-01-16", "IGA", "56.78").await;
+
+    // "#4521" only appears in the raw statement, not in the matched merchant's name.
+    let req = test::TestRequest::get()
+        .uri("/transactions?search=%234521")
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    let body: serde_json::Value = test::call_and_read_body_json(&app, req).await;
     let rows = body.as_array().unwrap();
 
     assert_eq!(rows.len(), 1);
-    assert_eq!(rows[0]["merchant_name"], "AIR CANADA");
+    assert_eq!(rows[0]["id"].as_i64().unwrap(), id);
 }
 
 #[sqlx::test]
@@ -1125,9 +1156,18 @@ async fn download_transactions_csv_contains_header_and_rows(pool: PgPool) {
     let body = test::read_body(resp).await;
     let csv = String::from_utf8(body.to_vec()).unwrap();
     let mut lines = csv.lines();
-    assert_eq!(lines.next().unwrap(), "Date,Merchant,Category,Tags,Amount");
-    assert_eq!(lines.next().unwrap(), "2024-01-16,IGA,Other,,56.78");
-    assert_eq!(lines.next().unwrap(), "2024-01-15,STARBUCKS,Other,,12.34");
+    assert_eq!(
+        lines.next().unwrap(),
+        "Date,Merchant,Category,Tags,Account,Amount"
+    );
+    assert_eq!(
+        lines.next().unwrap(),
+        "2024-01-16,IGA,Other,,Test Account,56.78"
+    );
+    assert_eq!(
+        lines.next().unwrap(),
+        "2024-01-15,STARBUCKS,Other,,Test Account,12.34"
+    );
 }
 
 #[sqlx::test]
@@ -1138,6 +1178,7 @@ async fn download_transactions_includes_tags_column(pool: PgPool) {
     let tag_a_id = create_tag_via_api(&app, &cookie, "Test Tag A").await;
     let tag_b_id = create_tag_via_api(&app, &cookie, "Test Tag B").await;
 
+    let account_id = crate::shared::test_support::test_account_id(&app, &cookie).await;
     let create_req = test::TestRequest::post()
         .uri("/transactions")
         .insert_header(("Cookie", cookie.clone()))
@@ -1146,7 +1187,7 @@ async fn download_transactions_includes_tags_column(pool: PgPool) {
             "original_statement": "STARBUCKS",
             "amount": "12.34",
             "category_id": category_id,
-            "account": "User 1",
+            "account_id": account_id,
             "tag_ids": [tag_a_id, tag_b_id],
         }))
         .to_request();
@@ -1163,7 +1204,7 @@ async fn download_transactions_includes_tags_column(pool: PgPool) {
     let csv = String::from_utf8(body.to_vec()).unwrap();
     assert_eq!(
         csv.lines().nth(1).unwrap(),
-        "2024-01-15,STARBUCKS,Other,\"Test Tag A, Test Tag B\",12.34"
+        "2024-01-15,STARBUCKS,Other,\"Test Tag A, Test Tag B\",Test Account,12.34"
     );
 }
 
@@ -1250,10 +1291,10 @@ async fn download_transactions_csv_escapes_formula_like_merchant(pool: PgPool) {
     let body = test::read_body(resp).await;
     let csv = String::from_utf8(body.to_vec()).unwrap();
     let rows: Vec<&str> = csv.lines().skip(1).collect();
-    assert_eq!(rows[0], "2024-01-15,'=SUM(A1:A2),Other,,12.34");
-    assert_eq!(rows[1], "2024-01-16,'+1234567890,Other,,20.00");
-    assert_eq!(rows[2], "2024-01-17,'-2+3,Other,,30.00");
-    assert_eq!(rows[3], "2024-01-18,'@SUM(A1),Other,,40.00");
+    assert_eq!(rows[0], "2024-01-15,'=SUM(A1:A2),Other,,Test Account,12.34");
+    assert_eq!(rows[1], "2024-01-16,'+1234567890,Other,,Test Account,20.00");
+    assert_eq!(rows[2], "2024-01-17,'-2+3,Other,,Test Account,30.00");
+    assert_eq!(rows[3], "2024-01-18,'@SUM(A1),Other,,Test Account,40.00");
 }
 
 #[sqlx::test]
@@ -1290,7 +1331,7 @@ async fn download_transactions_csv_escapes_formula_like_category(pool: PgPool) {
     let csv = String::from_utf8(body.to_vec()).unwrap();
     assert_eq!(
         csv.lines().nth(1).unwrap(),
-        "2024-01-15,STARBUCKS,'=cmd,,12.34"
+        "2024-01-15,STARBUCKS,'=cmd,,Test Account,12.34"
     );
 }
 
@@ -1436,8 +1477,14 @@ async fn download_transactions_respects_search_filter(pool: PgPool) {
     let body = test::read_body(resp).await;
     let csv = String::from_utf8(body.to_vec()).unwrap();
     let mut lines = csv.lines();
-    assert_eq!(lines.next().unwrap(), "Date,Merchant,Category,Tags,Amount");
-    assert_eq!(lines.next().unwrap(), "2024-01-15,STARBUCKS,Other,,12.34");
+    assert_eq!(
+        lines.next().unwrap(),
+        "Date,Merchant,Category,Tags,Account,Amount"
+    );
+    assert_eq!(
+        lines.next().unwrap(),
+        "2024-01-15,STARBUCKS,Other,,Test Account,12.34"
+    );
     assert!(lines.next().is_none());
 }
 
@@ -1467,8 +1514,14 @@ async fn download_transactions_respects_order(pool: PgPool) {
     let body = test::read_body(resp).await;
     let csv = String::from_utf8(body.to_vec()).unwrap();
     let mut lines = csv.lines().skip(1);
-    assert_eq!(lines.next().unwrap(), "2024-01-15,STARBUCKS,Other,,12.34");
-    assert_eq!(lines.next().unwrap(), "2024-01-16,IGA,Other,,56.78");
+    assert_eq!(
+        lines.next().unwrap(),
+        "2024-01-15,STARBUCKS,Other,,Test Account,12.34"
+    );
+    assert_eq!(
+        lines.next().unwrap(),
+        "2024-01-16,IGA,Other,,Test Account,56.78"
+    );
 }
 
 #[sqlx::test]
@@ -1541,6 +1594,7 @@ async fn get_transaction_includes_tags(pool: PgPool) {
     let category_id = create_other_category(&app, &cookie).await;
     let tag_id = create_tag_via_api(&app, &cookie, "Test Tag A").await;
 
+    let account_id = crate::shared::test_support::test_account_id(&app, &cookie).await;
     let create_req = test::TestRequest::post()
         .uri("/transactions")
         .insert_header(("Cookie", cookie.clone()))
@@ -1549,7 +1603,7 @@ async fn get_transaction_includes_tags(pool: PgPool) {
             "original_statement": "STARBUCKS",
             "amount": "12.34",
             "category_id": category_id,
-            "account": "User 1",
+            "account_id": account_id,
             "tag_ids": [tag_id],
         }))
         .to_request();
@@ -1656,6 +1710,7 @@ async fn create_transaction_returns_created_row(pool: PgPool) {
     let cookie = sign_in_with_household(&app, "sam@example.com").await;
     let category_id = create_other_category(&app, &cookie).await;
 
+    let account_id = crate::shared::test_support::test_account_id(&app, &cookie).await;
     let req = test::TestRequest::post()
         .uri("/transactions")
         .insert_header(("Cookie", cookie))
@@ -1664,7 +1719,7 @@ async fn create_transaction_returns_created_row(pool: PgPool) {
             "original_statement": "STARBUCKS",
             "amount": "12.34",
             "category_id": category_id,
-            "account": "User 1",
+            "account_id": account_id,
         }))
         .to_request();
     let resp = test::call_service(&app, req).await;
@@ -1699,6 +1754,7 @@ async fn create_transaction_persists_original_statement_separately_from_merchant
     let cookie = sign_in_with_household(&app, "sam@example.com").await;
     let category_id = create_other_category(&app, &cookie).await;
 
+    let account_id = crate::shared::test_support::test_account_id(&app, &cookie).await;
     let req = test::TestRequest::post()
         .uri("/transactions")
         .insert_header(("Cookie", cookie))
@@ -1707,7 +1763,7 @@ async fn create_transaction_persists_original_statement_separately_from_merchant
             "original_statement": "STARBUCKS STORE #4521",
             "amount": "12.34",
             "category_id": category_id,
-            "account": "User 1",
+            "account_id": account_id,
         }))
         .to_request();
     let body: serde_json::Value = test::call_and_read_body_json(&app, req).await;
@@ -1739,6 +1795,7 @@ async fn create_transaction_reuses_a_merchant_matched_from_a_second_statement(po
 
     // A second, differently-formatted statement containing the same merchant name should match
     // the custom merchant the first transaction just created, not create a second "Starbucks".
+    let account_id = crate::shared::test_support::test_account_id(&app, &cookie).await;
     let req = test::TestRequest::post()
         .uri("/transactions")
         .insert_header(("Cookie", cookie.clone()))
@@ -1747,7 +1804,7 @@ async fn create_transaction_reuses_a_merchant_matched_from_a_second_statement(po
             "original_statement": "STARBUCKS STORE #4521",
             "amount": "5.00",
             "category_id": category_id,
-            "account": "User 1",
+            "account_id": account_id,
         }))
         .to_request();
     let body: serde_json::Value = test::call_and_read_body_json(&app, req).await;
@@ -1767,6 +1824,7 @@ async fn create_transaction_matching_requires_a_word_boundary(pool: PgPool) {
 
     // "LTD" contains "TD" as a raw substring, but not at a word boundary, so it must not match the
     // "TD" merchant — it should fall back to creating its own new custom merchant instead.
+    let account_id = crate::shared::test_support::test_account_id(&app, &cookie).await;
     let req = test::TestRequest::post()
         .uri("/transactions")
         .insert_header(("Cookie", cookie.clone()))
@@ -1775,7 +1833,7 @@ async fn create_transaction_matching_requires_a_word_boundary(pool: PgPool) {
             "original_statement": "PAYMENT TO LTD COMPANY",
             "amount": "5.00",
             "category_id": category_id,
-            "account": "User 1",
+            "account_id": account_id,
         }))
         .to_request();
     let body: serde_json::Value = test::call_and_read_body_json(&app, req).await;
@@ -1784,6 +1842,7 @@ async fn create_transaction_matching_requires_a_word_boundary(pool: PgPool) {
     assert_eq!(body["merchant_name"], "PAYMENT TO LTD COMPANY");
 
     // "MY TD BANK VISA" does have "TD" at a word boundary, so it should match the existing merchant.
+    let account_id = crate::shared::test_support::test_account_id(&app, &cookie).await;
     let req = test::TestRequest::post()
         .uri("/transactions")
         .insert_header(("Cookie", cookie))
@@ -1792,7 +1851,7 @@ async fn create_transaction_matching_requires_a_word_boundary(pool: PgPool) {
             "original_statement": "MY TD BANK VISA",
             "amount": "5.00",
             "category_id": category_id,
-            "account": "User 1",
+            "account_id": account_id,
         }))
         .to_request();
     let body: serde_json::Value = test::call_and_read_body_json(&app, req).await;
@@ -1819,6 +1878,7 @@ async fn create_transaction_with_explicit_merchant_id_defaults_original_statemen
     .await;
     let merchant_id = transaction_merchant_id(&app, &cookie, first_id).await;
 
+    let account_id = crate::shared::test_support::test_account_id(&app, &cookie).await;
     // The manual "Add Transaction" shape: merchant_id picked explicitly, no original_statement —
     // there's no raw bank text for a manually-entered row, so the server falls back to the
     // merchant's own name.
@@ -1830,7 +1890,7 @@ async fn create_transaction_with_explicit_merchant_id_defaults_original_statemen
             "merchant_id": merchant_id,
             "amount": "7.00",
             "category_id": category_id,
-            "account": "Manual entry",
+            "account_id": account_id,
         }))
         .to_request();
     let body: serde_json::Value = test::call_and_read_body_json(&app, req).await;
@@ -1846,6 +1906,7 @@ async fn create_transaction_rejects_an_unknown_merchant_id(pool: PgPool) {
     let cookie = sign_in_with_household(&app, "sam@example.com").await;
     let category_id = create_other_category(&app, &cookie).await;
 
+    let account_id = crate::shared::test_support::test_account_id(&app, &cookie).await;
     let req = test::TestRequest::post()
         .uri("/transactions")
         .insert_header(("Cookie", cookie))
@@ -1854,7 +1915,7 @@ async fn create_transaction_rejects_an_unknown_merchant_id(pool: PgPool) {
             "merchant_id": 999999,
             "amount": "12.34",
             "category_id": category_id,
-            "account": "User 1",
+            "account_id": account_id,
         }))
         .to_request();
     let resp = test::call_service(&app, req).await;
@@ -1882,6 +1943,7 @@ async fn create_transaction_rejects_another_households_merchant_id(pool: PgPool)
     .await;
     let merchant_b_id = transaction_merchant_id(&app, &cookie_b, id_b).await;
 
+    let account_id = crate::shared::test_support::test_account_id(&app, &cookie_a).await;
     let req = test::TestRequest::post()
         .uri("/transactions")
         .insert_header(("Cookie", cookie_a))
@@ -1890,7 +1952,7 @@ async fn create_transaction_rejects_another_households_merchant_id(pool: PgPool)
             "merchant_id": merchant_b_id,
             "amount": "12.34",
             "category_id": category_a,
-            "account": "User 1",
+            "account_id": account_id,
         }))
         .to_request();
     let resp = test::call_service(&app, req).await;
@@ -1904,6 +1966,7 @@ async fn create_transaction_requires_a_merchant_id_or_original_statement(pool: P
     let cookie = sign_in_with_household(&app, "sam@example.com").await;
     let category_id = create_other_category(&app, &cookie).await;
 
+    let account_id = crate::shared::test_support::test_account_id(&app, &cookie).await;
     let req = test::TestRequest::post()
         .uri("/transactions")
         .insert_header(("Cookie", cookie))
@@ -1911,7 +1974,7 @@ async fn create_transaction_requires_a_merchant_id_or_original_statement(pool: P
             "date": "2024-01-15",
             "amount": "12.34",
             "category_id": category_id,
-            "account": "User 1",
+            "account_id": account_id,
         }))
         .to_request();
     let resp = test::call_service(&app, req).await;
@@ -1929,6 +1992,7 @@ async fn create_transaction_with_tag_ids_attaches_tags(pool: PgPool) {
     let tag_a_id = create_tag_via_api(&app, &cookie, "Test Tag A").await;
     let tag_b_id = create_tag_via_api(&app, &cookie, "Test Tag B").await;
 
+    let account_id = crate::shared::test_support::test_account_id(&app, &cookie).await;
     let req = test::TestRequest::post()
         .uri("/transactions")
         .insert_header(("Cookie", cookie))
@@ -1937,7 +2001,7 @@ async fn create_transaction_with_tag_ids_attaches_tags(pool: PgPool) {
             "original_statement": "STARBUCKS",
             "amount": "12.34",
             "category_id": category_id,
-            "account": "User 1",
+            "account_id": account_id,
             "tag_ids": [tag_a_id, tag_b_id],
         }))
         .to_request();
@@ -1962,6 +2026,7 @@ async fn create_transaction_ignores_tag_ids_from_another_household(pool: PgPool)
     let category_a = create_other_category(&app, &cookie_a).await;
     let tag_b = create_tag_via_api(&app, &cookie_b, "Only B's Tag").await;
 
+    let account_id = crate::shared::test_support::test_account_id(&app, &cookie_a).await;
     let req = test::TestRequest::post()
         .uri("/transactions")
         .insert_header(("Cookie", cookie_a))
@@ -1970,7 +2035,7 @@ async fn create_transaction_ignores_tag_ids_from_another_household(pool: PgPool)
             "original_statement": "STARBUCKS",
             "amount": "12.34",
             "category_id": category_a,
-            "account": "User 1",
+            "account_id": account_id,
             "tag_ids": [tag_b],
         }))
         .to_request();
@@ -1988,6 +2053,7 @@ async fn create_transaction_attributes_it_to_the_callers_membership(pool: PgPool
     let category_id = create_other_category(&app, &cookie).await;
     let expected_member_id = own_household_member_id(&app, &cookie).await;
 
+    let account_id = crate::shared::test_support::test_account_id(&app, &cookie).await;
     let req = test::TestRequest::post()
         .uri("/transactions")
         .insert_header(("Cookie", cookie))
@@ -1996,7 +2062,7 @@ async fn create_transaction_attributes_it_to_the_callers_membership(pool: PgPool
             "original_statement": "STARBUCKS",
             "amount": "12.34",
             "category_id": category_id,
-            "account": "User 1",
+            "account_id": account_id,
         }))
         .to_request();
     let body: serde_json::Value = test::call_and_read_body_json(&app, req).await;
@@ -2017,7 +2083,7 @@ async fn create_transaction_requires_a_session(pool: PgPool) {
             "original_statement": "STARBUCKS",
             "amount": "12.34",
             "category_id": 1,
-            "account": "User 1",
+            "account_id": 1,
         }))
         .to_request();
     let resp = test::call_service(&app, req).await;
@@ -2048,7 +2114,7 @@ async fn create_transaction_requires_a_household(pool: PgPool) {
             "original_statement": "STARBUCKS",
             "amount": "12.34",
             "category_id": 1,
-            "account": "User 1",
+            "account_id": 1,
         }))
         .to_request();
     let resp = test::call_service(&app, req).await;
@@ -2077,6 +2143,8 @@ async fn create_transaction_persists_all_fields(pool: PgPool) {
     let cookie = sign_in_with_household(&app, "sam@example.com").await;
     let category_id = education_category_id(&app, &cookie).await;
 
+    let account_id = crate::shared::test_support::test_account_id(&app, &cookie).await;
+
     let req = test::TestRequest::post()
         .uri("/transactions")
         .insert_header(("Cookie", cookie))
@@ -2085,7 +2153,7 @@ async fn create_transaction_persists_all_fields(pool: PgPool) {
             "original_statement": "STARBUCKS",
             "amount": "12.34",
             "category_id": category_id,
-            "account": "User 2",
+            "account_id": account_id,
         }))
         .to_request();
     let resp = test::call_service(&app, req).await;
@@ -2099,7 +2167,8 @@ async fn create_transaction_persists_all_fields(pool: PgPool) {
     assert_eq!(body["category_name_en"], "Education");
     assert_eq!(body["category_name_fr"], "Éducation");
     assert_eq!(body["category_type"], "expense");
-    assert_eq!(body["account"], "User 2");
+    assert_eq!(body["account_id"].as_i64().unwrap(), account_id);
+    assert_eq!(body["account_name"], "Test Account");
 }
 
 #[sqlx::test]
@@ -2108,6 +2177,7 @@ async fn create_transaction_defaults_reviewed_to_true(pool: PgPool) {
     let cookie = sign_in_with_household(&app, "sam@example.com").await;
     let category_id = create_other_category(&app, &cookie).await;
 
+    let account_id = crate::shared::test_support::test_account_id(&app, &cookie).await;
     let req = test::TestRequest::post()
         .uri("/transactions")
         .insert_header(("Cookie", cookie))
@@ -2116,7 +2186,7 @@ async fn create_transaction_defaults_reviewed_to_true(pool: PgPool) {
             "original_statement": "STARBUCKS",
             "amount": "12.34",
             "category_id": category_id,
-            "account": "User 1",
+            "account_id": account_id,
         }))
         .to_request();
     let resp = test::call_service(&app, req).await;
@@ -2132,6 +2202,7 @@ async fn create_transaction_respects_explicit_reviewed_false(pool: PgPool) {
     let cookie = sign_in_with_household(&app, "sam@example.com").await;
     let category_id = create_other_category(&app, &cookie).await;
 
+    let account_id = crate::shared::test_support::test_account_id(&app, &cookie).await;
     let req = test::TestRequest::post()
         .uri("/transactions")
         .insert_header(("Cookie", cookie))
@@ -2140,7 +2211,7 @@ async fn create_transaction_respects_explicit_reviewed_false(pool: PgPool) {
             "original_statement": "STARBUCKS",
             "amount": "12.34",
             "category_id": category_id,
-            "account": "User 1",
+            "account_id": account_id,
             "reviewed": false,
         }))
         .to_request();
@@ -2156,6 +2227,7 @@ async fn create_transaction_rejects_unknown_category_id(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
     let cookie = sign_in_with_household(&app, "sam@example.com").await;
 
+    let account_id = crate::shared::test_support::test_account_id(&app, &cookie).await;
     let req = test::TestRequest::post()
         .uri("/transactions")
         .insert_header(("Cookie", cookie))
@@ -2164,7 +2236,7 @@ async fn create_transaction_rejects_unknown_category_id(pool: PgPool) {
             "original_statement": "STARBUCKS",
             "amount": "12.34",
             "category_id": 999999,
-            "account": "User 1",
+            "account_id": account_id,
         }))
         .to_request();
     let resp = test::call_service(&app, req).await;
@@ -2181,6 +2253,7 @@ async fn create_transaction_rejects_another_households_category(pool: PgPool) {
     let cookie_b = sign_in_with_household(&app, "b@example.com").await;
     let category_a = create_other_category(&app, &cookie_a).await;
 
+    let account_id = crate::shared::test_support::test_account_id(&app, &cookie_b).await;
     let req = test::TestRequest::post()
         .uri("/transactions")
         .insert_header(("Cookie", cookie_b))
@@ -2189,7 +2262,7 @@ async fn create_transaction_rejects_another_households_category(pool: PgPool) {
             "original_statement": "STARBUCKS",
             "amount": "12.34",
             "category_id": category_a,
-            "account": "User 1",
+            "account_id": account_id,
         }))
         .to_request();
     let resp = test::call_service(&app, req).await;
@@ -2203,6 +2276,7 @@ async fn create_transaction_rejects_invalid_date(pool: PgPool) {
     let cookie = sign_in_with_household(&app, "sam@example.com").await;
     let category_id = create_other_category(&app, &cookie).await;
 
+    let account_id = crate::shared::test_support::test_account_id(&app, &cookie).await;
     let req = test::TestRequest::post()
         .uri("/transactions")
         .insert_header(("Cookie", cookie))
@@ -2211,7 +2285,7 @@ async fn create_transaction_rejects_invalid_date(pool: PgPool) {
             "original_statement": "STARBUCKS",
             "amount": "12.34",
             "category_id": category_id,
-            "account": "User 1",
+            "account_id": account_id,
         }))
         .to_request();
     let resp = test::call_service(&app, req).await;
@@ -2375,6 +2449,7 @@ async fn update_transaction_replaces_tags(pool: PgPool) {
     let tag_a_id = create_tag_via_api(&app, &cookie, "Test Tag A").await;
     let tag_b_id = create_tag_via_api(&app, &cookie, "Test Tag B").await;
 
+    let account_id = crate::shared::test_support::test_account_id(&app, &cookie).await;
     let create_req = test::TestRequest::post()
         .uri("/transactions")
         .insert_header(("Cookie", cookie.clone()))
@@ -2383,7 +2458,7 @@ async fn update_transaction_replaces_tags(pool: PgPool) {
             "original_statement": "STARBUCKS",
             "amount": "12.34",
             "category_id": category_id,
-            "account": "User 1",
+            "account_id": account_id,
             "tag_ids": [tag_a_id],
         }))
         .to_request();
@@ -2415,6 +2490,7 @@ async fn update_transaction_clears_tags_with_empty_array(pool: PgPool) {
     let category_id = create_other_category(&app, &cookie).await;
     let tag_a_id = create_tag_via_api(&app, &cookie, "Test Tag A").await;
 
+    let account_id = crate::shared::test_support::test_account_id(&app, &cookie).await;
     let create_req = test::TestRequest::post()
         .uri("/transactions")
         .insert_header(("Cookie", cookie.clone()))
@@ -2423,7 +2499,7 @@ async fn update_transaction_clears_tags_with_empty_array(pool: PgPool) {
             "original_statement": "STARBUCKS",
             "amount": "12.34",
             "category_id": category_id,
-            "account": "User 1",
+            "account_id": account_id,
             "tag_ids": [tag_a_id],
         }))
         .to_request();
@@ -2449,6 +2525,7 @@ async fn update_transaction_without_tag_ids_leaves_tags_unchanged(pool: PgPool) 
     let category_id = create_other_category(&app, &cookie).await;
     let tag_a_id = create_tag_via_api(&app, &cookie, "Test Tag A").await;
 
+    let account_id = crate::shared::test_support::test_account_id(&app, &cookie).await;
     let create_req = test::TestRequest::post()
         .uri("/transactions")
         .insert_header(("Cookie", cookie.clone()))
@@ -2457,7 +2534,7 @@ async fn update_transaction_without_tag_ids_leaves_tags_unchanged(pool: PgPool) 
             "original_statement": "STARBUCKS",
             "amount": "12.34",
             "category_id": category_id,
-            "account": "User 1",
+            "account_id": account_id,
             "tag_ids": [tag_a_id],
         }))
         .to_request();
@@ -2639,6 +2716,7 @@ async fn bulk_update_transactions_adds_tags_without_removing_existing(pool: PgPo
     let tag_b_id = create_tag_via_api(&app, &cookie, "Test Tag B").await;
 
     // One transaction already carries a tag — the bulk add below must keep it, not replace it.
+    let account_id = crate::shared::test_support::test_account_id(&app, &cookie).await;
     let create_req = test::TestRequest::post()
         .uri("/transactions")
         .insert_header(("Cookie", cookie.clone()))
@@ -2647,7 +2725,7 @@ async fn bulk_update_transactions_adds_tags_without_removing_existing(pool: PgPo
             "original_statement": "STARBUCKS",
             "amount": "12.34",
             "category_id": category_id,
-            "account": "User 1",
+            "account_id": account_id,
             "tag_ids": [tag_a_id],
         }))
         .to_request();
@@ -3081,4 +3159,192 @@ async fn delete_transaction_twice_returns_not_found_second_time(pool: PgPool) {
         .to_request();
     let second_resp = test::call_service(&app, second_req).await;
     assert_eq!(second_resp.status(), 404);
+}
+
+// --- account_id ---
+
+/// Creates a second account (in its own custom institution) and returns its id.
+async fn create_second_account<S, B>(app: &S, cookie: &str, name: &str) -> i64
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let req = test::TestRequest::post()
+        .uri("/institutions")
+        .insert_header(("Cookie", cookie))
+        .set_json(serde_json::json!({ "name": format!("{name} Bank") }))
+        .to_request();
+    let institution: serde_json::Value = test::call_and_read_body_json(app, req).await;
+
+    let req = test::TestRequest::post()
+        .uri("/accounts")
+        .insert_header(("Cookie", cookie))
+        .set_json(serde_json::json!({
+            "institution_id": institution["id"],
+            "name": name,
+            "type": "savings",
+        }))
+        .to_request();
+    let account: serde_json::Value = test::call_and_read_body_json(app, req).await;
+    account["id"].as_i64().unwrap()
+}
+
+#[sqlx::test]
+async fn create_transaction_rejects_another_households_account(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie_a = sign_in_with_household(&app, "a@example.com").await;
+    let cookie_b = sign_in_with_household(&app, "b@example.com").await;
+    let foreign_account_id = crate::shared::test_support::test_account_id(&app, &cookie_a).await;
+    let category_id = create_other_category(&app, &cookie_b).await;
+
+    let req = test::TestRequest::post()
+        .uri("/transactions")
+        .insert_header(("Cookie", cookie_b))
+        .set_json(serde_json::json!({
+            "date": "2024-01-15",
+            "original_statement": "STARBUCKS",
+            "amount": "12.34",
+            "category_id": category_id,
+            "account_id": foreign_account_id,
+        }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 400);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert!(body["error"].as_str().unwrap().contains("account"));
+}
+
+#[sqlx::test]
+async fn update_transaction_moves_it_to_another_account(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    let id = create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "12.34",
+    )
+    .await;
+    let savings_id = create_second_account(&app, &cookie, "Savings").await;
+
+    let req = test::TestRequest::patch()
+        .uri(&format!("/transactions/{id}"))
+        .insert_header(("Cookie", cookie))
+        .set_json(serde_json::json!({ "account_id": savings_id }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["account_id"].as_i64().unwrap(), savings_id);
+    assert_eq!(body["account_name"], "Savings");
+}
+
+#[sqlx::test]
+async fn update_transaction_rejects_another_households_account(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie_a = sign_in_with_household(&app, "a@example.com").await;
+    let cookie_b = sign_in_with_household(&app, "b@example.com").await;
+    let foreign_account_id = crate::shared::test_support::test_account_id(&app, &cookie_a).await;
+    let category_id = create_other_category(&app, &cookie_b).await;
+    let id = create_via_api(
+        &app,
+        &cookie_b,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "12.34",
+    )
+    .await;
+
+    let req = test::TestRequest::patch()
+        .uri(&format!("/transactions/{id}"))
+        .insert_header(("Cookie", cookie_b))
+        .set_json(serde_json::json!({ "account_id": foreign_account_id }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 400);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert!(body["error"].as_str().unwrap().contains("account"));
+}
+
+#[sqlx::test]
+async fn bulk_update_transactions_moves_them_to_another_account(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    let first = create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "1.00",
+    )
+    .await;
+    let second = create_via_api(&app, &cookie, category_id, "2024-01-16", "IGA", "2.00").await;
+    let savings_id = create_second_account(&app, &cookie, "Savings").await;
+
+    let req = test::TestRequest::patch()
+        .uri("/transactions/bulk")
+        .insert_header(("Cookie", cookie))
+        .set_json(serde_json::json!({
+            "ids": [first, second],
+            "patch": { "account_id": savings_id },
+        }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    let rows = body.as_array().unwrap();
+    assert_eq!(rows.len(), 2);
+    assert!(rows
+        .iter()
+        .all(|row| row["account_id"].as_i64() == Some(savings_id)));
+}
+
+#[sqlx::test]
+async fn list_transactions_filters_by_account_id_but_search_ignores_account_name(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "1.00",
+    )
+    .await;
+    let moved = create_via_api(&app, &cookie, category_id, "2024-01-16", "IGA", "2.00").await;
+    let savings_id = create_second_account(&app, &cookie, "Vacances").await;
+    let req = test::TestRequest::patch()
+        .uri(&format!("/transactions/{moved}"))
+        .insert_header(("Cookie", cookie.clone()))
+        .set_json(serde_json::json!({ "account_id": savings_id }))
+        .to_request();
+    assert_eq!(test::call_service(&app, req).await.status(), 200);
+
+    let req = test::TestRequest::get()
+        .uri(&format!("/transactions?account_id={savings_id}"))
+        .insert_header(("Cookie", cookie.clone()))
+        .to_request();
+    let body: serde_json::Value = test::call_and_read_body_json(&app, req).await;
+    let rows = body.as_array().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["id"].as_i64().unwrap(), moved);
+
+    let req = test::TestRequest::get()
+        .uri("/transactions?search=vacances")
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    let body: serde_json::Value = test::call_and_read_body_json(&app, req).await;
+    assert_eq!(body.as_array().unwrap().len(), 0);
 }

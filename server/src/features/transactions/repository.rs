@@ -12,12 +12,13 @@ const SELECT_COLUMNS: &str = "
     t.id, t.household_id, t.household_member_id, t.date, t.original_statement, t.merchant_id,
     mch.name AS merchant_name, mch.logo_url AS merchant_logo_url, t.amount, t.category_id,
     c.name_en AS category_name_en, c.name_fr AS category_name_fr, g.type AS category_type,
-    t.account, t.reviewed, t.created_at";
+    t.account_id, a.name AS account_name, t.reviewed, t.created_at";
 
 const FROM_JOIN: &str = "FROM transactions t
     JOIN merchants mch ON mch.id = t.merchant_id
     JOIN categories c ON c.id = t.category_id
-    JOIN category_groups g ON g.id = c.group_id";
+    JOIN category_groups g ON g.id = c.group_id
+    JOIN accounts a ON a.id = t.account_id";
 
 /// Escapes `\`, `%`, and `_` so a search term is matched as a literal substring by `ILIKE ...
 /// ESCAPE E'\\'`, rather than having `%`/`_` act as wildcards. Backslashes must be escaped first,
@@ -173,7 +174,7 @@ pub async fn create(
         "WITH inserted AS (
             INSERT INTO transactions
                 (household_id, household_member_id, date, original_statement, merchant_id, amount,
-                 category_id, account, reviewed)
+                 category_id, account_id, reviewed)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             RETURNING *
          )
@@ -181,7 +182,8 @@ pub async fn create(
          FROM inserted t
          JOIN merchants mch ON mch.id = t.merchant_id
          JOIN categories c ON c.id = t.category_id
-         JOIN category_groups g ON g.id = c.group_id"
+         JOIN category_groups g ON g.id = c.group_id
+         JOIN accounts a ON a.id = t.account_id"
     ))
     .bind(household_id)
     .bind(household_member_id)
@@ -190,7 +192,7 @@ pub async fn create(
     .bind(merchant_id)
     .bind(new_transaction.amount)
     .bind(new_transaction.category_id)
-    .bind(&new_transaction.account)
+    .bind(new_transaction.account_id)
     .bind(new_transaction.reviewed.unwrap_or(true))
     .fetch_one(&mut *tx)
     .await?;
@@ -206,9 +208,9 @@ pub async fn create(
 }
 
 /// Lists a household's transactions, optionally narrowed by an exact date match, a
-/// `start_date`/`end_date` range, an exact `merchant_id`, and/or a free-text search across merchant
-/// name, original statement, category name, tag name, and amount. Sorted per `filter.order` (most
-/// recent first by default).
+/// `start_date`/`end_date` range, an exact `merchant_id` or `account_id`, and/or a free-text search
+/// across merchant name, original statement, category name, and amount.
+/// Sorted per `filter.order` (most recent first by default).
 pub async fn list(
     pool: &PgPool,
     household_id: i32,
@@ -235,15 +237,10 @@ pub async fn list(
               OR c.name_en ILIKE '%' || $4 || '%' ESCAPE E'\\\\'
               OR c.name_fr ILIKE '%' || $4 || '%' ESCAPE E'\\\\'
               OR t.amount::text ILIKE '%' || $4 || '%' ESCAPE E'\\\\'
-              OR EXISTS (
-                   SELECT 1 FROM transaction_tags tt
-                   JOIN tags tg ON tg.id = tt.tag_id
-                   WHERE tt.transaction_id = t.id
-                     AND tg.name ILIKE '%' || $4 || '%' ESCAPE E'\\\\'
-                 )
            ))
            AND ($5::date IS NULL OR t.date >= $5)
            AND ($6::date IS NULL OR t.date <= $6)
+           AND ($7::integer IS NULL OR t.account_id = $7)
          ORDER BY {order_by}"
     ))
     .bind(household_id)
@@ -252,6 +249,7 @@ pub async fn list(
     .bind(&escaped_search)
     .bind(filter.start_date)
     .bind(filter.end_date)
+    .bind(filter.account_id)
     .fetch_all(pool)
     .await?;
 
@@ -307,7 +305,7 @@ pub async fn update(
                 merchant_id = COALESCE($4, merchant_id),
                 amount = COALESCE($5, amount),
                 category_id = COALESCE($6, category_id),
-                account = COALESCE($7, account)
+                account_id = COALESCE($7, account_id)
             WHERE id = $1 AND household_id = $2
             RETURNING *
          )
@@ -315,7 +313,8 @@ pub async fn update(
          FROM updated t
          JOIN merchants mch ON mch.id = t.merchant_id
          JOIN categories c ON c.id = t.category_id
-         JOIN category_groups g ON g.id = c.group_id"
+         JOIN category_groups g ON g.id = c.group_id
+         JOIN accounts a ON a.id = t.account_id"
     ))
     .bind(id)
     .bind(household_id)
@@ -323,7 +322,7 @@ pub async fn update(
     .bind(patch.merchant_id)
     .bind(patch.amount)
     .bind(patch.category_id)
-    .bind(&patch.account)
+    .bind(patch.account_id)
     .fetch_optional(&mut *tx)
     .await?;
 
@@ -377,7 +376,8 @@ pub async fn bulk_update(
             UPDATE transactions
             SET date = COALESCE($3, date),
                 merchant_id = COALESCE($4, merchant_id),
-                category_id = COALESCE($5, category_id)
+                category_id = COALESCE($5, category_id),
+                account_id = COALESCE($6, account_id)
             WHERE id = ANY($1) AND household_id = $2
             RETURNING *
          )
@@ -385,13 +385,15 @@ pub async fn bulk_update(
          FROM updated t
          JOIN merchants mch ON mch.id = t.merchant_id
          JOIN categories c ON c.id = t.category_id
-         JOIN category_groups g ON g.id = c.group_id"
+         JOIN category_groups g ON g.id = c.group_id
+         JOIN accounts a ON a.id = t.account_id"
     ))
     .bind(ids)
     .bind(household_id)
     .bind(patch.date)
     .bind(patch.merchant_id)
     .bind(patch.category_id)
+    .bind(patch.account_id)
     .fetch_all(&mut *tx)
     .await?;
 
