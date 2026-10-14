@@ -689,6 +689,53 @@ async fn onboarding_only_saves_the_name_when_the_user_already_has_a_household(po
 }
 
 #[sqlx::test]
+async fn a_user_removed_from_their_household_can_onboard_again(pool: PgPool) {
+    // The household step stays recorded after a membership is deleted, but without a household
+    // it must count as pending again — otherwise the user is stuck with no way back in.
+    let app = test::init_service(app_with(pool.clone())).await;
+    let cookie = sign_in(&app, "sam@example.com").await;
+
+    let first = test::TestRequest::post()
+        .uri("/auth/onboarding")
+        .insert_header(("Cookie", cookie.clone()))
+        .set_json(serde_json::json!({ "first_name": "Sam" }))
+        .to_request();
+    let first: serde_json::Value = test::call_and_read_body_json(&app, first).await;
+    let first_household_id = first["household"]["household_id"].clone();
+
+    sqlx::query(
+        "DELETE FROM household_members
+         WHERE user_id = (SELECT id FROM users WHERE email = 'sam@example.com')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let me_req = test::TestRequest::get()
+        .uri("/auth/me")
+        .insert_header(("Cookie", cookie.clone()))
+        .to_request();
+    let me: serde_json::Value = test::call_and_read_body_json(&app, me_req).await;
+    assert_eq!(
+        me["pending_onboarding_steps"],
+        serde_json::json!(["household"])
+    );
+
+    let again = test::TestRequest::post()
+        .uri("/auth/onboarding")
+        .insert_header(("Cookie", cookie))
+        .set_json(serde_json::json!({ "first_name": "Sam" }))
+        .to_request();
+    let resp = test::call_service(&app, again).await;
+
+    assert_eq!(resp.status(), 201);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["household"]["type"], "family_manager");
+    assert_ne!(body["household"]["household_id"], first_household_id);
+    assert_eq!(body["pending_onboarding_steps"], serde_json::json!([]));
+}
+
+#[sqlx::test]
 async fn onboarding_requires_a_session(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
 

@@ -52,6 +52,19 @@ pub const HOUSEHOLD_STEP: &str = "household";
 /// `users.onboarding_steps` CHECK constraint) sends everyone who hasn't done it back to onboarding.
 pub const ONBOARDING_STEPS: [&str; 2] = [NAME_STEP, HOUSEHOLD_STEP];
 
+/// The `ONBOARDING_STEPS` this user still has to finish, in order. The household step also counts
+/// as pending whenever they have no household, even if it's recorded as done — someone removed
+/// from their household must be able to go back through onboarding to create or join another.
+pub fn pending_onboarding_steps(user: &User, household: Option<&Membership>) -> Vec<&'static str> {
+    ONBOARDING_STEPS
+        .into_iter()
+        .filter(|&step| {
+            let recorded = user.onboarding_steps.iter().any(|done| done == step);
+            !recorded || (step == HOUSEHOLD_STEP && household.is_none())
+        })
+        .collect()
+}
+
 /// Who the caller is: the user plus the household they belong to, if any (nobody has one until
 /// onboarding). The payload behind `GET /auth/me`, and what a successful login returns so the
 /// client doesn't need a second call.
@@ -67,10 +80,7 @@ pub struct AuthSession {
 
 impl AuthSession {
     pub fn new(user: User, household: Option<Membership>) -> Self {
-        let pending_onboarding_steps = ONBOARDING_STEPS
-            .into_iter()
-            .filter(|step| !user.onboarding_steps.iter().any(|done| done == step))
-            .collect();
+        let pending_onboarding_steps = pending_onboarding_steps(&user, household.as_ref());
 
         Self {
             user,

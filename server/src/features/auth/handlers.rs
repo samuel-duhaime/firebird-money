@@ -13,8 +13,8 @@ use log::error;
 use sqlx::PgPool;
 
 use super::model::{
-    normalize_email, AuthSession, LoginRequest, OnboardingRequest, RequestLoginResponse,
-    VerifyQuery, HOUSEHOLD_STEP, NAME_STEP, ONBOARDING_STEPS,
+    normalize_email, pending_onboarding_steps, AuthSession, LoginRequest, OnboardingRequest,
+    RequestLoginResponse, VerifyQuery, HOUSEHOLD_STEP, NAME_STEP,
 };
 use super::session::{build_removal_cookie, build_session_cookie, session_token};
 use super::{repository, tokens, CurrentUser};
@@ -196,10 +196,7 @@ async fn onboarding(
     let locale = l10n.locale();
     let user = current_user.user;
 
-    let finished = ONBOARDING_STEPS
-        .iter()
-        .all(|step| user.onboarding_steps.iter().any(|done| done == step));
-    if finished {
+    if pending_onboarding_steps(&user, current_user.household.as_ref()).is_empty() {
         return error_response(
             &l10n,
             &locale,
