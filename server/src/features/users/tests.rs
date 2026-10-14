@@ -340,7 +340,7 @@ async fn delete_user_rejects_when_referenced_by_member(pool: PgPool) {
     let onboard_req = test::TestRequest::post()
         .uri("/auth/onboarding")
         .insert_header(("Cookie", cookie.clone()))
-        .set_json(serde_json::json!({}))
+        .set_json(serde_json::json!({ "first_name": "Test", "last_name": "User" }))
         .to_request();
     assert_eq!(test::call_service(&app, onboard_req).await.status(), 201);
 

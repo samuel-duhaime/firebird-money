@@ -10,7 +10,7 @@ test.describe('Household > Merchants settings', () => {
       .getByRole('link', { name: 'Household', exact: true })
       .click();
 
-    await expect(authedPage).toHaveURL('/settings/tags');
+    await expect(authedPage).toHaveURL('/settings/members');
     await authedPage
       .getByRole('link', { name: 'Merchants', exact: true })
       .click();

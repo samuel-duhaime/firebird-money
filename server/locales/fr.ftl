@@ -40,6 +40,7 @@ auth-no-household = Vous devez appartenir à un ménage
 auth-join-code-not-found = Aucun ménage ne correspond à ce code d’invitation
 auth-join-code-blank = join_code ne peut pas être vide; omets-le pour créer un nouveau ménage à la place
 auth-already-in-household = Vous êtes déjà connecté à un ménage
+auth-name-required = Un prénom est requis
 import-job-not-found = Aucune tâche d’importation avec cet identifiant
 import-file-required = Un fichier à importer est requis
 import-file-too-large = Le fichier téléversé est trop volumineux (10 Mo maximum)

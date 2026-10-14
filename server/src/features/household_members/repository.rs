@@ -1,7 +1,8 @@
 use sqlx::PgPool;
 
 use super::model::{
-    HouseholdMember, HouseholdMemberFilter, HouseholdMemberPatch, NewHouseholdMember,
+    HouseholdMember, HouseholdMemberFilter, HouseholdMemberPatch, HouseholdMemberWithUser,
+    NewHouseholdMember,
 };
 
 const SELECT_COLUMNS: &str = "id, household_id, user_id, type, created_at";
@@ -29,18 +30,23 @@ where
     .await
 }
 
-/// Lists a household's memberships, optionally narrowed to a single user.
+/// Lists a household's memberships with each member's user details, optionally narrowed to a
+/// single user.
 pub async fn list(
     pool: &PgPool,
     household_id: i32,
     filter: &HouseholdMemberFilter,
-) -> Result<Vec<HouseholdMember>, sqlx::Error> {
-    sqlx::query_as::<_, HouseholdMember>(&format!(
-        "SELECT {SELECT_COLUMNS} FROM household_members
-         WHERE household_id = $1
-           AND ($2::int IS NULL OR user_id = $2)
-         ORDER BY id"
-    ))
+) -> Result<Vec<HouseholdMemberWithUser>, sqlx::Error> {
+    sqlx::query_as::<_, HouseholdMemberWithUser>(
+        "SELECT household_members.id, household_members.household_id, household_members.user_id,
+                household_members.type, household_members.created_at,
+                users.email, users.first_name, users.last_name, users.status
+         FROM household_members
+         JOIN users ON users.id = household_members.user_id
+         WHERE household_members.household_id = $1
+           AND ($2::int IS NULL OR household_members.user_id = $2)
+         ORDER BY household_members.id",
+    )
     .bind(household_id)
     .bind(filter.user_id)
     .fetch_all(pool)

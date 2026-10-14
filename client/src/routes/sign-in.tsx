@@ -6,7 +6,10 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPaperPlane } from '@fortawesome/free-solid-svg-icons';
 import { requestLogin } from '../features/auth/utils/api';
 import { useSetCurrentUser } from '../features/auth/hooks/use-current-user';
-import { redirectIfAuthenticated } from '../features/auth/utils/require-auth';
+import {
+  homePathFor,
+  redirectIfAuthenticated,
+} from '../features/auth/utils/require-auth';
 import { signInFailedToast } from '../lib/toast';
 import './auth.css';
 
@@ -28,9 +31,7 @@ const SignInPage = () => {
       // The server skipped the email (localhost without a mail provider) and signed us in.
       if (response.status === 'signed_in') {
         setCurrentUser(response.session);
-        navigate({
-          to: response.session.household !== null ? '/dashboard' : '/onboarding',
-        });
+        navigate({ to: homePathFor(response.session) });
         return;
       }
 

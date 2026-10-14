@@ -9,11 +9,12 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import { verifyLogin } from '../features/auth/utils/api';
 import { useSetCurrentUser } from '../features/auth/hooks/use-current-user';
+import { homePathFor } from '../features/auth/utils/require-auth';
 import './auth.css';
 
 /**
  * Where a magic link lands. Spends the token for a session, then sends the user on to onboarding
- * (first login) or the dashboard.
+ * (until it's finished) or the dashboard.
  */
 const VerifyPage = () => {
   const { t } = useTranslation();
@@ -38,9 +39,7 @@ const VerifyPage = () => {
     }
 
     setCurrentUser(session);
-    navigate({
-      to: session.household !== null ? '/dashboard' : '/onboarding',
-    });
+    navigate({ to: homePathFor(session) });
   }, [session, setCurrentUser, navigate]);
 
   if (token === '' || verification.isError) {

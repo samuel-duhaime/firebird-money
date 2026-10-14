@@ -4,7 +4,7 @@ use super::model::{NewUser, User, UserPatch};
 use crate::shared::http_error::is_unique_violation;
 
 const SELECT_COLUMNS: &str =
-    "id, email, google_id, status, first_name, last_name, avatar_url, created_at";
+    "id, email, google_id, status, first_name, last_name, avatar_url, onboarding_steps, created_at";
 
 /// Inserts a new user and returns the created row. `status` starts at `pending`.
 pub async fn create(pool: &PgPool, new_user: &NewUser) -> Result<User, sqlx::Error> {

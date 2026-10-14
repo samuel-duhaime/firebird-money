@@ -40,6 +40,7 @@ auth-no-household = You must belong to a household
 auth-join-code-not-found = No household matches this join code
 auth-join-code-blank = join_code cannot be blank; omit it to create a new household instead
 auth-already-in-household = You are already connected to a household
+auth-name-required = A first name is required
 import-job-not-found = No import job found
 import-file-required = A file to import is required
 import-file-too-large = The uploaded file is too large (10 MB max)

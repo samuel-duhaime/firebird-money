@@ -120,9 +120,9 @@ same way, except for a shared common set every household can see but never modif
 
 - `POST /auth/request-login` — email a one-time magic link (`email`, optional `language`). Creates the account if the address is new. Answers `{"status": "email_sent"}`, or `{"status": "signed_in", "session": {…}}` when `SKIP_EMAIL_VERIFICATION` is on.
 - `GET /auth/verify?token=` — spend the token and open a session. Returns the `GET /auth/me` payload; `400` if the token is unknown, expired, or already spent.
-- `GET /auth/me` — the signed-in `user` and the `household` they belong to (`null` before onboarding). `401` without a session.
+- `GET /auth/me` — the signed-in `user` and the `household` they belong to (`null` before onboarding). `pending_onboarding_steps` lists the onboarding steps (`name`, `household`) the user still has to finish — the client keeps sending them back to `/onboarding` until it's empty. Finished steps are stored in `user.onboarding_steps`. `401` without a session.
 - `POST /auth/logout` — end the session. Idempotent.
-- `POST /auth/onboarding` — create a household (`family_manager`) or, with a `join_code`, join one (`family_member`). `404` for an unknown code, `409` if already a member.
+- `POST /auth/onboarding` — save the caller's name (`first_name` required, `last_name` optional) and create a household (`family_manager`) or, with a `join_code`, join one (`family_member`), then record both steps in `onboarding_steps`. A caller who already has a household only has their name saved. `400` without a first name, `404` for an unknown code, `409` if already onboarded or already a member.
 
 Magic links last 15 minutes and work once. The session cookie is httpOnly and SameSite=Lax, Secure in production, so browser calls need `fetch(…, { credentials: 'include' })`.
 
@@ -206,7 +206,7 @@ A user is a standalone login identity — how they relate to their (at most one)
 
 `/household-members`:
 
-- `GET /household-members` — list the caller's household's memberships, optionally filtered by `?user_id=`.
+- `GET /household-members` — list the caller's household's memberships, each with the member's `email`, `first_name`, `last_name`, and `status`, optionally filtered by `?user_id=`.
 - `GET /household-members/{id}` — fetch a single membership.
 - `POST /household-members` — connect a user to the caller's own household with a role (`user_id`, `type`, where `type` is `family_manager` or `family_member`). Only an existing `family_manager` of that household may do this; `household_id` is never read from the body — it's always the caller's own. A user belongs to at most one household, ever — not just one per `household_id`.
 - `PATCH /household-members/{id}` — change a membership's role (`type`).

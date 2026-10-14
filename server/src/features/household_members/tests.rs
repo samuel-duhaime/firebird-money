@@ -72,7 +72,7 @@ where
     let onboard_req = test::TestRequest::post()
         .uri("/auth/onboarding")
         .insert_header(("Cookie", cookie.clone()))
-        .set_json(serde_json::json!({}))
+        .set_json(serde_json::json!({ "first_name": "Test", "last_name": "User" }))
         .to_request();
     assert_eq!(test::call_service(app, onboard_req).await.status(), 201);
 
@@ -223,7 +223,7 @@ where
     let onboard_req = test::TestRequest::post()
         .uri("/auth/onboarding")
         .insert_header(("Cookie", cookie.clone()))
-        .set_json(serde_json::json!({ "join_code": join_code }))
+        .set_json(serde_json::json!({ "first_name": "Test", "last_name": "User", "join_code": join_code }))
         .to_request();
     assert_eq!(test::call_service(app, onboard_req).await.status(), 201);
 
@@ -351,6 +351,26 @@ async fn list_household_members_filters_by_user(pool: PgPool) {
 
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0]["user_id"].as_i64().unwrap(), jane_id);
+}
+
+#[sqlx::test]
+async fn list_household_members_includes_each_members_user_details(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+
+    let req = test::TestRequest::get()
+        .uri("/household-members")
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    let body: serde_json::Value = test::call_and_read_body_json(&app, req).await;
+    let rows = body.as_array().unwrap();
+
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0]["email"], "sam@example.com");
+    assert_eq!(rows[0]["first_name"], "Test");
+    assert_eq!(rows[0]["last_name"], "User");
+    assert_eq!(rows[0]["status"], "pending");
+    assert_eq!(rows[0]["type"], "family_manager");
 }
 
 // --- GET /household-members/{id} ---
