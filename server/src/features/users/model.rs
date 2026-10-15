@@ -2,8 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
-/// A single row in the `users` table. How a user relates to their (at most one) household lives
-/// in `household_members`, not here.
+/// A single row in the `users` table.
 #[derive(Debug, Serialize, FromRow)]
 pub struct User {
     pub id: i32,
@@ -18,6 +17,10 @@ pub struct User {
     pub avatar_url: Option<String>,
     /// Onboarding steps this user has finished (see `auth::model::ONBOARDING_STEPS`).
     pub onboarding_steps: Vec<String>,
+    /// The household this user belongs to (at most one, ever), or `None` until onboarding.
+    pub household_id: Option<i32>,
+    /// `family_manager` or `family_member` — set whenever `household_id` is.
+    pub household_role: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 

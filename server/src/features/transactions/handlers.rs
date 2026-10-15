@@ -77,10 +77,6 @@ async fn create_transaction(
         Ok(id) => id,
         Err(response) => return response,
     };
-    let household_member_id = match current_user.require_household_member_id(&l10n, &locale) {
-        Ok(id) => id,
-        Err(response) => return response,
-    };
 
     let has_statement = new_transaction
         .original_statement
@@ -95,7 +91,7 @@ async fn create_transaction(
         );
     }
 
-    match repository::create(&pool, household_id, household_member_id, &new_transaction).await {
+    match repository::create(&pool, household_id, current_user.user.id, &new_transaction).await {
         Ok(transaction) => HttpResponse::Created()
             .insert_header(("Location", format!("/transactions/{}", transaction.id)))
             .json(transaction),

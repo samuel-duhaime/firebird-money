@@ -333,7 +333,7 @@ async fn delete_user_from_another_user_is_not_found(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn delete_user_rejects_when_referenced_by_member(pool: PgPool) {
+async fn delete_user_rejects_while_in_a_household(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
     let (cookie, id) = sign_in_with_id(&app, "jane@example.com").await;
 

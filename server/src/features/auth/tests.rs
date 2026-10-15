@@ -399,7 +399,7 @@ async fn onboarding_creates_a_household_and_makes_the_caller_its_manager(pool: P
     assert_eq!(resp.status(), 201);
     let body: serde_json::Value = test::read_body_json(resp).await;
     let household = &body["household"];
-    assert_eq!(household["type"], "family_manager");
+    assert_eq!(household["role"], "family_manager");
     assert_eq!(
         household["join_code"].as_str().unwrap().len(),
         8,
@@ -430,7 +430,7 @@ async fn onboarding_joins_an_existing_household_by_join_code(pool: PgPool) {
 
     assert_eq!(join_resp.status(), 201);
     let body: serde_json::Value = test::read_body_json(join_resp).await;
-    assert_eq!(body["household"]["type"], "family_member");
+    assert_eq!(body["household"]["role"], "family_member");
     assert_eq!(
         body["household"]["household_id"], created["household"]["household_id"],
         "joined the manager's household, not a new one"
@@ -666,8 +666,8 @@ async fn onboarding_only_saves_the_name_when_the_user_already_has_a_household(po
             .await
             .unwrap();
     sqlx::query(
-        "INSERT INTO household_members (household_id, user_id, type)
-         SELECT $1, id, 'family_member' FROM users WHERE email = 'sam@example.com'",
+        "UPDATE users SET household_id = $1, household_role = 'family_member'
+         WHERE email = 'sam@example.com'",
     )
     .bind(household_id)
     .execute(&pool)
@@ -684,13 +684,13 @@ async fn onboarding_only_saves_the_name_when_the_user_already_has_a_household(po
     assert_eq!(resp.status(), 201);
     let body: serde_json::Value = test::read_body_json(resp).await;
     assert_eq!(body["household"]["household_id"], household_id);
-    assert_eq!(body["household"]["type"], "family_member");
+    assert_eq!(body["household"]["role"], "family_member");
     assert_eq!(body["pending_onboarding_steps"], serde_json::json!([]));
 }
 
 #[sqlx::test]
 async fn a_user_removed_from_their_household_can_onboard_again(pool: PgPool) {
-    // The household step stays recorded after a membership is deleted, but without a household
+    // The household step stays recorded after they're removed from it, but without a household
     // it must count as pending again — otherwise the user is stuck with no way back in.
     let app = test::init_service(app_with(pool.clone())).await;
     let cookie = sign_in(&app, "sam@example.com").await;
@@ -704,8 +704,8 @@ async fn a_user_removed_from_their_household_can_onboard_again(pool: PgPool) {
     let first_household_id = first["household"]["household_id"].clone();
 
     sqlx::query(
-        "DELETE FROM household_members
-         WHERE user_id = (SELECT id FROM users WHERE email = 'sam@example.com')",
+        "UPDATE users SET household_id = NULL, household_role = NULL
+         WHERE email = 'sam@example.com'",
     )
     .execute(&pool)
     .await
@@ -730,7 +730,7 @@ async fn a_user_removed_from_their_household_can_onboard_again(pool: PgPool) {
 
     assert_eq!(resp.status(), 201);
     let body: serde_json::Value = test::read_body_json(resp).await;
-    assert_eq!(body["household"]["type"], "family_manager");
+    assert_eq!(body["household"]["role"], "family_manager");
     assert_ne!(body["household"]["household_id"], first_household_id);
     assert_eq!(body["pending_onboarding_steps"], serde_json::json!([]));
 }

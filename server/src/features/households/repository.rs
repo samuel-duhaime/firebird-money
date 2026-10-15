@@ -3,9 +3,8 @@ use uuid::Uuid;
 
 use super::model::Household;
 use crate::features::category_groups::repository as category_groups_repository;
-use crate::features::household_members::model::NewHouseholdMember;
-use crate::features::household_members::repository as household_members_repository;
 use crate::features::tags::repository as tags_repository;
+use crate::features::users::repository as users_repository;
 use crate::shared::http_error::is_unique_violation;
 
 const SELECT_COLUMNS: &str = "id, join_code, created_at";
@@ -53,12 +52,16 @@ pub async fn create(pool: &PgPool) -> Result<Household, sqlx::Error> {
     Err(last_error.expect("loop only exits early on success"))
 }
 
-/// Like `create`, but also connects `user_id` as the new household's `family_manager`, in the
-/// same transaction as the household's creation and starter-data seeding — used by
-/// `POST /auth/onboarding`'s no-`join_code` branch, so a failure at any step (including a
-/// concurrent onboarding request on the same account racing the `household_members.user_id`
-/// unique constraint) never leaves an orphaned, unowned household behind.
-pub async fn create_with_manager(pool: &PgPool, user_id: i32) -> Result<Household, sqlx::Error> {
+/// Like `create`, but also makes `user_id` the new household's `family_manager`, in the same
+/// transaction as the household's creation and starter-data seeding — used by
+/// `POST /auth/onboarding`'s no-`join_code` branch, so a failure at any step never leaves an
+/// orphaned, unowned household behind. `Ok(None)` (and nothing created) if the user already
+/// belongs to a household, including when a concurrent onboarding request on the same account just
+/// put them in one.
+pub async fn create_with_manager(
+    pool: &PgPool,
+    user_id: i32,
+) -> Result<Option<Household>, sqlx::Error> {
     let mut last_error = None;
 
     for _ in 0..JOIN_CODE_ATTEMPTS {
@@ -83,14 +86,14 @@ pub async fn create_with_manager(pool: &PgPool, user_id: i32) -> Result<Househol
         category_groups_repository::seed_defaults(&mut tx, household.id).await?;
         tags_repository::seed_defaults(&mut tx, household.id).await?;
 
-        let new_member = NewHouseholdMember {
-            user_id,
-            r#type: "family_manager".to_string(),
-        };
-        household_members_repository::create(&mut *tx, household.id, &new_member).await?;
+        if !users_repository::join_household(&mut *tx, user_id, household.id, "family_manager")
+            .await?
+        {
+            return Ok(None);
+        }
 
         tx.commit().await?;
-        return Ok(household);
+        return Ok(Some(household));
     }
 
     Err(last_error.expect("loop only exits early on success"))

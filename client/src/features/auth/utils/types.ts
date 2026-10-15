@@ -9,16 +9,17 @@ export interface AuthUser {
   avatar_url: string | null;
   /** Onboarding steps this user has finished. */
   onboarding_steps: OnboardingStep[];
+  /** `null` until onboarding. */
+  household_id: number | null;
+  household_role: 'family_manager' | 'family_member' | null;
   created_at: string;
 }
 
-/** The household a user belongs to (at most one, ever), with the role they hold in it. `id` is
- * the `household_members` row's own id. */
+/** The household a user belongs to (at most one, ever), with the role they hold in it. */
 export interface Membership {
-  id: number;
   household_id: number;
   join_code: string;
-  type: 'family_manager' | 'family_member';
+  role: 'family_manager' | 'family_member';
 }
 
 /** Payload of `GET /auth/me`, and of anything that signs the user in. `household` is `null`

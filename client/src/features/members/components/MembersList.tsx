@@ -30,7 +30,7 @@ export const MembersList = () => {
               <span className="members-list-name">
                 {name}
                 <span className="members-list-role">
-                  {member.type === 'family_manager'
+                  {member.role === 'family_manager'
                     ? t('settings.members.manager')
                     : t('settings.members.member')}
                 </span>

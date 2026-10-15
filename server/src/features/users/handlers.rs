@@ -102,7 +102,8 @@ async fn update_user(
     }
 }
 
-/// `DELETE /users/{id}` — delete a user. Only the signed-in user's own record.
+/// `DELETE /users/{id}` — delete a user. Only the signed-in user's own record, and only once they
+/// no longer belong to a household.
 async fn delete_user(
     path: web::Path<UserIdPath>,
     current_user: CurrentUser,
@@ -114,6 +115,9 @@ async fn delete_user(
 
     if current_user.user.id != id as i32 {
         return not_found_response(&l10n, &locale, "user-not-found", id);
+    }
+    if current_user.household.is_some() {
+        return error_response_with_n(&l10n, &locale, StatusCode::CONFLICT, "user-in-use", id);
     }
 
     match repository::delete(&pool, id as i32).await {
