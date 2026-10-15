@@ -341,12 +341,8 @@ export const TransactionsList = () => {
   const { t, i18n } = useTranslation();
   const language = i18n.resolvedLanguage ?? i18n.language;
   const locale = toIntlLocale(language);
-  const { search, order, start_date, end_date } = routeApi.useSearch();
-  const {
-    data: transactions,
-    isPending,
-    isError,
-  } = useTransactions(search, order, start_date, end_date);
+  const query = routeApi.useSearch();
+  const { data: transactions, isPending, isError } = useTransactions(query);
 
   const { data: settings } = useSettings();
   const updateSettingsMutation = useUpdateSettings();

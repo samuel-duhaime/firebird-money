@@ -4,6 +4,7 @@ import {
   createMerchant,
   ensureAccount,
   getCategoryId,
+  getTagId,
   seedTransaction,
 } from '../lib/seed';
 import {
@@ -1787,6 +1788,396 @@ test.describe('download', () => {
         .click(),
     ]);
     expect(download.suggestedFilename()).toMatch(/\.xlsx$/);
+  });
+});
+
+test.describe('filters', () => {
+  const ROWS = ['Alpha Shop', 'Beta Shop', 'Gamma Shop'];
+
+  /** Seeds three transactions that differ on every filterable field:
+   * - Alpha Shop: Groceries, $20.00, "Seed" account, tagged Tax
+   * - Beta Shop: Paychecks, $1,000.00, "Savings Jar" account, untagged
+   * - Gamma Shop: Groceries, $75.00, "Seed" account, tagged Split */
+  test.beforeEach(async ({ authedPage, context, workerInfra }) => {
+    void authedPage; // signs in, so `context.request` carries the session
+    const { request } = context;
+    const api = workerInfra.apiOrigin;
+    const groceries = await getCategoryId(request, api, 'Groceries');
+    const paychecks = await getCategoryId(request, api, 'Paychecks');
+    const tax = await getTagId(request, api, 'Tax');
+    const split = await getTagId(request, api, 'Split');
+
+    await seedTransaction(request, api, {
+      date: '2023-05-01',
+      merchant: 'Alpha Shop',
+      amount: '20.00',
+      categoryId: groceries,
+      tagIds: [tax],
+    });
+    await seedTransaction(request, api, {
+      date: '2023-05-02',
+      merchant: 'Beta Shop',
+      amount: '1000.00',
+      categoryId: paychecks,
+      account: 'Savings Jar',
+    });
+    await seedTransaction(request, api, {
+      date: '2023-05-03',
+      merchant: 'Gamma Shop',
+      amount: '75.00',
+      categoryId: groceries,
+      tagIds: [split],
+    });
+  });
+
+  const row = (page: Page, merchant: string) =>
+    page.locator('li.transactions-row', { hasText: merchant });
+
+  /** Asserts exactly `visible` of the seeded rows are listed. */
+  const expectRows = async (page: Page, visible: string[]) => {
+    for (const merchant of ROWS) {
+      if (visible.includes(merchant)) {
+        await expect(row(page, merchant)).toBeVisible();
+      } else {
+        await expect(row(page, merchant)).not.toBeVisible();
+      }
+    }
+  };
+
+  const trigger = (page: Page) =>
+    page.getByRole('button', { name: /^Filters/ });
+
+  const popover = (page: Page) => page.locator('.filters-popover');
+
+  const openSection = async (page: Page, section: string) => {
+    if (!(await popover(page).isVisible())) await trigger(page).click();
+    await popover(page)
+      .getByRole('button', { name: section, exact: true })
+      .click();
+  };
+
+  const apply = (page: Page) =>
+    popover(page).getByRole('button', { name: 'Apply', exact: true }).click();
+
+  const searchParam = (page: Page, key: string) =>
+    new URL(page.url()).searchParams.get(key);
+
+  test('closes on Escape and on an outside click, returning focus to the trigger', async ({
+    authedPage,
+  }) => {
+    await authedPage.goto('/transactions');
+
+    await trigger(authedPage).click();
+    await expect(popover(authedPage)).toBeVisible();
+    await authedPage.keyboard.press('Escape');
+    await expect(popover(authedPage)).not.toBeVisible();
+    await expect(trigger(authedPage)).toBeFocused();
+
+    await trigger(authedPage).click();
+    await expect(popover(authedPage)).toBeVisible();
+    await authedPage.locator('.top-menu-title').click();
+    await expect(popover(authedPage)).not.toBeVisible();
+  });
+
+  test('offers only the Categories, Merchants, Accounts, Tags, and Amount sections', async ({
+    authedPage,
+  }) => {
+    await authedPage.goto('/transactions');
+    await trigger(authedPage).click();
+
+    await expect(
+      popover(authedPage).locator('.filters-popover-nav-item'),
+    ).toHaveText(['Categories', 'Merchants', 'Accounts', 'Tags', 'Amount']);
+  });
+
+  test('filters by category, writing the selection to the URL and the trigger', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    const groceries = await getCategoryId(
+      context.request,
+      workerInfra.apiOrigin,
+      'Groceries',
+    );
+    await authedPage.goto('/transactions');
+    await expectRows(authedPage, ROWS);
+
+    await openSection(authedPage, 'Categories');
+    await popover(authedPage)
+      .getByRole('checkbox', { name: 'Groceries', exact: true })
+      .check();
+    await expect(
+      popover(authedPage).getByText('1 filter selected'),
+    ).toBeVisible();
+    await apply(authedPage);
+
+    await expect(popover(authedPage)).not.toBeVisible();
+    await expectRows(authedPage, ['Alpha Shop', 'Gamma Shop']);
+    expect(searchParam(authedPage, 'category_ids')).toBe(`${groceries}`);
+    await expect(trigger(authedPage)).toHaveText('Filters (1)');
+    await expect(authedPage.locator('.filters-button-badge')).toBeVisible();
+    await expect(authedPage.locator('.top-menu-clear-all')).toBeVisible();
+  });
+
+  test('writes several ids as a readable, comma-separated URL param', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    const groceries = await getCategoryId(
+      context.request,
+      workerInfra.apiOrigin,
+      'Groceries',
+    );
+    const paychecks = await getCategoryId(
+      context.request,
+      workerInfra.apiOrigin,
+      'Paychecks',
+    );
+    await authedPage.goto('/transactions');
+
+    await openSection(authedPage, 'Categories');
+    await popover(authedPage)
+      .getByRole('checkbox', { name: 'Groceries', exact: true })
+      .check();
+    await popover(authedPage)
+      .getByRole('checkbox', { name: 'Paychecks', exact: true })
+      .check();
+    await apply(authedPage);
+
+    await expectRows(authedPage, ROWS);
+    expect(authedPage.url()).toContain(
+      `?category_ids=${groceries},${paychecks}`,
+    );
+  });
+
+  test('filters by merchant', async ({ authedPage }) => {
+    await authedPage.goto('/transactions');
+
+    await openSection(authedPage, 'Merchants');
+    await popover(authedPage).getByPlaceholder('Search...').fill('beta');
+    await popover(authedPage)
+      .getByRole('checkbox', { name: /Beta Shop/ })
+      .check();
+    await apply(authedPage);
+
+    await expectRows(authedPage, ['Beta Shop']);
+    expect(searchParam(authedPage, 'merchant_ids')).toMatch(/^\d+$/);
+  });
+
+  test('filters by account', async ({ authedPage }) => {
+    await authedPage.goto('/transactions');
+
+    await openSection(authedPage, 'Accounts');
+    await popover(authedPage)
+      .getByRole('checkbox', { name: 'Savings Jar', exact: true })
+      .check();
+    await apply(authedPage);
+
+    await expectRows(authedPage, ['Beta Shop']);
+    expect(searchParam(authedPage, 'account_ids')).toMatch(/^\d+$/);
+  });
+
+  test('filters by tag, and by "Untagged"', async ({ authedPage }) => {
+    await authedPage.goto('/transactions');
+
+    await openSection(authedPage, 'Tags');
+    await popover(authedPage)
+      .getByRole('checkbox', { name: 'Tax', exact: true })
+      .check();
+    await popover(authedPage)
+      .getByRole('checkbox', { name: 'Untagged', exact: true })
+      .check();
+    await apply(authedPage);
+
+    await expectRows(authedPage, ['Alpha Shop', 'Beta Shop']);
+    expect(searchParam(authedPage, 'untagged')).toBe('true');
+    expect(searchParam(authedPage, 'tag_ids')).toMatch(/^\d+$/);
+  });
+
+  test('filters by amount: greater than, then between', async ({
+    authedPage,
+  }) => {
+    await authedPage.goto('/transactions');
+
+    await openSection(authedPage, 'Amount');
+    await popover(authedPage)
+      .getByRole('textbox', { name: 'Greater than…' })
+      .fill('50');
+    await expect(
+      popover(authedPage).getByText(`Greater than ${money(50)}`),
+    ).toBeVisible();
+    await apply(authedPage);
+
+    await expectRows(authedPage, ['Beta Shop', 'Gamma Shop']);
+    expect(searchParam(authedPage, 'amount_op')).toBe('greater_than');
+    expect(searchParam(authedPage, 'amount')).toBe('50');
+
+    await openSection(authedPage, 'Amount');
+    await popover(authedPage).getByRole('radio', { name: 'Between…' }).check();
+    await popover(authedPage)
+      .getByRole('textbox', { name: 'Between…' })
+      .fill('10');
+    await popover(authedPage)
+      .getByRole('textbox', { name: 'Maximum' })
+      .fill('80');
+    await apply(authedPage);
+
+    await expectRows(authedPage, ['Alpha Shop', 'Gamma Shop']);
+    expect(searchParam(authedPage, 'amount_op')).toBe('between');
+    expect(searchParam(authedPage, 'amount_max')).toBe('80');
+  });
+
+  test('disables Apply while the amount range is invalid', async ({
+    authedPage,
+  }) => {
+    await authedPage.goto('/transactions');
+    await openSection(authedPage, 'Amount');
+    await popover(authedPage).getByRole('radio', { name: 'Between…' }).check();
+    const min = popover(authedPage).getByRole('textbox', { name: 'Between…' });
+    const max = popover(authedPage).getByRole('textbox', { name: 'Maximum' });
+    const applyButton = popover(authedPage).getByRole('button', {
+      name: 'Apply',
+      exact: true,
+    });
+
+    await min.fill('80');
+    await expect(applyButton).toBeDisabled();
+    await max.fill('10');
+    await expect(max).toHaveAttribute('aria-invalid', 'true');
+    await expect(applyButton).toBeDisabled();
+    await max.fill('100');
+    await expect(applyButton).toBeEnabled();
+  });
+
+  test('combines filters across sections', async ({ authedPage }) => {
+    await authedPage.goto('/transactions');
+
+    await openSection(authedPage, 'Categories');
+    await popover(authedPage)
+      .getByRole('checkbox', { name: 'Groceries', exact: true })
+      .check();
+    await openSection(authedPage, 'Tags');
+    await popover(authedPage)
+      .getByRole('checkbox', { name: 'Split', exact: true })
+      .check();
+    await expect(
+      popover(authedPage).getByText('2 filters selected'),
+    ).toBeVisible();
+    await apply(authedPage);
+
+    await expectRows(authedPage, ['Gamma Shop']);
+    await expect(trigger(authedPage)).toHaveText('Filters (2)');
+  });
+
+  test('reopens with the applied filters loaded from the URL', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    const groceries = await getCategoryId(
+      context.request,
+      workerInfra.apiOrigin,
+      'Groceries',
+    );
+    await authedPage.goto(
+      `/transactions?category_ids=${groceries}&amount_op=less_than&amount=50`,
+    );
+    await expectRows(authedPage, ['Alpha Shop']);
+
+    await trigger(authedPage).click();
+    await expect(
+      popover(authedPage).getByRole('checkbox', {
+        name: 'Groceries',
+        exact: true,
+      }),
+    ).toBeChecked();
+    const summary = popover(authedPage).locator('.filters-popover-summary');
+    await expect(summary.getByText('Groceries')).toBeVisible();
+    await expect(summary.getByText(`Less than ${money(50)}`)).toBeVisible();
+  });
+
+  test('Cancel discards changes, leaving the applied filters alone', async ({
+    authedPage,
+  }) => {
+    await authedPage.goto('/transactions');
+
+    await openSection(authedPage, 'Categories');
+    await popover(authedPage)
+      .getByRole('checkbox', { name: 'Groceries', exact: true })
+      .check();
+    await popover(authedPage)
+      .getByRole('button', { name: 'Cancel', exact: true })
+      .click();
+
+    await expectRows(authedPage, ROWS);
+    expect(searchParam(authedPage, 'category_ids')).toBeNull();
+    await trigger(authedPage).click();
+    await expect(
+      popover(authedPage).getByRole('checkbox', {
+        name: 'Groceries',
+        exact: true,
+      }),
+    ).not.toBeChecked();
+  });
+
+  test('removes a single filter from the summary', async ({ authedPage }) => {
+    await authedPage.goto('/transactions');
+
+    await openSection(authedPage, 'Tags');
+    await popover(authedPage)
+      .getByRole('checkbox', { name: 'Tax', exact: true })
+      .check();
+    await popover(authedPage)
+      .getByRole('checkbox', { name: 'Split', exact: true })
+      .check();
+    await popover(authedPage)
+      .getByRole('button', { name: 'Remove Tax', exact: true })
+      .click();
+    await expect(
+      popover(authedPage).getByRole('checkbox', { name: 'Tax', exact: true }),
+    ).not.toBeChecked();
+    await apply(authedPage);
+
+    await expectRows(authedPage, ['Gamma Shop']);
+  });
+
+  test('Clear removes every applied filter at once', async ({ authedPage }) => {
+    await authedPage.goto('/transactions');
+
+    await openSection(authedPage, 'Categories');
+    await popover(authedPage)
+      .getByRole('checkbox', { name: 'Groceries', exact: true })
+      .check();
+    await apply(authedPage);
+    await expectRows(authedPage, ['Alpha Shop', 'Gamma Shop']);
+
+    await trigger(authedPage).click();
+    await popover(authedPage)
+      .locator('.filters-popover-actions')
+      .getByRole('button', { name: 'Clear', exact: true })
+      .click();
+
+    await expectRows(authedPage, ROWS);
+    await expect(trigger(authedPage)).toHaveText('Filters');
+    expect(searchParam(authedPage, 'category_ids')).toBeNull();
+  });
+
+  test("is reset by the top menu's Clear", async ({ authedPage }) => {
+    await authedPage.goto('/transactions');
+
+    await openSection(authedPage, 'Merchants');
+    await popover(authedPage)
+      .getByRole('checkbox', { name: /Alpha Shop/ })
+      .check();
+    await apply(authedPage);
+    await expectRows(authedPage, ['Alpha Shop']);
+
+    await authedPage.locator('.top-menu-clear-all').click();
+
+    await expectRows(authedPage, ROWS);
+    expect(searchParam(authedPage, 'merchant_ids')).toBeNull();
   });
 });
 

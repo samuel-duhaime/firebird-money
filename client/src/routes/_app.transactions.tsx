@@ -5,7 +5,7 @@ import {
   useNavigate,
 } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
-import { faFilter, faPlus } from '@fortawesome/free-solid-svg-icons';
+import { faPlus } from '@fortawesome/free-solid-svg-icons';
 import { TopMenuButton } from '../components/TopMenuButton';
 import { TransactionsList } from '../features/transactions/components/TransactionsList';
 import { SearchButton } from '../features/transactions/components/SearchButton';
@@ -13,15 +13,14 @@ import { DateRangeButton } from '../features/transactions/components/DateRangeBu
 import { isValidDateKey } from '../features/transactions/utils/date-range';
 import { DownloadButton } from '../features/transactions/components/DownloadButton';
 import { ImportButton } from '../features/transactions/components/ImportButton';
-import { notImplementedToast } from '../lib/toast';
+import { FiltersButton } from '../features/transactions/components/FiltersButton';
+import {
+  countFilters,
+  parseFilters,
+} from '../features/transactions/utils/filters';
+import type { TransactionsQuery } from '../features/transactions/utils/filters';
 import type { SortOrder } from '../features/transactions/utils/types';
 import '../components/TopMenu.css';
-type TransactionsSearch = {
-  search?: string;
-  order?: SortOrder;
-  start_date?: string;
-  end_date?: string;
-};
 
 const SORT_ORDERS: SortOrder[] = [
   'date',
@@ -37,10 +36,12 @@ const routeApi = getRouteApi('/_app/transactions');
 
 const ClearAllButton = () => {
   const { t } = useTranslation();
-  const { search, order, start_date, end_date } = routeApi.useSearch();
+  const query = routeApi.useSearch();
   const navigate = routeApi.useNavigate();
+  const { search, order, start_date, end_date } = query;
 
-  if (!search && !order && !start_date && !end_date) return null;
+  if (!search && !order && !start_date && !end_date && countFilters(query) === 0)
+    return null;
 
   return (
     <button
@@ -63,11 +64,7 @@ const TransactionsTopMenuActions = () => {
       <SearchButton />
       <DateRangeButton />
 
-      <TopMenuButton
-        icon={faFilter}
-        label={t('transactions.topMenu.filters')}
-        onClick={notImplementedToast}
-      />
+      <FiltersButton />
 
       <ImportButton />
       <DownloadButton />
@@ -98,7 +95,7 @@ const Transactions = () => (
 
 export const Route = createFileRoute('/_app/transactions')({
   component: Transactions,
-  validateSearch: (search: Record<string, unknown>): TransactionsSearch => ({
+  validateSearch: (search: Record<string, unknown>): TransactionsQuery => ({
     search:
       typeof search.search === 'string' && search.search !== ''
         ? search.search
@@ -108,6 +105,7 @@ export const Route = createFileRoute('/_app/transactions')({
       : undefined,
     start_date: parseDateParam(search.start_date),
     end_date: parseDateParam(search.end_date),
+    ...parseFilters(search),
   }),
   staticData: {
     topMenuTitle: 'nav.transactions',

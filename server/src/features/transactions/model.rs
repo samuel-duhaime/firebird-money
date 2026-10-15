@@ -133,6 +133,69 @@ pub struct TransactionFilter {
     pub end_date: Option<NaiveDate>,
     /// Sort order. Defaults to `Date` (most recent first) when absent.
     pub order: Option<SortOrder>,
+    /// Comma-separated category ids, e.g. `3,7` — matches transactions in any of them.
+    #[serde(default, deserialize_with = "deserialize_id_list")]
+    pub category_ids: Option<Vec<i32>>,
+    /// Comma-separated merchant ids — matches transactions with any of them.
+    #[serde(default, deserialize_with = "deserialize_id_list")]
+    pub merchant_ids: Option<Vec<i32>>,
+    /// Comma-separated account ids — matches transactions in any of them.
+    #[serde(default, deserialize_with = "deserialize_id_list")]
+    pub account_ids: Option<Vec<i32>>,
+    /// Comma-separated tag ids — matches transactions carrying at least one of them.
+    #[serde(default, deserialize_with = "deserialize_id_list")]
+    pub tag_ids: Option<Vec<i32>>,
+    /// `true` also matches transactions without any tag (OR-ed with `tag_ids` when both are set).
+    pub untagged: Option<bool>,
+    /// How `amount` (and, for `Between`, `amount_max`) narrow the list. Ignored without `amount`.
+    pub amount_op: Option<AmountOp>,
+    pub amount: Option<Decimal>,
+    /// Inclusive upper bound, only read when `amount_op` is `Between`.
+    pub amount_max: Option<Decimal>,
+}
+
+impl TransactionFilter {
+    /// Resolves `amount_op`/`amount`/`amount_max` into `(greater than, less than, at least, at
+    /// most)` bounds on the (always positive) transaction amount — `None` meaning "no bound".
+    pub fn amount_bounds(&self) -> [Option<Decimal>; 4] {
+        match (self.amount_op, self.amount) {
+            (Some(AmountOp::GreaterThan), Some(amount)) => [Some(amount), None, None, None],
+            (Some(AmountOp::LessThan), Some(amount)) => [None, Some(amount), None, None],
+            (Some(AmountOp::EqualTo), Some(amount)) => [None, None, Some(amount), Some(amount)],
+            (Some(AmountOp::Between), Some(amount)) => [None, None, Some(amount), self.amount_max],
+            _ => [None, None, None, None],
+        }
+    }
+}
+
+/// Comparison applied by `TransactionFilter::amount`.
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AmountOp {
+    GreaterThan,
+    LessThan,
+    EqualTo,
+    /// Inclusive on both ends.
+    Between,
+}
+
+/// Parses a comma-separated query param like `3,7,12` into ids. Query strings can't carry a
+/// sequence natively through `web::Query`, hence the single delimited value. An empty value means
+/// "no filter", same as leaving the param out.
+fn deserialize_id_list<'de, D>(deserializer: D) -> Result<Option<Vec<i32>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let Some(raw) = Option::<String>::deserialize(deserializer)? else {
+        return Ok(None);
+    };
+    if raw.trim().is_empty() {
+        return Ok(None);
+    }
+    raw.split(',')
+        .map(|id| id.trim().parse::<i32>().map_err(serde::de::Error::custom))
+        .collect::<Result<Vec<_>, _>>()
+        .map(Some)
 }
 
 /// Sort order for `GET /transactions`.

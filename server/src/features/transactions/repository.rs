@@ -208,8 +208,10 @@ pub async fn create(
 }
 
 /// Lists a household's transactions, optionally narrowed by an exact date match, a
-/// `start_date`/`end_date` range, an exact `merchant_id` or `account_id`, and/or a free-text search
-/// across merchant name, original statement, category name, and amount.
+/// `start_date`/`end_date` range, an exact `merchant_id` or `account_id`, a free-text search across
+/// merchant name, original statement, category name, and amount, and/or the Filters popover's
+/// multi-select (`category_ids`, `merchant_ids`, `account_ids`, `tag_ids`/`untagged`) and amount
+/// filters.
 /// Sorted per `filter.order` (most recent first by default).
 pub async fn list(
     pool: &PgPool,
@@ -225,6 +227,7 @@ pub async fn list(
     };
 
     let escaped_search = filter.search.as_deref().map(escape_like);
+    let [greater_than, less_than, at_least, at_most] = filter.amount_bounds();
 
     let mut transactions = sqlx::query_as::<_, Transaction>(&format!(
         "SELECT {SELECT_COLUMNS} {FROM_JOIN}
@@ -241,6 +244,21 @@ pub async fn list(
            AND ($5::date IS NULL OR t.date >= $5)
            AND ($6::date IS NULL OR t.date <= $6)
            AND ($7::integer IS NULL OR t.account_id = $7)
+           AND ($8::integer[] IS NULL OR t.category_id = ANY($8))
+           AND ($9::integer[] IS NULL OR t.merchant_id = ANY($9))
+           AND ($10::integer[] IS NULL OR t.account_id = ANY($10))
+           AND (($11::integer[] IS NULL AND NOT $12)
+              OR EXISTS (
+                   SELECT 1 FROM transaction_tags tt
+                   WHERE tt.transaction_id = t.id AND tt.tag_id = ANY($11)
+                 )
+              OR ($12 AND NOT EXISTS (
+                   SELECT 1 FROM transaction_tags tt WHERE tt.transaction_id = t.id
+                 )))
+           AND ($13::numeric IS NULL OR t.amount > $13)
+           AND ($14::numeric IS NULL OR t.amount < $14)
+           AND ($15::numeric IS NULL OR t.amount >= $15)
+           AND ($16::numeric IS NULL OR t.amount <= $16)
          ORDER BY {order_by}"
     ))
     .bind(household_id)
@@ -250,6 +268,15 @@ pub async fn list(
     .bind(filter.start_date)
     .bind(filter.end_date)
     .bind(filter.account_id)
+    .bind(&filter.category_ids)
+    .bind(&filter.merchant_ids)
+    .bind(&filter.account_ids)
+    .bind(&filter.tag_ids)
+    .bind(filter.untagged.unwrap_or(false))
+    .bind(greater_than)
+    .bind(less_than)
+    .bind(at_least)
+    .bind(at_most)
     .fetch_all(pool)
     .await?;
 

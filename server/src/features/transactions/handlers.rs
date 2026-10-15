@@ -124,8 +124,10 @@ async fn create_transaction(
 }
 
 /// `GET /transactions` — list transactions, optionally filtered by `date`, a `start_date`/
-/// `end_date` range, `merchant_id`, `account_id`, and/or a free-text `search` matched against
-/// merchant name, original statement, category, and amount. Accepts
+/// `end_date` range, `merchant_id`, `account_id`, a free-text `search` matched against merchant
+/// name, original statement, category, and amount, comma-separated `category_ids`/`merchant_ids`/
+/// `account_ids`/`tag_ids` (plus `untagged=true`), and/or `amount_op` (`greater_than`,
+/// `less_than`, `equal_to`, `between`) with `amount` (and `amount_max` for `between`). Accepts
 /// `order` (`date`, `inverse_date`, `amount`, `inverse_amount`) to control sort order.
 async fn list_transactions(
     filter: web::Query<TransactionFilter>,
@@ -149,9 +151,8 @@ async fn list_transactions(
 }
 
 /// `GET /transactions/download` — download the same (filtered/sorted) transactions as
-/// `GET /transactions`, rendered as a CSV or Excel file. Accepts the same `date`, `start_date`,
-/// `end_date`, `merchant_id`, `account_id`, `search`, and `order` query params, plus `format`
-/// (`csv` or `xlsx`).
+/// `GET /transactions`, rendered as a CSV or Excel file. Accepts the same filter and `order` query
+/// params, plus `format` (`csv` or `xlsx`).
 async fn download_transactions(
     filter: web::Query<TransactionFilter>,
     format: web::Query<DownloadFormatQuery>,
