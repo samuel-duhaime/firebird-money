@@ -15,6 +15,7 @@ import {
   reorderTagsFailedToast,
 } from '../../../lib/toast';
 import type { Tag } from '../utils/types';
+import { TransactionCountLink } from '../../transactions/components/ViewTransactionsLink';
 import '../../../components/MoveButtons.css';
 import './TagsList.css';
 
@@ -106,9 +107,15 @@ export const TagsList = ({ onEdit }: TagsListProps) => {
           />
           <span className="tags-list-name">{tag.name}</span>
           <span className="tags-list-meta">
-            {t('settings.tags.transactionCount', {
-              count: tag.transaction_count,
-            })}
+            <TransactionCountLink
+              filter="tag_ids"
+              id={tag.id}
+              count={tag.transaction_count}
+            >
+              {t('settings.tags.transactionCount', {
+                count: tag.transaction_count,
+              })}
+            </TransactionCountLink>
           </span>
 
           {confirmingDeleteId === tag.id ? (

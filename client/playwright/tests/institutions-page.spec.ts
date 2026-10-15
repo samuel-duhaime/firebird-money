@@ -284,4 +284,46 @@ test.describe('Household > Institutions settings', () => {
       .click();
     await expect(renamed).toHaveCount(0);
   });
+
+  test('a transaction count links to that account\'s transactions', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    const { request } = context;
+    const api = workerInfra.apiOrigin;
+    const categoryId = await getCategoryId(request, api, 'Groceries');
+    await seedTransaction(request, api, {
+      date: '2026-10-01',
+      merchant: 'Corner Store',
+      amount: '20.00',
+      categoryId,
+      account: 'Joint Account',
+    });
+    await seedTransaction(request, api, {
+      date: '2026-10-02',
+      merchant: 'Other Place',
+      amount: '30.00',
+      categoryId,
+      account: 'Savings Jar',
+    });
+    const jointId = await ensureAccount(request, api, 'Joint Account');
+    await authedPage.goto('/settings/institutions');
+
+    await authedPage
+      // Not `hasText` — every seeded account's type label reads "Chequing" too.
+      .locator('li.institutions-list-row', {
+        has: authedPage.getByText('Joint Account', { exact: true }),
+      })
+      .getByRole('link', { name: '1 transaction', exact: true })
+      .click();
+
+    await expect(authedPage).toHaveURL(`/transactions?account_ids=${jointId}`);
+    await expect(
+      authedPage.locator('li.transactions-row', { hasText: 'Corner Store' }),
+    ).toBeVisible();
+    await expect(
+      authedPage.locator('li.transactions-row', { hasText: 'Other Place' }),
+    ).not.toBeVisible();
+  });
 });

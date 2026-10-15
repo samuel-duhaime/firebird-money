@@ -369,6 +369,11 @@ export const fr: typeof en = {
       cancel: 'Annuler',
       apply: 'Appliquer',
     },
+    view: {
+      merchant: 'Voir le marchand',
+      category: 'Voir la catégorie',
+      account: 'Voir le compte',
+    },
     dateRange: {
       trigger: 'Date',
       title: 'Plage de dates',

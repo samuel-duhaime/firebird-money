@@ -18,6 +18,7 @@ import {
   reorderCategoriesFailedToast,
 } from '../../../lib/toast';
 import type { Category, CategoryGroup } from '../utils/types';
+import { TransactionCountLink } from '../../transactions/components/ViewTransactionsLink';
 import '../../../components/MoveButtons.css';
 import './CategoriesList.css';
 
@@ -227,9 +228,15 @@ export const CategoryGroupCard = ({
               {language === 'fr' ? category.name_fr : category.name_en}
             </span>
             <span className="categories-list-meta">
-              {t('settings.categories.transactionCount', {
-                count: category.transaction_count,
-              })}
+              <TransactionCountLink
+                filter="category_ids"
+                id={category.id}
+                count={category.transaction_count}
+              >
+                {t('settings.categories.transactionCount', {
+                  count: category.transaction_count,
+                })}
+              </TransactionCountLink>
             </span>
 
             {confirmingDeleteCategoryId === category.id ? (

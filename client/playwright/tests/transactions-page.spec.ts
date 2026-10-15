@@ -2209,6 +2209,80 @@ test.describe('filters', () => {
   });
 });
 
+test.describe('view transactions from a row', () => {
+  test.beforeEach(async ({ authedPage, context, workerInfra }) => {
+    void authedPage; // signs in, so `context.request` carries the session
+    const { request } = context;
+    const api = workerInfra.apiOrigin;
+    await seedTransaction(request, api, {
+      date: '2023-06-01',
+      merchant: 'Alpha Shop',
+      amount: '20.00',
+      categoryId: await getCategoryId(request, api, 'Groceries'),
+    });
+    await seedTransaction(request, api, {
+      date: '2023-06-02',
+      merchant: 'Beta Shop',
+      amount: '1000.00',
+      categoryId: await getCategoryId(request, api, 'Paychecks'),
+      account: 'Savings Jar',
+    });
+  });
+
+  const row = (page: Page, merchant: string) =>
+    page.locator('li.transactions-row', { hasText: merchant });
+
+  for (const { field, label, param } of [
+    { field: 'merchant', label: 'View merchant', param: 'merchant_ids' },
+    { field: 'category', label: 'View category', param: 'category_ids' },
+    { field: 'account', label: 'View account', param: 'account_ids' },
+  ]) {
+    test(`the ${field} cell's arrow shows on hover and opens that ${field}'s transactions`, async ({
+      authedPage,
+    }) => {
+      await authedPage.goto('/transactions?search=shop');
+      const alpha = row(authedPage, 'Alpha Shop');
+      const arrow = alpha.getByRole('link', { name: label, exact: true });
+
+      await expect(arrow).toHaveCSS('opacity', '0');
+      await alpha
+        .locator('.transactions-row-cell-group', {
+          has: authedPage.getByRole('link', { name: label, exact: true }),
+        })
+        .hover();
+      await expect(arrow).toHaveCSS('opacity', '1');
+      // Same height as the cell it sits next to.
+      const cellBox = await alpha
+        .locator('.transactions-row-cell-group', {
+          has: authedPage.getByRole('link', { name: label, exact: true }),
+        })
+        .locator('> :first-child')
+        .boundingBox();
+      const arrowBox = await arrow.boundingBox();
+      expect(arrowBox?.height).toBeCloseTo(cellBox?.height ?? 0, 0);
+      await arrow.click();
+
+      await expect(row(authedPage, 'Beta Shop')).not.toBeVisible();
+      await expect(row(authedPage, 'Alpha Shop')).toBeVisible();
+      const search = new URL(authedPage.url()).searchParams;
+      expect(search.get(param)).toMatch(/^\d+$/);
+      // Narrowed to just that one value — the search that was active is dropped.
+      expect(search.get('search')).toBeNull();
+    });
+  }
+
+  test('the arrow also shows when its cell has keyboard focus', async ({
+    authedPage,
+  }) => {
+    await authedPage.goto('/transactions');
+    const alpha = row(authedPage, 'Alpha Shop');
+    const arrow = alpha.getByRole('link', { name: 'View merchant', exact: true });
+
+    await alpha.getByRole('button', { name: 'Merchant', exact: true }).focus();
+    await expect(arrow).toHaveCSS('opacity', '1');
+  });
+});
+
 test.describe('clear all', () => {
   test('is absent with no active filters', async ({ authedPage }) => {
     await authedPage.goto('/transactions');

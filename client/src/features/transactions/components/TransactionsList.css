@@ -67,6 +67,34 @@
   white-space: nowrap;
 }
 
+/* A row cell plus its "view these transactions" arrow, which only shows on hover/focus — its
+ * space stays reserved so the cell doesn't shift as it appears. */
+.transactions-row-cell-group {
+  display: flex;
+  /* Stretch, so the arrow matches the cell's own height (see below). */
+  align-items: stretch;
+  gap: 4px;
+  min-width: 0;
+}
+
+.transactions-row-cell-group > :first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Height comes from the stretch above; the width is set to match the cells' rendered 37px
+ * height, keeping the arrow square (`aspect-ratio` doesn't apply to a stretched flex item). */
+.transactions-row-cell-group .view-transactions-arrow {
+  width: 37px;
+  height: auto;
+  opacity: 0;
+}
+
+.transactions-row-cell-group:hover .view-transactions-arrow,
+.transactions-row-cell-group:focus-within .view-transactions-arrow {
+  opacity: 1;
+}
+
 .transactions-row-cell--editable {
   width: 100%;
   margin: 0;
