@@ -9,6 +9,7 @@ import {
 } from '../../../lib/toast';
 import type { Merchant, MerchantSortOrder } from '../utils/types';
 import { Select } from '../../../components/Select';
+import { TransactionCountLink } from '../../transactions/components/ViewTransactionsLink';
 import './MerchantsList.css';
 
 type MerchantsListProps = {
@@ -103,9 +104,15 @@ export const MerchantsList = ({ onEdit }: MerchantsListProps) => {
                 </span>
                 <span className="merchants-list-name">{merchant.name}</span>
                 <span className="merchants-list-meta">
-                  {t('settings.merchants.transactionCount', {
-                    count: merchant.transaction_count,
-                  })}
+                  <TransactionCountLink
+                    filter="merchant_ids"
+                    id={merchant.id}
+                    count={merchant.transaction_count}
+                  >
+                    {t('settings.merchants.transactionCount', {
+                      count: merchant.transaction_count,
+                    })}
+                  </TransactionCountLink>
                 </span>
 
                 {isCustom &&

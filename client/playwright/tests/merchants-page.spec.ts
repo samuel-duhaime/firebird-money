@@ -263,4 +263,55 @@ test.describe('Household > Merchants settings', () => {
       authedPage.locator('.merchants-list-name').first(),
     ).toHaveText('#1 Bakery');
   });
+
+  test('a transaction count links to that merchant\'s transactions', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    const categoryId = await getCategoryId(
+      context.request,
+      workerInfra.apiOrigin,
+      'Groceries',
+    );
+    const merchantId = await createMerchant(
+      context.request,
+      workerInfra.apiOrigin,
+      'Corner Store',
+    );
+    await seedTransaction(context.request, workerInfra.apiOrigin, {
+      date: '2026-10-01',
+      merchant: 'Corner Store',
+      amount: '20.00',
+      categoryId,
+    });
+    await seedTransaction(context.request, workerInfra.apiOrigin, {
+      date: '2026-10-02',
+      merchant: 'Other Place',
+      amount: '30.00',
+      categoryId,
+    });
+    await authedPage.goto('/settings/merchants');
+
+    // With no transactions, there's nothing to open — plain text, not a link.
+    const starbucks = authedPage.locator('li.merchants-list-row', {
+      hasText: 'Starbucks',
+    });
+    await expect(starbucks.getByRole('link')).toHaveCount(0);
+
+    await authedPage
+      .locator('li.merchants-list-row', { hasText: 'Corner Store' })
+      .getByRole('link', { name: '1 transaction', exact: true })
+      .click();
+
+    await expect(authedPage).toHaveURL(
+      `/transactions?merchant_ids=${merchantId}`,
+    );
+    await expect(
+      authedPage.locator('li.transactions-row', { hasText: 'Corner Store' }),
+    ).toBeVisible();
+    await expect(
+      authedPage.locator('li.transactions-row', { hasText: 'Other Place' }),
+    ).not.toBeVisible();
+  });
 });

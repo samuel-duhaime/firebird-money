@@ -1,4 +1,5 @@
 import { test, expect } from '../fixtures';
+import { getCategoryId, seedTransaction } from '../lib/seed';
 
 test.describe('Household > Categories settings', () => {
   test('left nav links to Household, and lands on the Categories page', async ({
@@ -249,5 +250,43 @@ test.describe('Household > Categories settings', () => {
         .first()
         .locator('.category-group-header .category-group-name'),
     ).toHaveText(afterMove);
+  });
+
+  test('a transaction count links to that category\'s transactions', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    const { request } = context;
+    const api = workerInfra.apiOrigin;
+    const groceries = await getCategoryId(request, api, 'Groceries');
+    await seedTransaction(request, api, {
+      date: '2026-10-01',
+      merchant: 'Corner Store',
+      amount: '20.00',
+      categoryId: groceries,
+    });
+    await seedTransaction(request, api, {
+      date: '2026-10-02',
+      merchant: 'Other Place',
+      amount: '30.00',
+      categoryId: await getCategoryId(request, api, 'Paychecks'),
+    });
+    await authedPage.goto('/settings/categories');
+
+    await authedPage
+      .locator('li.categories-list-row', { hasText: 'Groceries' })
+      .getByRole('link', { name: '1 transaction', exact: true })
+      .click();
+
+    await expect(authedPage).toHaveURL(
+      `/transactions?category_ids=${groceries}`,
+    );
+    await expect(
+      authedPage.locator('li.transactions-row', { hasText: 'Corner Store' }),
+    ).toBeVisible();
+    await expect(
+      authedPage.locator('li.transactions-row', { hasText: 'Other Place' }),
+    ).not.toBeVisible();
   });
 });

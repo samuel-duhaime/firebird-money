@@ -15,6 +15,7 @@ import { CategoryPicker } from './CategoryPicker';
 import { MerchantPicker } from './MerchantPicker';
 import { TagPicker } from '../../tags/components/TagPicker';
 import { EditMultipleTransactionsModal } from './EditMultipleTransactionsModal';
+import { ViewTransactionsArrow } from './ViewTransactionsLink';
 import { formatAmount, formatDateHeading } from '../utils/format';
 import { normalizeAmount, sanitizeAmountInput } from '../utils/amount';
 import { toIntlLocale } from '../../../i18n/locale';
@@ -238,21 +239,35 @@ const TransactionRow = ({
         }),
       }}
     >
-      <MerchantPicker
-        merchantId={transaction.merchant_id}
-        label={transaction.merchant_name}
-        className="transactions-row-cell transactions-row-merchant transactions-row-cell--editable"
-        onSelect={handleMerchantSelect}
-        ariaLabel={t('transactions.add.merchant', 'Merchant')}
-      />
+      <div className="transactions-row-cell-group">
+        <MerchantPicker
+          merchantId={transaction.merchant_id}
+          label={transaction.merchant_name}
+          className="transactions-row-cell transactions-row-merchant transactions-row-cell--editable"
+          onSelect={handleMerchantSelect}
+          ariaLabel={t('transactions.add.merchant', 'Merchant')}
+        />
+        <ViewTransactionsArrow
+          filter="merchant_ids"
+          id={transaction.merchant_id}
+          label={t('transactions.view.merchant')}
+        />
+      </div>
 
       {columnVisibility.category && (
-        <CategoryPicker
-          categoryId={transaction.category_id}
-          label={categoryName}
-          className="transactions-row-cell transactions-row-category transactions-row-cell--editable"
-          onSelect={handleCategorySelect}
-        />
+        <div className="transactions-row-cell-group">
+          <CategoryPicker
+            categoryId={transaction.category_id}
+            label={categoryName}
+            className="transactions-row-cell transactions-row-category transactions-row-cell--editable"
+            onSelect={handleCategorySelect}
+          />
+          <ViewTransactionsArrow
+            filter="category_ids"
+            id={transaction.category_id}
+            label={t('transactions.view.category')}
+          />
+        </div>
       )}
 
       {columnVisibility.tags && (
@@ -265,25 +280,34 @@ const TransactionRow = ({
       )}
 
       {columnVisibility.account && (
-        <Select
-          variant="cell"
-          className="transactions-row-cell transactions-row-account"
-          aria-label={t('transactions.add.account', 'Account')}
-          value={transaction.account_id}
-          onChange={(event) => handleAccountChange(Number(event.target.value))}
-        >
-          {/* Until the accounts list loads, still show the current one. */}
-          {!accounts && (
-            <option value={transaction.account_id}>
-              {transaction.account_name}
-            </option>
-          )}
-          {accounts?.map((account) => (
-            <option key={account.id} value={account.id}>
-              {accountLabel(account)}
-            </option>
-          ))}
-        </Select>
+        <div className="transactions-row-cell-group">
+          <Select
+            variant="cell"
+            className="transactions-row-cell transactions-row-account"
+            aria-label={t('transactions.add.account', 'Account')}
+            value={transaction.account_id}
+            onChange={(event) =>
+              handleAccountChange(Number(event.target.value))
+            }
+          >
+            {/* Until the accounts list loads, still show the current one. */}
+            {!accounts && (
+              <option value={transaction.account_id}>
+                {transaction.account_name}
+              </option>
+            )}
+            {accounts?.map((account) => (
+              <option key={account.id} value={account.id}>
+                {accountLabel(account)}
+              </option>
+            ))}
+          </Select>
+          <ViewTransactionsArrow
+            filter="account_ids"
+            id={transaction.account_id}
+            label={t('transactions.view.account')}
+          />
+        </div>
       )}
 
       {editingField === 'amount' ? (

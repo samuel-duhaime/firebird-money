@@ -14,6 +14,7 @@ import { useDeleteAccount } from '../../accounts/hooks/use-delete-account';
 import { accountLabel } from '../../accounts/utils/format';
 import type { Account } from '../../accounts/utils/types';
 import { InstitutionAvatar } from './InstitutionAvatar';
+import { TransactionCountLink } from '../../transactions/components/ViewTransactionsLink';
 import './InstitutionsList.css';
 
 type InstitutionGroup = {
@@ -202,13 +203,19 @@ export const InstitutionsList = ({
                           {accountLabel(account)}
                         </span>
                         <span className="institutions-list-meta">
-                          {[
-                            t(`settings.institutions.types.${account.type}`),
-                            account.currency,
-                            t('settings.institutions.transactionCount', {
+                          {t(`settings.institutions.types.${account.type}`)}
+                          {' · '}
+                          {account.currency}
+                          {' · '}
+                          <TransactionCountLink
+                            filter="account_ids"
+                            id={account.id}
+                            count={account.transaction_count}
+                          >
+                            {t('settings.institutions.transactionCount', {
                               count: account.transaction_count,
-                            }),
-                          ].join(' · ')}
+                            })}
+                          </TransactionCountLink>
                         </span>
                       </div>
 

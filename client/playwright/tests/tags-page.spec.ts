@@ -1,4 +1,5 @@
 import { test, expect } from '../fixtures';
+import { getCategoryId, getTagId, seedTransaction } from '../lib/seed';
 
 const DEFAULT_TAG_NAMES = [
   'Tax',
@@ -188,5 +189,43 @@ test.describe('Household > Tags settings', () => {
     await expect(
       lastRow.getByRole('button', { name: /^Move .+ down$/ }),
     ).toBeDisabled();
+  });
+
+  test('a transaction count links to that tag\'s transactions', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    const { request } = context;
+    const api = workerInfra.apiOrigin;
+    const categoryId = await getCategoryId(request, api, 'Groceries');
+    const taxId = await getTagId(request, api, 'Tax');
+    await seedTransaction(request, api, {
+      date: '2026-10-01',
+      merchant: 'Corner Store',
+      amount: '20.00',
+      categoryId,
+      tagIds: [taxId],
+    });
+    await seedTransaction(request, api, {
+      date: '2026-10-02',
+      merchant: 'Other Place',
+      amount: '30.00',
+      categoryId,
+    });
+    await authedPage.goto('/settings/tags');
+
+    await authedPage
+      .locator('li.tags-list-row', { hasText: 'Tax' })
+      .getByRole('link', { name: '1 transaction', exact: true })
+      .click();
+
+    await expect(authedPage).toHaveURL(`/transactions?tag_ids=${taxId}`);
+    await expect(
+      authedPage.locator('li.transactions-row', { hasText: 'Corner Store' }),
+    ).toBeVisible();
+    await expect(
+      authedPage.locator('li.transactions-row', { hasText: 'Other Place' }),
+    ).not.toBeVisible();
   });
 });

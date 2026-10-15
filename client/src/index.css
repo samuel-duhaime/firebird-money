@@ -20,6 +20,7 @@
   --color-success: #3ba27a; /* Positive amounts, success states */
   --color-warning: #e5a13b; /* Partial-success/caution states */
   --color-error: #e5484d; /* Negative amounts, error states */
+  --color-link: #4da3ff; /* Links inside text, e.g. a "12 transactions" count */
 
   /* Spacing */
   --spacing-xs: 8px; /* Tight gaps between closely related elements, e.g. icon and label */

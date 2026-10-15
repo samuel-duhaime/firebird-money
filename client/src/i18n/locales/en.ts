@@ -368,6 +368,11 @@ export const en = {
       cancel: 'Cancel',
       apply: 'Apply',
     },
+    view: {
+      merchant: 'View merchant',
+      category: 'View category',
+      account: 'View account',
+    },
     dateRange: {
       trigger: 'Date',
       title: 'Date Range',
