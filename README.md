@@ -228,8 +228,8 @@ A user is a login identity, plus the (at most one) household they belong to and 
 
 - `GET /members` — list the users in the caller's household, each with their `role`, `email`, `first_name`, `last_name`, and `status`. A member's `id` is their user id.
 - `GET /members/{id}` — fetch a single member.
-- `PATCH /members/{id}` — change a member's `role` (`family_manager` or `family_member`).
-- `DELETE /members/{id}` — remove a member from the household (their user account is kept). Fails while they still have transactions in it.
+- `PATCH /members/{id}` — change a member's `role` (`family_manager` or `family_member`). Managers only.
+- `DELETE /members/{id}` — remove a member from the household (their user account is kept). Managers only. Fails while they still have transactions in it.
 
 Nobody is added here: people join a household through `POST /auth/onboarding` with its `join_code`.
 

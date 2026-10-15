@@ -18,6 +18,7 @@ user-in-use = L’utilisateur { $n } est toujours connecté à un ménage
 member-not-found = Aucun membre de ménage avec l’id { $n }
 member-invalid-role = role doit être family_manager ou family_member
 member-has-transactions = Ce membre a encore des transactions dans ce ménage
+member-requires-manager = Seul un gestionnaire familial peut modifier ou retirer des membres
 tag-not-found = Aucune étiquette avec l’id { $n }
 tag-duplicate-name = Une étiquette avec ce nom existe déjà
 tag-in-use = L’étiquette { $n } est toujours utilisée par des transactions existantes
