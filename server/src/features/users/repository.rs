@@ -3,8 +3,8 @@ use sqlx::PgPool;
 use super::model::{NewUser, User, UserPatch};
 use crate::shared::http_error::is_unique_violation;
 
-const SELECT_COLUMNS: &str =
-    "id, email, google_id, status, first_name, last_name, avatar_url, onboarding_steps, created_at";
+const SELECT_COLUMNS: &str = "id, email, google_id, status, first_name, last_name, avatar_url, \
+     onboarding_steps, household_id, household_role, created_at";
 
 /// Inserts a new user and returns the created row. `status` starts at `pending`.
 pub async fn create(pool: &PgPool, new_user: &NewUser) -> Result<User, sqlx::Error> {
@@ -89,6 +89,31 @@ pub async fn update(
     .bind(&patch.avatar_url)
     .fetch_optional(pool)
     .await
+}
+
+/// Puts a user who has no household yet into `household_id` with `role`. Returns `false` if they
+/// already belong to one (including when a concurrent request just put them there). Generic over
+/// `PgExecutor` so it can run inside an existing transaction (see
+/// `households::repository::create_with_manager`) as well as directly against the pool.
+pub async fn join_household<'e, E>(
+    executor: E,
+    user_id: i32,
+    household_id: i32,
+    role: &str,
+) -> Result<bool, sqlx::Error>
+where
+    E: sqlx::PgExecutor<'e>,
+{
+    let result = sqlx::query(
+        "UPDATE users SET household_id = $2, household_role = $3
+         WHERE id = $1 AND household_id IS NULL",
+    )
+    .bind(user_id)
+    .bind(household_id)
+    .bind(role)
+    .execute(executor)
+    .await?;
+    Ok(result.rows_affected() > 0)
 }
 
 /// Deletes a user by id. Returns `true` if a row was deleted, `false` if the id didn't exist.

@@ -130,7 +130,7 @@ Magic links last 15 minutes and work once. The session cookie is httpOnly and Sa
 
 - `GET /transactions` — list the caller's household's transactions, optionally filtered with `?date=YYYY-MM-DD`, `?start_date=`/`?end_date=` (inclusive range), `?merchant_id=`, `?account_id=`, and/or `?search=` (case-insensitive match against merchant name, original statement, category, or amount). Accepts `?order=` (`date` [default], `inverse_date`, `amount`, `inverse_amount`).
 - `GET /transactions/{id}` — fetch a single transaction.
-- `POST /transactions` — create a transaction (`date`, `amount`, `category_id`, `account_id`, optional `tag_ids`, optional `reviewed` [defaults to `true`; the budget importer sets it `false`], and either `merchant_id` and/or `original_statement`). `household_id` and `household_member_id` are never read from the body — they're always the caller's own household and membership.
+- `POST /transactions` — create a transaction (`date`, `amount`, `category_id`, `account_id`, optional `tag_ids`, optional `reviewed` [defaults to `true`; the budget importer sets it `false`], and either `merchant_id` and/or `original_statement`). `household_id` and `user_id` are never read from the body — they're always the caller's own household and user.
 - `PATCH /transactions/{id}` — partially update a transaction (only the fields you send change). `tag_ids`, if given, *replaces* the full tag set (`[]` clears it). There's no `original_statement` here — it's immutable after creation; only `merchant_id` is editable.
 - `DELETE /transactions/{id}` — delete a transaction.
 - `PATCH /transactions/bulk` — partially update several transactions at once (`ids`, `patch` — `patch` supports `date`, `merchant_id`, `category_id`, `account_id`, and `tag_ids`). Unlike the single-transaction `PATCH`, `tag_ids` here *adds* to each transaction's existing tags rather than replacing them. Ids the household doesn't own are silently skipped.
@@ -222,15 +222,16 @@ Beyond `id`/`created_at`, a household carries only a `join_code`, generated on c
 - `PATCH /users/{id}` — partially update a user (`email`, `google_id`, `status`, `first_name`, `last_name`, `avatar_url`; only the fields you send change). `status` must be `verified`, `pending`, or `suspended`.
 - `DELETE /users/{id}` — delete a user. Fails while they still belong to a household (see `/household-members`).
 
-A user is a standalone login identity — how they relate to their (at most one) household is recorded separately. In practice signing in creates them (see [`/auth`](#api)); these routes are for direct management.
+A user is a login identity, plus the (at most one) household they belong to and their role in it (`household_id`, `household_role`; both `null` until onboarding). In practice signing in creates them (see [`/auth`](#api)); these routes are for direct management.
 
 `/household-members`:
 
-- `GET /household-members` — list the caller's household's memberships, each with the member's `email`, `first_name`, `last_name`, and `status`, optionally filtered by `?user_id=`.
-- `GET /household-members/{id}` — fetch a single membership.
-- `POST /household-members` — connect a user to the caller's own household with a role (`user_id`, `type`, where `type` is `family_manager` or `family_member`). Only an existing `family_manager` of that household may do this; `household_id` is never read from the body — it's always the caller's own. A user belongs to at most one household, ever — not just one per `household_id`.
-- `PATCH /household-members/{id}` — change a membership's role (`type`).
-- `DELETE /household-members/{id}` — remove a membership.
+- `GET /household-members` — list the users in the caller's household, each with their `role`, `email`, `first_name`, `last_name`, and `status`. A member's `id` is their user id.
+- `GET /household-members/{id}` — fetch a single member.
+- `PATCH /household-members/{id}` — change a member's `role` (`family_manager` or `family_member`).
+- `DELETE /household-members/{id}` — remove a member from the household (their user account is kept). Fails while they still have transactions in it.
+
+Nobody is added here: people join a household through `POST /auth/onboarding` with its `join_code`.
 
 `/settings`:
 
@@ -247,8 +248,7 @@ Every table in the Postgres schema (see `server/migrations/`) and how they relat
 
 ```mermaid
 erDiagram
-    HOUSEHOLDS ||--o{ HOUSEHOLD_MEMBERS : has
-    USERS ||--o| HOUSEHOLD_MEMBERS : has
+    HOUSEHOLDS ||--o{ USERS : has
     USERS ||--o{ LOGIN_TOKENS : has
     USERS ||--o{ SESSIONS : has
     USERS ||--o| SETTINGS : has
@@ -263,7 +263,7 @@ erDiagram
     CATEGORY_GROUPS ||--o{ CATEGORIES : has
     HOUSEHOLDS ||--o{ TRANSACTIONS : has
     CATEGORIES ||--o{ TRANSACTIONS : categorizes
-    HOUSEHOLD_MEMBERS ||--o{ TRANSACTIONS : creates
+    USERS ||--o{ TRANSACTIONS : creates
     MERCHANTS ||--o{ TRANSACTIONS : identifies
     HOUSEHOLDS ||--o{ MERCHANTS : "owns custom"
     HOUSEHOLDS ||--o{ INSTITUTIONS : "owns custom"

@@ -18,14 +18,12 @@ use super::model::{
 };
 use super::session::{build_removal_cookie, build_session_cookie, session_token};
 use super::{repository, tokens, CurrentUser};
-use crate::features::household_members::model::NewHouseholdMember;
-use crate::features::household_members::repository as household_members_repository;
 use crate::features::households::repository as households_repository;
 use crate::features::users::model::User;
 use crate::features::users::repository as users_repository;
 use crate::shared::config::{AuthConfig, LOGIN_TOKEN_TTL_MINUTES, SESSION_TTL_DAYS};
 use crate::shared::email;
-use crate::shared::http_error::{error_response, internal_error_response, is_unique_violation};
+use crate::shared::http_error::{error_response, internal_error_response};
 use crate::shared::l10n::L10n;
 
 /// `POST /auth/request-login` — find-or-create the user, issue a one-time token, and either mail
@@ -316,27 +314,24 @@ async fn settle_household(
                 }
             };
 
-            let new_member = NewHouseholdMember {
-                user_id,
-                r#type: "family_member".to_string(),
-            };
-
-            match household_members_repository::create(pool, household.id, &new_member).await {
-                Ok(_) => Ok(()),
-                Err(e) if is_unique_violation(&e) => Err(already_in_household()),
+            match users_repository::join_household(pool, user_id, household.id, "family_member")
+                .await
+            {
+                Ok(true) => Ok(()),
+                Ok(false) => Err(already_in_household()),
                 Err(e) => {
                     error!("failed to connect user to household error={e}");
                     Err(internal_error_response(l10n, &locale))
                 }
             }
         }
-        // Household creation, starter-data seeding, and the manager membership all happen in one
-        // transaction (see `create_with_manager`), so a failure at any step — including the
-        // `user_id` unique violation from a concurrent onboarding request on the same account —
+        // Household creation, starter-data seeding, and making the caller its manager all happen in
+        // one transaction (see `create_with_manager`), so a failure at any step — including a
+        // concurrent onboarding request on the same account having just put them in a household —
         // never leaves an orphaned household behind.
         None => match households_repository::create_with_manager(pool, user_id).await {
-            Ok(_) => Ok(()),
-            Err(e) if is_unique_violation(&e) => Err(already_in_household()),
+            Ok(Some(_)) => Ok(()),
+            Ok(None) => Err(already_in_household()),
             Err(e) => {
                 error!("failed to create household error={e}");
                 Err(internal_error_response(l10n, &locale))

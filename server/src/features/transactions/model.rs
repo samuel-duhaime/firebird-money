@@ -19,9 +19,9 @@ pub struct TransactionTag {
 pub struct Transaction {
     pub id: i64,
     pub household_id: i32,
-    /// Which household member this transaction is attributed to — the `household_members` row of
-    /// whoever created it. Not to be confused with `account_id`, the bank account it's in.
-    pub household_member_id: i32,
+    /// Which household member this transaction is attributed to — the user who created it. Not to
+    /// be confused with `account_id`, the bank account it's in.
+    pub user_id: i32,
     pub date: NaiveDate,
     /// The raw payee/merchant text from the bank or import file, e.g. "STARBUCKS STORE #4521" —
     /// kept forever as the immutable historical record of what the source actually said. Never
@@ -48,9 +48,9 @@ pub struct Transaction {
 }
 
 /// Body for `POST /transactions`. `id` and `created_at` are generated; `household_id` and
-/// `household_member_id` are never read from the body — they're always the caller's own household
-/// and membership, from `CurrentUser`. `reviewed` defaults to `true` when absent; automated
-/// imports set it to `false` so they can be found later.
+/// `user_id` are never read from the body — they're always the caller's own household and user,
+/// from `CurrentUser`. `reviewed` defaults to `true` when absent; automated imports set it to
+/// `false` so they can be found later.
 ///
 /// At least one of `merchant_id`/`original_statement` must be given (checked in the handler):
 /// - `merchant_id` given, `original_statement` absent: used directly (validated against the

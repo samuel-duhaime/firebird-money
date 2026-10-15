@@ -32,14 +32,12 @@ pub struct OnboardingRequest {
 }
 
 /// The household a user belongs to (a user belongs to exactly one, never more), with the role
-/// they hold in it. `id` is the `household_members` row's own id — a transaction is attributed to
-/// this, not to the household directly (see `CurrentUser::household_member_id`).
+/// they hold in it.
 #[derive(Debug, Serialize, FromRow)]
 pub struct Membership {
-    pub id: i32,
     pub household_id: i32,
     pub join_code: String,
-    pub r#type: String,
+    pub role: String,
 }
 
 /// Onboarding step: the user gave the name other household members see.

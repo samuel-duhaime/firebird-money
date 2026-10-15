@@ -138,8 +138,8 @@ where
     body["household"]["household_id"].as_i64().unwrap() as i32
 }
 
-/// The `household.id` (i.e. `household_member_id`) of the signed-in caller, per `GET /auth/me`.
-async fn own_household_member_id<S, B>(app: &S, cookie: &str) -> i64
+/// The signed-in caller's user id, per `GET /auth/me`.
+async fn own_user_id<S, B>(app: &S, cookie: &str) -> i64
 where
     S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
     B: MessageBody,
@@ -149,7 +149,7 @@ where
         .insert_header(("Cookie", cookie))
         .to_request();
     let body: serde_json::Value = test::call_and_read_body_json(app, req).await;
-    body["household"]["id"].as_i64().unwrap()
+    body["user"]["id"].as_i64().unwrap()
 }
 
 /// Inserts a category group + category directly via SQL (categories/category_groups aren't wired
@@ -186,7 +186,7 @@ async fn insert_category(pool: &PgPool, household_id: i32, name: &str) -> i32 {
 async fn insert_transaction(
     pool: &PgPool,
     household_id: i32,
-    household_member_id: i64,
+    user_id: i64,
     merchant_id: i64,
     category_id: i32,
     date: &str,
@@ -194,12 +194,12 @@ async fn insert_transaction(
     let account_id = insert_account(pool, household_id).await;
     sqlx::query(
         "INSERT INTO transactions
-            (household_id, household_member_id, date, original_statement, merchant_id, amount,
+            (household_id, user_id, date, original_statement, merchant_id, amount,
              category_id, account_id, reviewed)
          VALUES ($1, $2, $3::date, 'test', $4, 10.00, $5, $6, true)",
     )
     .bind(household_id)
-    .bind(household_member_id)
+    .bind(user_id)
     .bind(date)
     .bind(merchant_id)
     .bind(category_id)
@@ -450,13 +450,13 @@ async fn delete_merchant_fails_while_used_by_a_transaction(pool: PgPool) {
     let app = test::init_service(app_with(pool.clone())).await;
     let cookie = sign_in_with_household(&app, "sam@example.com").await;
     let household_id = own_household_id(&app, &cookie).await;
-    let household_member_id = own_household_member_id(&app, &cookie).await;
+    let user_id = own_user_id(&app, &cookie).await;
     let merchant_id = create_via_api(&app, &cookie, "In-Use Shop").await;
     let category_id = insert_category(&pool, household_id, "Category Test").await;
     insert_transaction(
         &pool,
         household_id,
-        household_member_id,
+        user_id,
         merchant_id,
         category_id,
         "2026-01-01",
@@ -729,7 +729,7 @@ async fn recommended_category_id_is_the_most_used_category(pool: PgPool) {
     let app = test::init_service(app_with(pool.clone())).await;
     let cookie = sign_in_with_household(&app, "sam@example.com").await;
     let household_id = own_household_id(&app, &cookie).await;
-    let household_member_id = own_household_member_id(&app, &cookie).await;
+    let user_id = own_user_id(&app, &cookie).await;
     let merchant_id = create_via_api(&app, &cookie, "Amazon Test").await;
     let shopping = insert_category(&pool, household_id, "Shopping Test").await;
     let electronics = insert_category(&pool, household_id, "Electronics Test").await;
@@ -738,7 +738,7 @@ async fn recommended_category_id_is_the_most_used_category(pool: PgPool) {
     insert_transaction(
         &pool,
         household_id,
-        household_member_id,
+        user_id,
         merchant_id,
         shopping,
         "2026-01-01",
@@ -747,7 +747,7 @@ async fn recommended_category_id_is_the_most_used_category(pool: PgPool) {
     insert_transaction(
         &pool,
         household_id,
-        household_member_id,
+        user_id,
         merchant_id,
         shopping,
         "2026-01-02",
@@ -756,7 +756,7 @@ async fn recommended_category_id_is_the_most_used_category(pool: PgPool) {
     insert_transaction(
         &pool,
         household_id,
-        household_member_id,
+        user_id,
         merchant_id,
         electronics,
         "2026-01-03",
@@ -776,7 +776,7 @@ async fn recommended_category_id_breaks_a_tie_with_the_most_recent_transaction(p
     let app = test::init_service(app_with(pool.clone())).await;
     let cookie = sign_in_with_household(&app, "sam@example.com").await;
     let household_id = own_household_id(&app, &cookie).await;
-    let household_member_id = own_household_member_id(&app, &cookie).await;
+    let user_id = own_user_id(&app, &cookie).await;
     let merchant_id = create_via_api(&app, &cookie, "Amazon Test").await;
     let shopping = insert_category(&pool, household_id, "Shopping Test").await;
     let electronics = insert_category(&pool, household_id, "Electronics Test").await;
@@ -785,7 +785,7 @@ async fn recommended_category_id_breaks_a_tie_with_the_most_recent_transaction(p
     insert_transaction(
         &pool,
         household_id,
-        household_member_id,
+        user_id,
         merchant_id,
         shopping,
         "2026-01-01",
@@ -794,7 +794,7 @@ async fn recommended_category_id_breaks_a_tie_with_the_most_recent_transaction(p
     insert_transaction(
         &pool,
         household_id,
-        household_member_id,
+        user_id,
         merchant_id,
         electronics,
         "2026-01-15",

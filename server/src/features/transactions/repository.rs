@@ -9,7 +9,7 @@ use super::model::{
 use crate::features::merchants::repository as merchants_repository;
 
 const SELECT_COLUMNS: &str = "
-    t.id, t.household_id, t.household_member_id, t.date, t.original_statement, t.merchant_id,
+    t.id, t.household_id, t.user_id, t.date, t.original_statement, t.merchant_id,
     mch.name AS merchant_name, mch.logo_url AS merchant_logo_url, t.amount, t.category_id,
     c.name_en AS category_name_en, c.name_fr AS category_name_fr, g.type AS category_type,
     t.account_id, a.name AS account_name, t.reviewed, t.created_at";
@@ -127,7 +127,7 @@ async fn add_transaction_tags(
     Ok(())
 }
 
-/// Inserts a new transaction — scoped to `household_id` and attributed to `household_member_id` —
+/// Inserts a new transaction — scoped to `household_id` and attributed to `user_id` —
 /// and returns the created row, joined with its merchant, category, and (if
 /// `new_transaction.tag_ids` was given) its tags.
 ///
@@ -141,7 +141,7 @@ async fn add_transaction_tags(
 pub async fn create(
     pool: &PgPool,
     household_id: i32,
-    household_member_id: i32,
+    user_id: i32,
     new_transaction: &NewTransaction,
 ) -> Result<Transaction, sqlx::Error> {
     let explicit_merchant = match new_transaction.merchant_id {
@@ -173,7 +173,7 @@ pub async fn create(
     let mut transaction = sqlx::query_as::<_, Transaction>(&format!(
         "WITH inserted AS (
             INSERT INTO transactions
-                (household_id, household_member_id, date, original_statement, merchant_id, amount,
+                (household_id, user_id, date, original_statement, merchant_id, amount,
                  category_id, account_id, reviewed)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             RETURNING *
@@ -186,7 +186,7 @@ pub async fn create(
          JOIN accounts a ON a.id = t.account_id"
     ))
     .bind(household_id)
-    .bind(household_member_id)
+    .bind(user_id)
     .bind(new_transaction.date)
     .bind(&original_statement)
     .bind(merchant_id)

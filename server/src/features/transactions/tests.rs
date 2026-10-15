@@ -100,8 +100,8 @@ where
     cookie
 }
 
-/// The `household.id` (i.e. `household_member_id`) of the signed-in caller, per `GET /auth/me`.
-async fn own_household_member_id<S, B>(app: &S, cookie: &str) -> i64
+/// The signed-in caller's user id, per `GET /auth/me`.
+async fn own_user_id<S, B>(app: &S, cookie: &str) -> i64
 where
     S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
     B: MessageBody,
@@ -111,7 +111,7 @@ where
         .insert_header(("Cookie", cookie))
         .to_request();
     let body: serde_json::Value = test::call_and_read_body_json(app, req).await;
-    body["household"]["id"].as_i64().unwrap()
+    body["user"]["id"].as_i64().unwrap()
 }
 
 /// The `household.household_id` of the signed-in caller, per `GET /auth/me`.
@@ -1583,7 +1583,7 @@ async fn get_transaction_returns_row(pool: PgPool) {
     assert_eq!(body["category_name_fr"], "Autre");
     assert_eq!(body["category_type"], "expense");
     assert!(body["household_id"].is_i64());
-    assert!(body["household_member_id"].is_i64());
+    assert!(body["user_id"].is_i64());
     assert_eq!(body["tags"].as_array().unwrap().len(), 0);
 }
 
@@ -2047,11 +2047,11 @@ async fn create_transaction_ignores_tag_ids_from_another_household(pool: PgPool)
 }
 
 #[sqlx::test]
-async fn create_transaction_attributes_it_to_the_callers_membership(pool: PgPool) {
+async fn create_transaction_attributes_it_to_the_caller(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
     let cookie = sign_in_with_household(&app, "sam@example.com").await;
     let category_id = create_other_category(&app, &cookie).await;
-    let expected_member_id = own_household_member_id(&app, &cookie).await;
+    let expected_user_id = own_user_id(&app, &cookie).await;
 
     let account_id = crate::shared::test_support::test_account_id(&app, &cookie).await;
     let req = test::TestRequest::post()
@@ -2067,10 +2067,7 @@ async fn create_transaction_attributes_it_to_the_callers_membership(pool: PgPool
         .to_request();
     let body: serde_json::Value = test::call_and_read_body_json(&app, req).await;
 
-    assert_eq!(
-        body["household_member_id"].as_i64().unwrap(),
-        expected_member_id
-    );
+    assert_eq!(body["user_id"].as_i64().unwrap(), expected_user_id);
 }
 
 #[sqlx::test]

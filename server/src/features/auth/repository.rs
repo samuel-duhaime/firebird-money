@@ -5,7 +5,8 @@ use super::model::Membership;
 use crate::features::users::model::User;
 
 const USER_COLUMNS: &str = "users.id, users.email, users.google_id, users.status, \
-     users.first_name, users.last_name, users.avatar_url, users.onboarding_steps, users.created_at";
+     users.first_name, users.last_name, users.avatar_url, users.onboarding_steps, users.household_id, \
+     users.household_role, users.created_at";
 
 /// Stores a freshly issued magic-link token (by hash) for this user.
 pub async fn create_login_token(
@@ -100,18 +101,16 @@ pub async fn mark_user_verified(pool: &PgPool, user_id: i32) -> Result<(), sqlx:
 }
 
 /// The household this user belongs to, with the role they hold in it — `None` if they haven't
-/// onboarded yet. A user belongs to at most one household (enforced by a unique constraint on
-/// `household_members.user_id`).
+/// onboarded yet.
 pub async fn get_membership(
     pool: &PgPool,
     user_id: i32,
 ) -> Result<Option<Membership>, sqlx::Error> {
     sqlx::query_as::<_, Membership>(
-        "SELECT household_members.id, household_members.household_id, households.join_code,
-                household_members.type
-         FROM household_members
-         JOIN households ON households.id = household_members.household_id
-         WHERE household_members.user_id = $1",
+        "SELECT users.household_id, households.join_code, users.household_role AS role
+         FROM users
+         JOIN households ON households.id = users.household_id
+         WHERE users.id = $1",
     )
     .bind(user_id)
     .fetch_optional(pool)
