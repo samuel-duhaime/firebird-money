@@ -55,12 +55,14 @@ pub async fn create(pool: &PgPool) -> Result<Household, sqlx::Error> {
 /// Like `create`, but also makes `user_id` the new household's `family_manager`, in the same
 /// transaction as the household's creation and starter-data seeding — used by
 /// `POST /auth/onboarding`'s no-`join_code` branch, so a failure at any step never leaves an
-/// orphaned, unowned household behind. `Ok(None)` (and nothing created) if the user already
+/// orphaned, unowned household behind. `member_tag_name` names the manager's own starter tag (see
+/// `tags::defaults::member_tag_name`). `Ok(None)` (and nothing created) if the user already
 /// belongs to a household, including when a concurrent onboarding request on the same account just
 /// put them in one.
 pub async fn create_with_manager(
     pool: &PgPool,
     user_id: i32,
+    member_tag_name: &str,
 ) -> Result<Option<Household>, sqlx::Error> {
     let mut last_error = None;
 
@@ -91,12 +93,34 @@ pub async fn create_with_manager(
         {
             return Ok(None);
         }
+        tags_repository::add_member_tag(&mut tx, household.id, member_tag_name).await?;
 
         tx.commit().await?;
         return Ok(Some(household));
     }
 
     Err(last_error.expect("loop only exits early on success"))
+}
+
+/// Puts `user_id` into `household_id` as a `family_member` and adds their own tag, named
+/// `member_tag_name` (see `tags::defaults::member_tag_name`), in one transaction — used by
+/// `POST /auth/onboarding`'s `join_code` branch. Returns `false` (and adds no tag) if the user
+/// already belongs to a household.
+pub async fn join(
+    pool: &PgPool,
+    user_id: i32,
+    household_id: i32,
+    member_tag_name: &str,
+) -> Result<bool, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+
+    if !users_repository::join_household(&mut *tx, user_id, household_id, "family_member").await? {
+        return Ok(false);
+    }
+    tags_repository::add_member_tag(&mut tx, household_id, member_tag_name).await?;
+
+    tx.commit().await?;
+    Ok(true)
 }
 
 /// Fetches a single household by id, or `None` if it doesn't exist.

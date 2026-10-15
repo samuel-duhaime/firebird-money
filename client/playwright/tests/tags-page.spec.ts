@@ -7,7 +7,8 @@ const DEFAULT_TAG_NAMES = [
   'Split',
   'Business',
   'Subscription',
-  'Member #1',
+  // The authed fixture onboards as "Test User" — every member gets a tag named after them.
+  'Test U.',
 ];
 
 test.describe('Household > Tags settings', () => {
@@ -109,23 +110,21 @@ test.describe('Household > Tags settings', () => {
   }) => {
     await authedPage.goto('/settings/tags');
     const row = authedPage.locator('li.tags-list-row', {
-      hasText: 'Member #1',
+      hasText: 'Test U.',
     });
     await row.getByRole('button', { name: 'Delete', exact: true }).click();
 
-    await expect(row.getByText('Delete the "Member #1" tag?')).toBeVisible();
+    await expect(row.getByText('Delete the "Test U." tag?')).toBeVisible();
     await row.getByRole('button', { name: 'Cancel', exact: true }).click();
 
-    await expect(
-      row.getByText('Delete the "Member #1" tag?'),
-    ).not.toBeVisible();
+    await expect(row.getByText('Delete the "Test U." tag?')).not.toBeVisible();
     await expect(row).toBeVisible();
   });
 
   test('confirming delete removes the tag', async ({ authedPage }) => {
     await authedPage.goto('/settings/tags');
     const row = authedPage.locator('li.tags-list-row', {
-      hasText: 'Member #1',
+      hasText: 'Test U.',
     });
     await row.getByRole('button', { name: 'Delete', exact: true }).click();
     await row.getByRole('button', { name: 'Delete', exact: true }).click();

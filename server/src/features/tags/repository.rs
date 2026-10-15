@@ -1,7 +1,7 @@
 use sqlx::PgConnection;
 use sqlx::PgPool;
 
-use super::defaults::DEFAULT_TAGS;
+use super::defaults::{DEFAULT_TAGS, MEMBER_TAG_COLOR, PLACEHOLDER_MEMBER_TAG_NAME};
 use super::model::{NewTag, Tag, TagPatch};
 
 const SELECT_COLUMNS: &str = "id, household_id, name, color, created_at, sort_order";
@@ -20,6 +20,64 @@ pub async fn seed_defaults(tx: &mut PgConnection, household_id: i32) -> Result<(
             .push_bind(index as i32);
     });
     query_builder.build().execute(&mut *tx).await?;
+    Ok(())
+}
+
+/// Adds a tag named after a member who just joined `household_id` (see
+/// `defaults::member_tag_name`), at the end of the household's order. Takes the transaction
+/// connection directly so it commits together with the member joining. A no-op when the household
+/// already has a tag by that name — say, a second "John S.", or someone named "Tax".
+pub async fn add_member_tag(
+    tx: &mut PgConnection,
+    household_id: i32,
+    name: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO tags (household_id, name, color, sort_order)
+         VALUES (
+             $1, $2, $3,
+             (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM tags WHERE household_id = $1)
+         )
+         ON CONFLICT (household_id, name) DO NOTHING",
+    )
+    .bind(household_id)
+    .bind(name)
+    .bind(MEMBER_TAG_COLOR)
+    .execute(&mut *tx)
+    .await?;
+    Ok(())
+}
+
+/// Gives a member who was already in `household_id` before giving their name (e.g. they predate
+/// the name step) their own tag, named `name`. A family manager takes over the household's
+/// leftover placeholder "Member #1" tag, if any, by renaming it — keeping its color, order, and
+/// transactions; otherwise the tag is added as in `add_member_tag`.
+pub async fn name_existing_member_tag(
+    pool: &PgPool,
+    household_id: i32,
+    name: &str,
+    is_manager: bool,
+) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin().await?;
+
+    let renamed = is_manager
+        && sqlx::query(
+            "UPDATE tags SET name = $2
+             WHERE household_id = $1 AND name = $3
+               AND NOT EXISTS (SELECT 1 FROM tags WHERE household_id = $1 AND name = $2)",
+        )
+        .bind(household_id)
+        .bind(name)
+        .bind(PLACEHOLDER_MEMBER_TAG_NAME)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected()
+            > 0;
+    if !renamed {
+        add_member_tag(&mut tx, household_id, name).await?;
+    }
+
+    tx.commit().await?;
     Ok(())
 }
 
