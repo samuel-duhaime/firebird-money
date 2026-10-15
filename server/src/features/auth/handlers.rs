@@ -257,7 +257,8 @@ async fn onboarding(
             }
         }
         // Already in a household but only now giving their name: they never got a tag when they
-        // joined, so add it now (idempotent, so a retry after a later failure is harmless).
+        // joined, so add it now. Idempotent for the same name, so a retry after a later failure
+        // is harmless — though retrying under a different name leaves the first tag behind too.
         Some(household) => {
             let is_manager = household.role == "family_manager";
             if let Err(e) = tags_repository::name_existing_member_tag(
