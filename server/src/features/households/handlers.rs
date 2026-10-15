@@ -1,7 +1,7 @@
 //! HTTP API for households: JSON CRUD backed by Postgres.
 //!
-//! A household has no fields of its own to create or patch — see `household_members` for
-//! connecting a user to one with a role.
+//! A household has no fields of its own to create or patch — see `members` for the users in it
+//! and their roles.
 
 use actix_web::http::StatusCode;
 use actix_web::{web, HttpResponse, Responder};

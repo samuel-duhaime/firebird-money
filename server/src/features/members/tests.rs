@@ -1,4 +1,4 @@
-//! Integration tests for the household members HTTP API. Every route is scoped to the caller's
+//! Integration tests for the members HTTP API. Every route is scoped to the caller's
 //! own household — see `handlers.rs`.
 //!
 //! Each `#[sqlx::test]` gets its own throwaway Postgres database (migrated from
@@ -117,10 +117,10 @@ where
     (cookie, id)
 }
 
-// --- GET /household-members ---
+// --- GET /members ---
 
 #[sqlx::test]
-async fn list_household_members_returns_only_the_callers_household(pool: PgPool) {
+async fn list_members_returns_only_the_callers_household(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
     let cookie_a = onboard(&app, "a@example.com", None).await;
     let (_, jane_id) = join(&app, &cookie_a, "jane@example.com").await;
@@ -128,7 +128,7 @@ async fn list_household_members_returns_only_the_callers_household(pool: PgPool)
     let cookie_b = onboard(&app, "b@example.com", None).await;
 
     let req = test::TestRequest::get()
-        .uri("/household-members")
+        .uri("/members")
         .insert_header(("Cookie", cookie_b))
         .to_request();
     let body: serde_json::Value = test::call_and_read_body_json(&app, req).await;
@@ -140,13 +140,13 @@ async fn list_household_members_returns_only_the_callers_household(pool: PgPool)
 }
 
 #[sqlx::test]
-async fn list_household_members_includes_everyone_who_joined(pool: PgPool) {
+async fn list_members_includes_everyone_who_joined(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
     let cookie = onboard(&app, "sam@example.com", None).await;
     let (_, jane_id) = join(&app, &cookie, "jane@example.com").await;
 
     let req = test::TestRequest::get()
-        .uri("/household-members")
+        .uri("/members")
         .insert_header(("Cookie", cookie))
         .to_request();
     let body: serde_json::Value = test::call_and_read_body_json(&app, req).await;
@@ -158,12 +158,12 @@ async fn list_household_members_includes_everyone_who_joined(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn list_household_members_includes_each_members_user_details(pool: PgPool) {
+async fn list_members_includes_each_members_user_details(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
     let cookie = onboard(&app, "sam@example.com", None).await;
 
     let req = test::TestRequest::get()
-        .uri("/household-members")
+        .uri("/members")
         .insert_header(("Cookie", cookie))
         .to_request();
     let body: serde_json::Value = test::call_and_read_body_json(&app, req).await;
@@ -178,26 +178,24 @@ async fn list_household_members_includes_each_members_user_details(pool: PgPool)
 }
 
 #[sqlx::test]
-async fn list_household_members_requires_a_session(pool: PgPool) {
+async fn list_members_requires_a_session(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
-    let req = test::TestRequest::get()
-        .uri("/household-members")
-        .to_request();
+    let req = test::TestRequest::get().uri("/members").to_request();
     let resp = test::call_service(&app, req).await;
 
     assert_eq!(resp.status(), 401);
 }
 
-// --- GET /household-members/{id} ---
+// --- GET /members/{id} ---
 
 #[sqlx::test]
-async fn get_household_member_returns_the_member(pool: PgPool) {
+async fn get_member_returns_the_member(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
     let cookie = onboard(&app, "sam@example.com", None).await;
     let (_, jane_id) = join(&app, &cookie, "jane@example.com").await;
 
     let req = test::TestRequest::get()
-        .uri(&format!("/household-members/{jane_id}"))
+        .uri(&format!("/members/{jane_id}"))
         .insert_header(("Cookie", cookie))
         .to_request();
     let body: serde_json::Value = test::call_and_read_body_json(&app, req).await;
@@ -208,12 +206,12 @@ async fn get_household_member_returns_the_member(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn get_household_member_not_found(pool: PgPool) {
+async fn get_member_not_found(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
     let cookie = onboard(&app, "sam@example.com", None).await;
 
     let req = test::TestRequest::get()
-        .uri("/household-members/999999")
+        .uri("/members/999999")
         .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
@@ -222,14 +220,14 @@ async fn get_household_member_not_found(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn get_household_member_from_another_household_is_not_found(pool: PgPool) {
+async fn get_member_from_another_household_is_not_found(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
     let cookie_a = onboard(&app, "a@example.com", None).await;
     let (_, jane_id) = join(&app, &cookie_a, "jane@example.com").await;
 
     let cookie_b = onboard(&app, "b@example.com", None).await;
     let req = test::TestRequest::get()
-        .uri(&format!("/household-members/{jane_id}"))
+        .uri(&format!("/members/{jane_id}"))
         .insert_header(("Cookie", cookie_b))
         .to_request();
     let resp = test::call_service(&app, req).await;
@@ -237,16 +235,16 @@ async fn get_household_member_from_another_household_is_not_found(pool: PgPool) 
     assert_eq!(resp.status(), 404);
 }
 
-// --- PATCH /household-members/{id} ---
+// --- PATCH /members/{id} ---
 
 #[sqlx::test]
-async fn update_household_member_changes_role(pool: PgPool) {
+async fn update_member_changes_role(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
     let cookie = onboard(&app, "sam@example.com", None).await;
     let (jane_cookie, jane_id) = join(&app, &cookie, "jane@example.com").await;
 
     let req = test::TestRequest::patch()
-        .uri(&format!("/household-members/{jane_id}"))
+        .uri(&format!("/members/{jane_id}"))
         .insert_header(("Cookie", cookie))
         .set_json(serde_json::json!({ "role": "family_manager" }))
         .to_request();
@@ -262,13 +260,13 @@ async fn update_household_member_changes_role(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn update_household_member_rejects_invalid_role(pool: PgPool) {
+async fn update_member_rejects_invalid_role(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
     let cookie = onboard(&app, "sam@example.com", None).await;
     let (_, jane_id) = join(&app, &cookie, "jane@example.com").await;
 
     let req = test::TestRequest::patch()
-        .uri(&format!("/household-members/{jane_id}"))
+        .uri(&format!("/members/{jane_id}"))
         .insert_header(("Cookie", cookie))
         .set_json(serde_json::json!({ "role": "nonsense" }))
         .to_request();
@@ -278,14 +276,14 @@ async fn update_household_member_rejects_invalid_role(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn update_household_member_from_another_household_is_not_found(pool: PgPool) {
+async fn update_member_from_another_household_is_not_found(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
     let cookie_a = onboard(&app, "a@example.com", None).await;
     let (_, jane_id) = join(&app, &cookie_a, "jane@example.com").await;
 
     let cookie_b = onboard(&app, "b@example.com", None).await;
     let req = test::TestRequest::patch()
-        .uri(&format!("/household-members/{jane_id}"))
+        .uri(&format!("/members/{jane_id}"))
         .insert_header(("Cookie", cookie_b))
         .set_json(serde_json::json!({ "role": "family_manager" }))
         .to_request();
@@ -294,22 +292,22 @@ async fn update_household_member_from_another_household_is_not_found(pool: PgPoo
     assert_eq!(resp.status(), 404);
 }
 
-// --- DELETE /household-members/{id} ---
+// --- DELETE /members/{id} ---
 
 #[sqlx::test]
-async fn delete_household_member_removes_them_from_the_household(pool: PgPool) {
+async fn delete_member_removes_them_from_the_household(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
     let cookie = onboard(&app, "sam@example.com", None).await;
     let (jane_cookie, jane_id) = join(&app, &cookie, "jane@example.com").await;
 
     let delete_req = test::TestRequest::delete()
-        .uri(&format!("/household-members/{jane_id}"))
+        .uri(&format!("/members/{jane_id}"))
         .insert_header(("Cookie", cookie.clone()))
         .to_request();
     assert_eq!(test::call_service(&app, delete_req).await.status(), 204);
 
     let get_req = test::TestRequest::get()
-        .uri(&format!("/household-members/{jane_id}"))
+        .uri(&format!("/members/{jane_id}"))
         .insert_header(("Cookie", cookie))
         .to_request();
     assert_eq!(test::call_service(&app, get_req).await.status(), 404);
@@ -321,7 +319,7 @@ async fn delete_household_member_removes_them_from_the_household(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn delete_household_member_is_blocked_while_they_have_transactions(pool: PgPool) {
+async fn delete_member_is_blocked_while_they_have_transactions(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
     let cookie = onboard(&app, "sam@example.com", None).await;
     let (jane_cookie, jane_id) = join(&app, &cookie, "jane@example.com").await;
@@ -351,7 +349,7 @@ async fn delete_household_member_is_blocked_while_they_have_transactions(pool: P
     );
 
     let delete_req = test::TestRequest::delete()
-        .uri(&format!("/household-members/{jane_id}"))
+        .uri(&format!("/members/{jane_id}"))
         .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, delete_req).await;
@@ -360,12 +358,12 @@ async fn delete_household_member_is_blocked_while_they_have_transactions(pool: P
 }
 
 #[sqlx::test]
-async fn delete_household_member_not_found(pool: PgPool) {
+async fn delete_member_not_found(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
     let cookie = onboard(&app, "sam@example.com", None).await;
 
     let req = test::TestRequest::delete()
-        .uri("/household-members/999999")
+        .uri("/members/999999")
         .insert_header(("Cookie", cookie))
         .to_request();
     let resp = test::call_service(&app, req).await;
@@ -374,10 +372,10 @@ async fn delete_household_member_not_found(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn delete_household_member_requires_a_session(pool: PgPool) {
+async fn delete_member_requires_a_session(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
     let req = test::TestRequest::delete()
-        .uri("/household-members/999999")
+        .uri("/members/999999")
         .to_request();
     let resp = test::call_service(&app, req).await;
 
@@ -385,14 +383,14 @@ async fn delete_household_member_requires_a_session(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn delete_household_member_from_another_household_is_not_found(pool: PgPool) {
+async fn delete_member_from_another_household_is_not_found(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
     let cookie_a = onboard(&app, "a@example.com", None).await;
     let (_, jane_id) = join(&app, &cookie_a, "jane@example.com").await;
 
     let cookie_b = onboard(&app, "b@example.com", None).await;
     let delete_req = test::TestRequest::delete()
-        .uri(&format!("/household-members/{jane_id}"))
+        .uri(&format!("/members/{jane_id}"))
         .insert_header(("Cookie", cookie_b))
         .to_request();
     let resp = test::call_service(&app, delete_req).await;

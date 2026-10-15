@@ -1,13 +1,13 @@
 use sqlx::PgPool;
 
-use super::model::{HouseholdMember, HouseholdMemberPatch};
+use super::model::{Member, MemberPatch};
 
 const SELECT_COLUMNS: &str = "id, household_id, household_role AS role, email, first_name, \
      last_name, status, created_at";
 
 /// Lists a household's members.
-pub async fn list(pool: &PgPool, household_id: i32) -> Result<Vec<HouseholdMember>, sqlx::Error> {
-    sqlx::query_as::<_, HouseholdMember>(&format!(
+pub async fn list(pool: &PgPool, household_id: i32) -> Result<Vec<Member>, sqlx::Error> {
+    sqlx::query_as::<_, Member>(&format!(
         "SELECT {SELECT_COLUMNS} FROM users WHERE household_id = $1 ORDER BY id"
     ))
     .bind(household_id)
@@ -17,12 +17,8 @@ pub async fn list(pool: &PgPool, household_id: i32) -> Result<Vec<HouseholdMembe
 
 /// Fetches a single member by user id, scoped to `household_id`, or `None` if they don't exist
 /// (including when they belong to a different household).
-pub async fn get(
-    pool: &PgPool,
-    household_id: i32,
-    id: i32,
-) -> Result<Option<HouseholdMember>, sqlx::Error> {
-    sqlx::query_as::<_, HouseholdMember>(&format!(
+pub async fn get(pool: &PgPool, household_id: i32, id: i32) -> Result<Option<Member>, sqlx::Error> {
+    sqlx::query_as::<_, Member>(&format!(
         "SELECT {SELECT_COLUMNS} FROM users WHERE id = $1 AND household_id = $2"
     ))
     .bind(id)
@@ -38,9 +34,9 @@ pub async fn update(
     pool: &PgPool,
     household_id: i32,
     id: i32,
-    patch: &HouseholdMemberPatch,
-) -> Result<Option<HouseholdMember>, sqlx::Error> {
-    sqlx::query_as::<_, HouseholdMember>(&format!(
+    patch: &MemberPatch,
+) -> Result<Option<Member>, sqlx::Error> {
+    sqlx::query_as::<_, Member>(&format!(
         "UPDATE users
          SET household_role = COALESCE($3, household_role)
          WHERE id = $1 AND household_id = $2

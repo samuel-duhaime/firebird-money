@@ -2,8 +2,8 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 use sqlx::FromRow;
 
-/// A single row in the `households` table. Carries no identity of its own — see
-/// `household_members` for who belongs to it and how.
+/// A single row in the `households` table. Carries no identity of its own — who belongs to it,
+/// and with what role, is on `users` (see the `members` feature).
 ///
 /// `join_code` is a shared secret (it's what lets someone join the household), and there's no
 /// auth guard yet on `GET /households/{id}` to check the caller is a member (that lands in #65).

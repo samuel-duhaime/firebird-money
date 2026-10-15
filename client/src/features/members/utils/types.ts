@@ -1,6 +1,6 @@
-/** A row of `GET /household-members`: a user in the household, with their role. `id` is the
+/** A row of `GET /members`: a user in the household, with their role. `id` is the
  * user's id. */
-export interface HouseholdMember {
+export interface Member {
   id: number;
   household_id: number;
   role: 'family_manager' | 'family_member';
