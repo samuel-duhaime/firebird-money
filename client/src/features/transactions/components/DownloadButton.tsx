@@ -17,7 +17,7 @@ const DOWNLOAD_FORMATS: DownloadFormat[] = ['csv', 'xlsx'];
 
 export const DownloadButton = () => {
   const { t } = useTranslation();
-  const { search, order, start_date, end_date } = routeApi.useSearch();
+  const query = routeApi.useSearch();
   const { isOpen, setIsOpen, position, triggerRef, popoverRef } =
     useAnchoredPopover<HTMLButtonElement>();
   const firstOptionRef = useRef<HTMLButtonElement>(null);
@@ -42,7 +42,7 @@ export const DownloadButton = () => {
   const handleSelect = async (format: DownloadFormat) => {
     setIsOpen(false);
     try {
-      await downloadTransactions(format, search, order, start_date, end_date);
+      await downloadTransactions(format, query);
     } catch {
       downloadFailedToast();
     }

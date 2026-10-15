@@ -6,8 +6,14 @@ import './index.css';
 import './i18n';
 import { routeTree } from './routeTree.gen';
 import { queryClient } from './lib/query-client';
+import { parseSearch, stringifySearch } from './lib/search-params';
 
-const router = createRouter({ routeTree, context: { queryClient } });
+const router = createRouter({
+  routeTree,
+  context: { queryClient },
+  parseSearch,
+  stringifySearch,
+});
 
 declare module '@tanstack/react-router' {
   interface Register {

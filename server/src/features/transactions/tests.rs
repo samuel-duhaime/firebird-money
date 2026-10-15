@@ -1120,6 +1120,186 @@ async fn list_transactions_rejects_invalid_order(pool: PgPool) {
     assert_eq!(resp.status(), 400);
 }
 
+/// `GET {uri}`'s rows' merchant names, in response order.
+async fn listed_merchant_names<S, B>(app: &S, cookie: &str, uri: &str) -> Vec<String>
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let req = test::TestRequest::get()
+        .uri(uri)
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    let body: serde_json::Value = test::call_and_read_body_json(app, req).await;
+    body.as_array()
+        .unwrap_or_else(|| panic!("expected an array, got {body}"))
+        .iter()
+        .map(|row| row["merchant_name"].as_str().unwrap().to_string())
+        .collect()
+}
+
+#[sqlx::test]
+async fn list_transactions_filters_by_category_ids(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let other_id = create_other_category(&app, &cookie).await;
+    let education_id = education_category_id(&app, &cookie).await;
+    let groceries_id = find_category_id_by_name(&app, &cookie, "Groceries").await;
+    create_via_api(&app, &cookie, other_id, "2024-01-15", "STARBUCKS", "12.34").await;
+    create_via_api(&app, &cookie, education_id, "2024-01-16", "UDEMY", "20.00").await;
+    create_via_api(&app, &cookie, groceries_id, "2024-01-17", "IGA", "56.78").await;
+
+    let names = listed_merchant_names(
+        &app,
+        &cookie,
+        &format!("/transactions?category_ids={other_id},{groceries_id}"),
+    )
+    .await;
+
+    assert_eq!(names, vec!["IGA", "STARBUCKS"]);
+}
+
+#[sqlx::test]
+async fn list_transactions_filters_by_merchant_ids(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    let starbucks =
+        create_via_api(&app, &cookie, category_id, "2024-01-15", "STARBUCKS", "1").await;
+    let iga = create_via_api(&app, &cookie, category_id, "2024-01-16", "IGA", "2").await;
+    create_via_api(&app, &cookie, category_id, "2024-01-17", "METRO", "3").await;
+    let starbucks_id = transaction_merchant_id(&app, &cookie, starbucks).await;
+    let iga_id = transaction_merchant_id(&app, &cookie, iga).await;
+
+    let names = listed_merchant_names(
+        &app,
+        &cookie,
+        &format!("/transactions?merchant_ids={starbucks_id},{iga_id}"),
+    )
+    .await;
+
+    assert_eq!(names, vec!["IGA", "STARBUCKS"]);
+}
+
+#[sqlx::test]
+async fn list_transactions_filters_by_account_ids(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    create_via_api(&app, &cookie, category_id, "2024-01-15", "STARBUCKS", "1").await;
+    let account_id = crate::shared::test_support::test_account_id(&app, &cookie).await;
+
+    let names = listed_merchant_names(
+        &app,
+        &cookie,
+        &format!("/transactions?account_ids={account_id}"),
+    )
+    .await;
+    assert_eq!(names, vec!["STARBUCKS"]);
+
+    let names = listed_merchant_names(
+        &app,
+        &cookie,
+        &format!("/transactions?account_ids={}", account_id + 1000),
+    )
+    .await;
+    assert!(names.is_empty());
+}
+
+#[sqlx::test]
+async fn list_transactions_filters_by_tag_ids_and_untagged(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    let tag_a_id = create_tag_via_api(&app, &cookie, "Test Tag A").await;
+    let tag_b_id = create_tag_via_api(&app, &cookie, "Test Tag B").await;
+    let account_id = crate::shared::test_support::test_account_id(&app, &cookie).await;
+
+    for (date, statement, tag_ids) in [
+        ("2024-01-15", "STARBUCKS", vec![tag_a_id]),
+        ("2024-01-16", "IGA", vec![tag_b_id]),
+        ("2024-01-17", "METRO", vec![tag_a_id, tag_b_id]),
+    ] {
+        let req = test::TestRequest::post()
+            .uri("/transactions")
+            .insert_header(("Cookie", cookie.clone()))
+            .set_json(serde_json::json!({
+                "date": date,
+                "original_statement": statement,
+                "amount": "10.00",
+                "category_id": category_id,
+                "account_id": account_id,
+                "tag_ids": tag_ids,
+            }))
+            .to_request();
+        assert_eq!(test::call_service(&app, req).await.status(), 201);
+    }
+    create_via_api(&app, &cookie, category_id, "2024-01-18", "COSTCO", "10.00").await;
+
+    let tagged =
+        listed_merchant_names(&app, &cookie, &format!("/transactions?tag_ids={tag_a_id}")).await;
+    assert_eq!(tagged, vec!["METRO", "STARBUCKS"]);
+
+    let untagged = listed_merchant_names(&app, &cookie, "/transactions?untagged=true").await;
+    assert_eq!(untagged, vec!["COSTCO"]);
+
+    let both = listed_merchant_names(
+        &app,
+        &cookie,
+        &format!("/transactions?tag_ids={tag_b_id}&untagged=true"),
+    )
+    .await;
+    assert_eq!(both, vec!["COSTCO", "METRO", "IGA"]);
+}
+
+#[sqlx::test]
+async fn list_transactions_filters_by_amount(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "5.00",
+    )
+    .await;
+    create_via_api(&app, &cookie, category_id, "2024-01-16", "IGA", "10.00").await;
+    create_via_api(&app, &cookie, category_id, "2024-01-17", "METRO", "50.00").await;
+
+    let cases = [
+        ("amount_op=greater_than&amount=10", vec!["METRO"]),
+        ("amount_op=less_than&amount=10", vec!["STARBUCKS"]),
+        ("amount_op=equal_to&amount=10", vec!["IGA"]),
+        (
+            "amount_op=between&amount=5&amount_max=10",
+            vec!["IGA", "STARBUCKS"],
+        ),
+        // An operator with no amount isn't a filter yet.
+        ("amount_op=greater_than", vec!["METRO", "IGA", "STARBUCKS"]),
+    ];
+    for (query, expected) in cases {
+        let names = listed_merchant_names(&app, &cookie, &format!("/transactions?{query}")).await;
+        assert_eq!(names, expected, "for {query}");
+    }
+}
+
+#[sqlx::test]
+async fn list_transactions_rejects_invalid_id_list(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+
+    let req = test::TestRequest::get()
+        .uri("/transactions?category_ids=1,abc")
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 400);
+}
+
 // --- GET /transactions/download ---
 
 #[sqlx::test]
