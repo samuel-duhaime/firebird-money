@@ -112,7 +112,7 @@ async fn main() -> std::io::Result<()> {
             .configure(features::settings::configure)
             .configure(features::tags::configure)
             .configure(features::users::configure)
-            .configure(features::household_members::configure)
+            .configure(features::members::configure)
     })
     .bind(addr.as_str())?
     .run()

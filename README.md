@@ -213,23 +213,23 @@ A tag is a free-form label attached to transactions (see `tag_ids` on [`/transac
 - `POST /households` — create a new household, seeded with its starter category groups, categories, and tags.
 - `DELETE /households/{id}` — delete a household. Fails while it still has data connected to it (members, category groups, categories, tags, custom merchants, custom institutions, accounts, or transactions).
 
-Beyond `id`/`created_at`, a household carries only a `join_code`, generated on creation: the code an existing member shares so someone else can join through `POST /auth/onboarding`. Who belongs to it, and with what role, lives in `/household-members`.
+Beyond `id`/`created_at`, a household carries only a `join_code`, generated on creation: the code an existing member shares so someone else can join through `POST /auth/onboarding`. Who belongs to it, and with what role, lives in `/members`.
 
 `/users`:
 
 - `GET /users/{id}` — fetch a single user.
 - `POST /users` — create a user (`email`, `google_id` optional). `status` starts at `pending`.
 - `PATCH /users/{id}` — partially update a user (`email`, `google_id`, `status`, `first_name`, `last_name`, `avatar_url`; only the fields you send change). `status` must be `verified`, `pending`, or `suspended`.
-- `DELETE /users/{id}` — delete a user. Fails while they still belong to a household (see `/household-members`).
+- `DELETE /users/{id}` — delete a user. Fails while they still belong to a household (see `/members`).
 
 A user is a login identity, plus the (at most one) household they belong to and their role in it (`household_id`, `household_role`; both `null` until onboarding). In practice signing in creates them (see [`/auth`](#api)); these routes are for direct management.
 
-`/household-members`:
+`/members`:
 
-- `GET /household-members` — list the users in the caller's household, each with their `role`, `email`, `first_name`, `last_name`, and `status`. A member's `id` is their user id.
-- `GET /household-members/{id}` — fetch a single member.
-- `PATCH /household-members/{id}` — change a member's `role` (`family_manager` or `family_member`).
-- `DELETE /household-members/{id}` — remove a member from the household (their user account is kept). Fails while they still have transactions in it.
+- `GET /members` — list the users in the caller's household, each with their `role`, `email`, `first_name`, `last_name`, and `status`. A member's `id` is their user id.
+- `GET /members/{id}` — fetch a single member.
+- `PATCH /members/{id}` — change a member's `role` (`family_manager` or `family_member`).
+- `DELETE /members/{id}` — remove a member from the household (their user account is kept). Fails while they still have transactions in it.
 
 Nobody is added here: people join a household through `POST /auth/onboarding` with its `join_code`.
 
