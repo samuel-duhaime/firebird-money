@@ -688,6 +688,78 @@ async fn onboarding_only_saves_the_name_when_the_user_already_has_a_household(po
     assert_eq!(body["pending_onboarding_steps"], serde_json::json!([]));
 }
 
+/// Puts `email` straight into a fresh household with `role`, bypassing onboarding — like a user
+/// who joined before onboarding asked for a name — seeded with only the old placeholder tag.
+/// Returns the household id.
+async fn put_in_legacy_household(pool: &PgPool, email: &str, role: &str) -> i32 {
+    let (household_id,): (i32,) =
+        sqlx::query_as("INSERT INTO households (join_code) VALUES ('LEGACY01') RETURNING id")
+            .fetch_one(pool)
+            .await
+            .unwrap();
+    sqlx::query(
+        "INSERT INTO tags (household_id, name, color, sort_order)
+         VALUES ($1, 'Member #1', '#9B51E0', 0)",
+    )
+    .bind(household_id)
+    .execute(pool)
+    .await
+    .unwrap();
+    sqlx::query("UPDATE users SET household_id = $1, household_role = $2 WHERE email = $3")
+        .bind(household_id)
+        .bind(role)
+        .bind(email)
+        .execute(pool)
+        .await
+        .unwrap();
+    household_id
+}
+
+/// The household's tag names, in display order.
+async fn tag_names(pool: &PgPool, household_id: i32) -> Vec<String> {
+    sqlx::query_scalar("SELECT name FROM tags WHERE household_id = $1 ORDER BY sort_order, id")
+        .bind(household_id)
+        .fetch_all(pool)
+        .await
+        .unwrap()
+}
+
+#[sqlx::test]
+async fn onboarding_a_manager_already_in_a_household_renames_the_placeholder_tag(pool: PgPool) {
+    let app = test::init_service(app_with(pool.clone())).await;
+    let cookie = sign_in(&app, "sam@example.com").await;
+    let household_id = put_in_legacy_household(&pool, "sam@example.com", "family_manager").await;
+
+    let req = test::TestRequest::post()
+        .uri("/auth/onboarding")
+        .insert_header(("Cookie", cookie))
+        .set_json(serde_json::json!({ "first_name": "Sam", "last_name": "Tremblay" }))
+        .to_request();
+    assert_eq!(test::call_service(&app, req).await.status(), 201);
+
+    assert_eq!(tag_names(&pool, household_id).await, ["Sam T."]);
+}
+
+#[sqlx::test]
+async fn onboarding_a_member_already_in_a_household_adds_their_tag(pool: PgPool) {
+    let app = test::init_service(app_with(pool.clone())).await;
+    let cookie = sign_in(&app, "sam@example.com").await;
+    let household_id = put_in_legacy_household(&pool, "sam@example.com", "family_member").await;
+
+    let req = test::TestRequest::post()
+        .uri("/auth/onboarding")
+        .insert_header(("Cookie", cookie))
+        .set_json(serde_json::json!({ "first_name": "Sam", "last_name": "Tremblay" }))
+        .to_request();
+    assert_eq!(test::call_service(&app, req).await.status(), 201);
+
+    // The placeholder belongs to the manager, so a plain member leaves it alone.
+    assert_eq!(
+        tag_names(&pool, household_id).await,
+        ["Member #1", "Sam T."]
+    );
+}
+
 #[sqlx::test]
 async fn a_user_removed_from_their_household_can_onboard_again(pool: PgPool) {
     // The household step stays recorded after they're removed from it, but without a household

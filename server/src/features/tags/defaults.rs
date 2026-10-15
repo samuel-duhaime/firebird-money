@@ -27,10 +27,20 @@ pub const DEFAULT_TAGS: &[DefaultTag] = &[
         name: "Subscription",
         color: "#F2C94C",
     },
-    // TODO: name this after the household's actual first member once members have real display
-    // names wired up here, instead of a placeholder.
-    DefaultTag {
-        name: "Member #1",
-        color: "#9B51E0",
-    },
 ];
+
+/// The placeholder member tag households used to be seeded with, before they got one named after
+/// each member — see `repository::name_existing_member_tag`.
+pub const PLACEHOLDER_MEMBER_TAG_NAME: &str = "Member #1";
+
+/// Color of the extra starter tag named after the household's first member (see `member_tag_name`).
+pub const MEMBER_TAG_COLOR: &str = "#9B51E0";
+
+/// The starter tag name for a household member: their first name plus their last name's initial,
+/// e.g. "John S." for John Smith — or just "John" without a last name.
+pub fn member_tag_name(first_name: &str, last_name: Option<&str>) -> String {
+    match last_name.and_then(|name| name.chars().next()) {
+        Some(initial) => format!("{first_name} {}.", initial.to_uppercase()),
+        None => first_name.to_string(),
+    }
+}

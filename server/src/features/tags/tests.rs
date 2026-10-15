@@ -54,6 +54,21 @@ where
     S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
     B: MessageBody,
 {
+    let onboarding = serde_json::json!({ "first_name": "Test", "last_name": "User" });
+    sign_in_and_onboard(app, email, onboarding).await.0
+}
+
+/// Signs in and completes onboarding with `onboarding` as the request body (name, and optionally a
+/// `join_code`), returning the session cookie and the onboarding response.
+async fn sign_in_and_onboard<S, B>(
+    app: &S,
+    email: &str,
+    onboarding: serde_json::Value,
+) -> (String, serde_json::Value)
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
     let req = test::TestRequest::post()
         .uri("/auth/request-login")
         .set_json(serde_json::json!({ "email": email }))
@@ -71,11 +86,12 @@ where
     let onboard_req = test::TestRequest::post()
         .uri("/auth/onboarding")
         .insert_header(("Cookie", cookie.clone()))
-        .set_json(serde_json::json!({ "first_name": "Test", "last_name": "User" }))
+        .set_json(onboarding)
         .to_request();
-    assert_eq!(test::call_service(app, onboard_req).await.status(), 201);
+    let onboard_resp = test::call_service(app, onboard_req).await;
+    assert_eq!(onboard_resp.status(), 201);
 
-    cookie
+    (cookie, test::read_body_json(onboard_resp).await)
 }
 
 /// Creates a tag through `POST /tags` and returns its id, for tests that only need an existing
@@ -234,7 +250,59 @@ async fn list_tags_includes_seeded_tags(pool: PgPool) {
 
     assert!(rows.iter().any(|r| r["name"] == "Tax"));
     assert!(rows.iter().any(|r| r["name"] == "Reimburse"));
-    assert!(rows.iter().any(|r| r["name"] == "Member #1"));
+    assert!(rows.iter().any(|r| r["name"] == "Test U."));
+}
+
+#[sqlx::test]
+async fn creating_a_household_adds_a_tag_named_after_the_manager(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let onboarding = serde_json::json!({ "first_name": "John", "last_name": "smith" });
+    let (cookie, _) = sign_in_and_onboard(&app, "john@example.com", onboarding).await;
+
+    let rows = list_via_api(&app, &cookie).await;
+
+    let member_tag = rows.last().unwrap();
+    assert_eq!(member_tag["name"], "John S.");
+    assert_eq!(member_tag["color"], "#9B51E0");
+    assert!(!rows.iter().any(|r| r["name"] == "Member #1"));
+}
+
+#[sqlx::test]
+async fn member_tag_without_last_name_is_just_the_first_name(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let onboarding = serde_json::json!({ "first_name": "John" });
+    let (cookie, _) = sign_in_and_onboard(&app, "john@example.com", onboarding).await;
+
+    let rows = list_via_api(&app, &cookie).await;
+
+    assert_eq!(rows.last().unwrap()["name"], "John");
+}
+
+#[sqlx::test]
+async fn joining_a_household_adds_a_tag_named_after_the_member(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let onboarding = serde_json::json!({ "first_name": "John", "last_name": "Smith" });
+    let (manager_cookie, created) = sign_in_and_onboard(&app, "john@example.com", onboarding).await;
+    let join_code = created["household"]["join_code"].as_str().unwrap();
+
+    let onboarding =
+        serde_json::json!({ "first_name": "Jane", "last_name": "Doe", "join_code": join_code });
+    sign_in_and_onboard(&app, "jane@example.com", onboarding).await;
+
+    let rows = list_via_api(&app, &manager_cookie).await;
+    let names: Vec<&str> = rows.iter().map(|r| r["name"].as_str().unwrap()).collect();
+    assert_eq!(names[names.len() - 2..], ["John S.", "Jane D."]);
+}
+
+#[sqlx::test]
+async fn member_tag_clashing_with_an_existing_tag_is_skipped(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let onboarding = serde_json::json!({ "first_name": "Tax" });
+    let (cookie, _) = sign_in_and_onboard(&app, "tax@example.com", onboarding).await;
+
+    let rows = list_via_api(&app, &cookie).await;
+
+    assert_eq!(rows.iter().filter(|r| r["name"] == "Tax").count(), 1);
 }
 
 #[sqlx::test]

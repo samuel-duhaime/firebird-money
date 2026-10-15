@@ -19,6 +19,8 @@ use super::model::{
 use super::session::{build_removal_cookie, build_session_cookie, session_token};
 use super::{repository, tokens, CurrentUser};
 use crate::features::households::repository as households_repository;
+use crate::features::tags::defaults::member_tag_name;
+use crate::features::tags::repository as tags_repository;
 use crate::features::users::model::User;
 use crate::features::users::repository as users_repository;
 use crate::shared::config::{AuthConfig, LOGIN_TOKEN_TTL_MINUTES, SESSION_TTL_DAYS};
@@ -245,9 +247,30 @@ async fn onboarding(
         );
     }
 
-    if current_user.household.is_none() {
-        if let Err(response) = settle_household(&pool, &l10n, user.id, join_code).await {
-            return response;
+    let member_tag_name = member_tag_name(first_name, last_name);
+    match &current_user.household {
+        None => {
+            if let Err(response) =
+                settle_household(&pool, &l10n, user.id, join_code, &member_tag_name).await
+            {
+                return response;
+            }
+        }
+        // Already in a household but only now giving their name: they never got a tag when they
+        // joined, so add it now (idempotent, so a retry after a later failure is harmless).
+        Some(household) => {
+            let is_manager = household.role == "family_manager";
+            if let Err(e) = tags_repository::name_existing_member_tag(
+                &pool,
+                household.household_id,
+                &member_tag_name,
+                is_manager,
+            )
+            .await
+            {
+                error!("failed to add member tag user_id={} error={e}", user.id);
+                return internal_error_response(&l10n, &locale);
+            }
         }
     }
 
@@ -278,13 +301,14 @@ async fn onboarding(
 }
 
 /// Onboarding's household step: join the household behind `join_code` as a `family_member`, or,
-/// without one, create a household with `user_id` as its `family_manager`. `Err` carries the
-/// response to send back as-is.
+/// without one, create a household with `user_id` as its `family_manager` — either way adding a
+/// tag named `member_tag_name` for them. `Err` carries the response to send back as-is.
 async fn settle_household(
     pool: &PgPool,
     l10n: &L10n,
     user_id: i32,
     join_code: Option<&str>,
+    member_tag_name: &str,
 ) -> Result<(), HttpResponse> {
     let locale = l10n.locale();
     let already_in_household = || {
@@ -314,9 +338,7 @@ async fn settle_household(
                 }
             };
 
-            match users_repository::join_household(pool, user_id, household.id, "family_member")
-                .await
-            {
+            match households_repository::join(pool, user_id, household.id, member_tag_name).await {
                 Ok(true) => Ok(()),
                 Ok(false) => Err(already_in_household()),
                 Err(e) => {
@@ -329,14 +351,16 @@ async fn settle_household(
         // one transaction (see `create_with_manager`), so a failure at any step — including a
         // concurrent onboarding request on the same account having just put them in a household —
         // never leaves an orphaned household behind.
-        None => match households_repository::create_with_manager(pool, user_id).await {
-            Ok(Some(_)) => Ok(()),
-            Ok(None) => Err(already_in_household()),
-            Err(e) => {
-                error!("failed to create household error={e}");
-                Err(internal_error_response(l10n, &locale))
+        None => {
+            match households_repository::create_with_manager(pool, user_id, member_tag_name).await {
+                Ok(Some(_)) => Ok(()),
+                Ok(None) => Err(already_in_household()),
+                Err(e) => {
+                    error!("failed to create household error={e}");
+                    Err(internal_error_response(l10n, &locale))
+                }
             }
-        },
+        }
     }
 }
 
