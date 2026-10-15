@@ -397,3 +397,47 @@ async fn delete_member_from_another_household_is_not_found(pool: PgPool) {
 
     assert_eq!(resp.status(), 404);
 }
+
+// --- Managers only ---
+
+#[sqlx::test]
+async fn update_member_requires_a_family_manager(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let manager_cookie = onboard(&app, "sam@example.com", None).await;
+    let manager_id = me(&app, &manager_cookie).await["user"]["id"]
+        .as_i64()
+        .unwrap();
+    let (jane_cookie, _) = join(&app, &manager_cookie, "jane@example.com").await;
+
+    let req = test::TestRequest::patch()
+        .uri(&format!("/members/{manager_id}"))
+        .insert_header(("Cookie", jane_cookie))
+        .set_json(serde_json::json!({ "role": "family_member" }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 403);
+    assert_eq!(
+        me(&app, &manager_cookie).await["household"]["role"],
+        "family_manager"
+    );
+}
+
+#[sqlx::test]
+async fn delete_member_requires_a_family_manager(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let manager_cookie = onboard(&app, "sam@example.com", None).await;
+    let manager_id = me(&app, &manager_cookie).await["user"]["id"]
+        .as_i64()
+        .unwrap();
+    let (jane_cookie, _) = join(&app, &manager_cookie, "jane@example.com").await;
+
+    let req = test::TestRequest::delete()
+        .uri(&format!("/members/{manager_id}"))
+        .insert_header(("Cookie", jane_cookie))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 403);
+    assert!(!me(&app, &manager_cookie).await["household"].is_null());
+}

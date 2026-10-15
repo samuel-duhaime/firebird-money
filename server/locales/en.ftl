@@ -18,6 +18,7 @@ user-in-use = User { $n } is still connected to a household
 member-not-found = No household member with id { $n }
 member-invalid-role = role must be family_manager or family_member
 member-has-transactions = This member still has transactions in this household
+member-requires-manager = Only a family manager can change or remove members
 tag-not-found = No tag with id { $n }
 tag-duplicate-name = A tag with this name already exists
 tag-in-use = Tag { $n } is still used by existing transactions

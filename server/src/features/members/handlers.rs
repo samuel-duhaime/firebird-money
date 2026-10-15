@@ -6,6 +6,7 @@ use actix_web::{web, HttpResponse, Responder};
 use log::error;
 use serde::Deserialize;
 use sqlx::PgPool;
+use unic_langid::LanguageIdentifier;
 
 use super::model::MemberPatch;
 use super::repository;
@@ -20,6 +21,29 @@ use crate::shared::l10n::L10n;
 #[derive(Deserialize)]
 struct MemberIdPath {
     id: u32,
+}
+
+/// A 403 `member-requires-manager` response unless the caller is their household's
+/// `family_manager` — changing roles and removing people is theirs to do.
+fn require_manager(
+    current_user: &CurrentUser,
+    l10n: &L10n,
+    locale: &LanguageIdentifier,
+) -> Result<(), HttpResponse> {
+    let is_manager = current_user
+        .household
+        .as_ref()
+        .is_some_and(|m| m.role == "family_manager");
+    if is_manager {
+        Ok(())
+    } else {
+        Err(error_response(
+            l10n,
+            locale,
+            StatusCode::FORBIDDEN,
+            "member-requires-manager",
+        ))
+    }
 }
 
 /// `GET /members` — list the caller's household's members.
@@ -67,7 +91,8 @@ async fn get_member(
     }
 }
 
-/// `PATCH /members/{id}` — change a member's role, within the caller's own household.
+/// `PATCH /members/{id}` — change a member's role, within the caller's own household. Managers
+/// only.
 async fn update_member(
     path: web::Path<MemberIdPath>,
     patch: web::Json<MemberPatch>,
@@ -81,6 +106,9 @@ async fn update_member(
         Ok(id) => id,
         Err(response) => return response,
     };
+    if let Err(response) = require_manager(&current_user, &l10n, &locale) {
+        return response;
+    }
 
     match repository::update(&pool, household_id, id as i32, &patch).await {
         Ok(Some(member)) => HttpResponse::Ok().json(member),
@@ -99,7 +127,8 @@ async fn update_member(
 }
 
 /// `DELETE /members/{id}` — remove a member from the caller's own household. Their user
-/// account is kept. Blocked while they still have transactions in the household (#109).
+/// account is kept. Managers only, and blocked while they still have transactions in the household
+/// (#109).
 async fn delete_member(
     path: web::Path<MemberIdPath>,
     current_user: CurrentUser,
@@ -112,6 +141,9 @@ async fn delete_member(
         Ok(id) => id,
         Err(response) => return response,
     };
+    if let Err(response) = require_manager(&current_user, &l10n, &locale) {
+        return response;
+    }
 
     match repository::remove(&pool, household_id, id as i32).await {
         Ok(true) => HttpResponse::NoContent().finish(),
