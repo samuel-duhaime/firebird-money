@@ -2143,6 +2143,34 @@ test.describe('filters', () => {
     await expectRows(authedPage, ['Gamma Shop']);
   });
 
+  test('Clear is disabled with nothing selected, and also clears selections not yet applied', async ({
+    authedPage,
+  }) => {
+    await authedPage.goto('/transactions');
+    await openSection(authedPage, 'Categories');
+    const clearButton = popover(authedPage)
+      .locator('.filters-popover-actions')
+      .getByRole('button', { name: 'Clear', exact: true });
+    await expect(clearButton).toBeDisabled();
+
+    await popover(authedPage)
+      .getByRole('checkbox', { name: 'Groceries', exact: true })
+      .check();
+    await expect(clearButton).toBeEnabled();
+    await clearButton.click();
+
+    await expect(popover(authedPage)).not.toBeVisible();
+    await expectRows(authedPage, ROWS);
+    expect(searchParam(authedPage, 'category_ids')).toBeNull();
+    await trigger(authedPage).click();
+    await expect(
+      popover(authedPage).getByRole('checkbox', {
+        name: 'Groceries',
+        exact: true,
+      }),
+    ).not.toBeChecked();
+  });
+
   test('Clear removes every applied filter at once', async ({ authedPage }) => {
     await authedPage.goto('/transactions');
 
