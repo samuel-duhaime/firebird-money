@@ -274,6 +274,16 @@ export const FiltersButton = () => {
   const { isAmountValid, isAmountMaxValid } = amountValidity(draft);
   const draftFilters = toFilters(draft);
   const draftCount = draftFilters ? countFilters(draftFilters) : null;
+  // Counts what's only been ticked/typed too, not just what's applied — otherwise Clear would sit
+  // disabled while the popover visibly has selections in it.
+  const hasDraftSelections =
+    draft.category_ids.length > 0 ||
+    draft.merchant_ids.length > 0 ||
+    draft.account_ids.length > 0 ||
+    draft.tag_ids.length > 0 ||
+    draft.untagged ||
+    draft.amount !== '' ||
+    draft.amount_max !== '';
 
   const handleApply = () => {
     if (!draftFilters) return;
@@ -812,7 +822,7 @@ export const FiltersButton = () => {
               <button
                 type="button"
                 className="filters-popover-button"
-                disabled={activeCount === 0}
+                disabled={activeCount === 0 && !hasDraftSelections}
                 onClick={handleClearAll}
               >
                 {t('transactions.filters.clear')}
