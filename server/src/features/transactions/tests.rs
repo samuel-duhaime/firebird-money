@@ -3633,6 +3633,65 @@ async fn import_transactions_creates_a_new_account_once(pool: PgPool) {
 }
 
 #[sqlx::test]
+async fn import_transactions_reuses_an_account_saved_without_last_digits(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    let req = test::TestRequest::post()
+        .uri("/institutions")
+        .insert_header(("Cookie", cookie.clone()))
+        .set_json(serde_json::json!({ "name": "Desjardins" }))
+        .to_request();
+    let institution: serde_json::Value = test::call_and_read_body_json(&app, req).await;
+    let req = test::TestRequest::post()
+        .uri("/accounts")
+        .insert_header(("Cookie", cookie.clone()))
+        .set_json(serde_json::json!({
+            "institution_id": institution["id"],
+            "name": "Visa",
+            "type": "credit_card",
+        }))
+        .to_request();
+    let visa: serde_json::Value = test::call_and_read_body_json(&app, req).await;
+
+    // The statement names the bank its own way and prints last digits the account doesn't have.
+    let resp = import_via_api(
+        &app,
+        &cookie,
+        serde_json::json!([{
+            "date": "2026-09-02",
+            "original_statement": "IGA",
+            "amount": "1.00",
+            "new_merchant_name": "IGA",
+            "category_id": category_id,
+            "new_account": {
+                "institution_name": "Caisse Desjardins du Plateau",
+                "name": "visa",
+                "type": "credit_card",
+                "last_four": "1234"
+            }
+        }]),
+    )
+    .await;
+
+    assert_eq!(resp.status(), 201);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["created_account_count"], 0);
+    let transactions = list_all(&app, &cookie).await;
+    assert_eq!(transactions[0]["account_id"], visa["id"]);
+    let req = test::TestRequest::get()
+        .uri("/institutions")
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    let institutions: serde_json::Value = test::call_and_read_body_json(&app, req).await;
+    assert!(!institutions
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|i| i["name"] == "Caisse Desjardins du Plateau"));
+}
+
+#[sqlx::test]
 async fn import_transactions_needs_exactly_one_valid_account_per_line(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
     let cookie = sign_in_with_household(&app, "sam@example.com").await;

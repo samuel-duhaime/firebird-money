@@ -13,6 +13,7 @@ use std::collections::HashSet;
 use std::io::Cursor;
 
 use base64::Engine;
+use bytes::Bytes;
 use calamine::{Data, Reader};
 use chrono::NaiveDate;
 use rust_decimal::Decimal;
@@ -73,11 +74,11 @@ const MAX_TEXT_CHARS: usize = 200_000;
 /// A statement, as it will be sent to Claude. What the file is comes from its own bytes — never
 /// from the upload's filename or `Content-Type`.
 #[derive(Debug, PartialEq, Eq)]
-pub enum Statement<'a> {
-    Pdf(&'a [u8]),
+pub enum Statement {
+    Pdf(Bytes),
     Image {
         mime: &'static str,
-        bytes: &'a [u8],
+        bytes: Bytes,
     },
     /// CSV or other plain text, or a spreadsheet converted to CSV.
     Text(String),
@@ -92,11 +93,18 @@ pub enum StatementError {
     TooLong,
 }
 
-impl<'a> Statement<'a> {
-    pub fn from_upload(bytes: &'a [u8]) -> Result<Self, StatementError> {
-        let image = |mime| Ok(Self::Image { mime, bytes });
-        if let Some(start) = pdf_start(bytes) {
-            return Ok(Self::Pdf(&bytes[start..]));
+impl Statement {
+    /// Detects what the upload is and gets it ready to send. CPU-bound for a spreadsheet (it's
+    /// unpacked and converted), so the handler runs this off the async workers, in `web::block`.
+    pub fn from_upload(bytes: Bytes) -> Result<Self, StatementError> {
+        let image = |mime| {
+            Ok(Self::Image {
+                mime,
+                bytes: bytes.clone(),
+            })
+        };
+        if let Some(start) = pdf_start(&bytes) {
+            return Ok(Self::Pdf(bytes.slice(start..)));
         } else if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
             return image("image/png");
         } else if bytes.starts_with(b"\xff\xd8\xff") {
@@ -109,9 +117,9 @@ impl<'a> Statement<'a> {
 
         // .xls is an OLE container, .xlsx/.ods a ZIP archive.
         let text = if bytes.starts_with(b"\xd0\xcf\x11\xe0") || bytes.starts_with(b"PK\x03\x04") {
-            spreadsheet_to_csv(bytes).ok_or(StatementError::Unsupported)?
+            spreadsheet_to_csv(&bytes)?
         } else {
-            decode_text(bytes).ok_or(StatementError::Unsupported)?
+            decode_text(&bytes).ok_or(StatementError::Unsupported)?
         };
         if text.trim().is_empty() {
             return Err(StatementError::Unsupported);
@@ -167,25 +175,61 @@ fn decode_text(bytes: &[u8]) -> Option<String> {
     (!is_binary).then_some(text)
 }
 
+/// Most a workbook's files may add up to once unpacked. A real bank export is far smaller; this
+/// keeps a "zip bomb" (a tiny archive that unpacks to gigabytes) from ever being unpacked.
+const MAX_UNPACKED_BYTES: u64 = 50 * 1024 * 1024;
+
+/// The total unpacked size a ZIP archive (.xlsx/.ods) declares for its files, from its central
+/// directory — read without unpacking anything. `None` if it isn't a readable archive.
+fn zip_unpacked_size(bytes: &[u8]) -> Option<u64> {
+    let mut archive = zip::ZipArchive::new(Cursor::new(bytes)).ok()?;
+    let mut total: u64 = 0;
+    for index in 0..archive.len() {
+        total = total.checked_add(archive.by_index_raw(index).ok()?.size())?;
+    }
+    Some(total)
+}
+
 /// Every non-empty sheet of an .xlsx/.xls/.ods workbook as CSV, each under a `Sheet: <name>` line,
-/// dates written as YYYY-MM-DD. `None` if it isn't a workbook calamine can open.
-fn spreadsheet_to_csv(bytes: &[u8]) -> Option<String> {
-    let mut workbook = calamine::open_workbook_auto_from_rs(Cursor::new(bytes)).ok()?;
+/// dates written as YYYY-MM-DD. `TooLong` as soon as it passes `MAX_TEXT_CHARS` (or would unpack
+/// past `MAX_UNPACKED_BYTES`), without converting the rest; `Unsupported` if it isn't a workbook.
+fn spreadsheet_to_csv(bytes: &[u8]) -> Result<String, StatementError> {
+    if bytes.starts_with(b"PK\x03\x04") {
+        let unpacked = zip_unpacked_size(bytes).ok_or(StatementError::Unsupported)?;
+        if unpacked > MAX_UNPACKED_BYTES {
+            return Err(StatementError::TooLong);
+        }
+    }
+
+    let mut workbook = calamine::open_workbook_auto_from_rs(Cursor::new(bytes))
+        .map_err(|_| StatementError::Unsupported)?;
     let mut out = String::new();
-    for (name, range) in workbook.worksheets() {
+    for name in workbook.sheet_names() {
+        let Ok(range) = workbook.worksheet_range(&name) else {
+            continue;
+        };
         let mut writer = csv::Writer::from_writer(Vec::new());
         for row in range.rows() {
             if row.iter().all(|cell| matches!(cell, Data::Empty)) {
                 continue;
             }
-            writer.write_record(row.iter().map(cell_text)).ok()?;
+            writer
+                .write_record(row.iter().map(cell_text))
+                .map_err(|_| StatementError::Unsupported)?;
         }
-        let csv = String::from_utf8(writer.into_inner().ok()?).ok()?;
+        let csv = writer
+            .into_inner()
+            .ok()
+            .and_then(|csv| String::from_utf8(csv).ok())
+            .ok_or(StatementError::Unsupported)?;
         if !csv.is_empty() {
             out.push_str(&format!("Sheet: {name}\n{csv}\n"));
         }
+        if out.chars().count() > MAX_TEXT_CHARS {
+            return Err(StatementError::TooLong);
+        }
     }
-    Some(out)
+    Ok(out)
 }
 
 fn cell_text(cell: &Data) -> String {
@@ -415,8 +459,18 @@ enum StatementAccount {
     Unknown,
 }
 
+/// Whether two institution names are the same bank, e.g. "Desjardins" and "Caisse Desjardins du
+/// Plateau": either one appears in the other as whole words (so "TD" never matches "Standard").
+pub fn same_institution_name(a: &str, b: &str) -> bool {
+    !a.trim().is_empty()
+        && !b.trim().is_empty()
+        && (best_match(a, &[(0, b.to_string())]).is_some()
+            || best_match(b, &[(0, a.to_string())]).is_some())
+}
+
 /// Matches the statement's account against the household's: the same last digits, else the only
-/// account at the same institution with the same type.
+/// account at the same institution with the same type — among those with no last digits saved
+/// when the statement printed some (they're optional, so a saved account may just lack them).
 fn resolve_statement_account(
     read: Option<ReadAccount>,
     accounts: &[PromptAccount],
@@ -431,11 +485,8 @@ fn resolve_statement_account(
     } else {
         "other".to_string()
     };
-    let same_institution = |account: &&PromptAccount| {
-        let theirs = account.institution.to_lowercase();
-        let ours = institution.to_lowercase();
-        !ours.is_empty() && (theirs.contains(&ours) || ours.contains(&theirs))
-    };
+    let same_institution =
+        |account: &PromptAccount| same_institution_name(&account.institution, institution);
 
     if let Some(last_four) = &last_four {
         let by_digits: Vec<&PromptAccount> = accounts
@@ -448,24 +499,20 @@ fn resolve_statement_account(
             .collect();
         let pick = match by_digits.as_slice() {
             [only] => Some(only.id),
-            several => several
-                .iter()
-                .copied()
-                .find(|a| same_institution(a))
-                .map(|a| a.id),
+            several => several.iter().find(|a| same_institution(a)).map(|a| a.id),
         };
         if let Some(id) = pick {
             return StatementAccount::Existing(id);
         }
-    } else {
-        let same_kind: Vec<&PromptAccount> = accounts
-            .iter()
-            .filter(same_institution)
-            .filter(|a| a.kind == kind)
-            .collect();
-        if let [only] = same_kind.as_slice() {
-            return StatementAccount::Existing(only.id);
-        }
+    }
+
+    let same_kind: Vec<&PromptAccount> = accounts
+        .iter()
+        .filter(|a| same_institution(a) && a.kind == kind)
+        .filter(|a| last_four.is_none() || a.last_four.is_none())
+        .collect();
+    if let [only] = same_kind.as_slice() {
+        return StatementAccount::Existing(only.id);
     }
 
     if institution.is_empty() {
@@ -480,18 +527,27 @@ fn resolve_statement_account(
     })
 }
 
-/// "1 234,56", "$1,234.56", "-12.34" → a positive amount with two decimals; `None` for anything
-/// that isn't a non-zero number. A lone comma is read as the decimal separator (French format).
+/// "1 234,56", "$1,234.56", "1.234,56", "1,500", "-12.34" → a positive amount with two decimals;
+/// `None` for anything that isn't a non-zero number. The last separator is the decimal one only when
+/// 1–2 digits follow it and it's the only one of its kind — so "1,500" is fifteen hundred, not 1.50.
 fn parse_amount(raw: &str) -> Option<Decimal> {
     let cleaned: String = raw
         .chars()
         .filter(|c| c.is_ascii_digit() || matches!(c, '.' | ',' | '-'))
         .collect();
-    let normalized = if cleaned.contains('.') {
-        cleaned.replace(',', "")
-    } else {
-        cleaned.replace(',', ".")
-    };
+    let decimal_separator = cleaned.rfind(['.', ',']).filter(|&at| {
+        let separator = cleaned.as_bytes()[at] as char;
+        let digits_after = cleaned.len() - at - 1;
+        (1..=2).contains(&digits_after) && cleaned.matches(separator).count() == 1
+    });
+    let normalized: String = cleaned
+        .char_indices()
+        .filter_map(|(at, c)| match c {
+            '.' | ',' if Some(at) == decimal_separator => Some('.'),
+            '.' | ',' => None,
+            other => Some(other),
+        })
+        .collect();
     let amount = normalized.parse::<Decimal>().ok()?.abs().round_dp(2);
     (!amount.is_zero()).then_some(amount)
 }
@@ -745,6 +801,10 @@ mod tests {
         resolve(answer, &context).pop()
     }
 
+    fn upload(bytes: &[u8]) -> Result<Statement, StatementError> {
+        Statement::from_upload(Bytes::copy_from_slice(bytes))
+    }
+
     fn dec(s: &str) -> Decimal {
         Decimal::from_str(s).unwrap()
     }
@@ -752,8 +812,8 @@ mod tests {
     #[test]
     fn from_upload_recognizes_pdfs_and_images_by_their_bytes() {
         assert_eq!(
-            Statement::from_upload(b"%PDF-1.7 ..."),
-            Ok(Statement::Pdf(b"%PDF-1.7 ..."))
+            upload(b"%PDF-1.7 ..."),
+            Ok(Statement::Pdf(Bytes::from_static(b"%PDF-1.7 ...")))
         );
         for (bytes, mime) in [
             (&b"\x89PNG\r\n\x1a\n...."[..], "image/png"),
@@ -762,8 +822,11 @@ mod tests {
             (&b"RIFF\x00\x00\x00\x00WEBPVP8 "[..], "image/webp"),
         ] {
             assert_eq!(
-                Statement::from_upload(bytes),
-                Ok(Statement::Image { mime, bytes })
+                upload(bytes),
+                Ok(Statement::Image {
+                    mime,
+                    bytes: Bytes::copy_from_slice(bytes)
+                })
             );
         }
     }
@@ -774,8 +837,8 @@ mod tests {
         let mut wrapped = b"\xac\xed\x00\x05ur\x00\x02[B\xac\xf3\x17\xf8\x06\x08T\xe0\x02\x00\x00xp\x00\x00\x00\x0c".to_vec();
         wrapped.extend_from_slice(b"%PDF-1.4 ...");
         assert_eq!(
-            Statement::from_upload(&wrapped),
-            Ok(Statement::Pdf(b"%PDF-1.4 ..."))
+            upload(&wrapped),
+            Ok(Statement::Pdf(Bytes::from_static(b"%PDF-1.4 ...")))
         );
     }
 
@@ -783,7 +846,7 @@ mod tests {
     fn from_upload_reads_csv_as_text() {
         let csv = "\u{feff}Date,Description,Montant\n2026-09-02,IGA,-142.37\n";
         assert_eq!(
-            Statement::from_upload(csv.as_bytes()),
+            upload(csv.as_bytes()),
             Ok(Statement::Text(
                 csv.trim_start_matches('\u{feff}').to_string()
             ))
@@ -794,7 +857,7 @@ mod tests {
     fn from_upload_reads_latin1_text() {
         // "Café" in Windows-1252, as many bank exports are.
         assert_eq!(
-            Statement::from_upload(b"2026-09-14,Caf\xe9 Olimpico,9.40\n"),
+            upload(b"2026-09-14,Caf\xe9 Olimpico,9.40\n"),
             Ok(Statement::Text(
                 "2026-09-14,Café Olimpico,9.40\n".to_string()
             ))
@@ -804,16 +867,13 @@ mod tests {
     #[test]
     fn from_upload_rejects_binary_and_empty_files() {
         assert_eq!(
-            Statement::from_upload(b"\x00\x01\x02\x03binary"),
+            upload(b"\x00\x01\x02\x03binary"),
             Err(StatementError::Unsupported)
         );
-        assert_eq!(
-            Statement::from_upload(b"  \n"),
-            Err(StatementError::Unsupported)
-        );
+        assert_eq!(upload(b"  \n"), Err(StatementError::Unsupported));
         // A ZIP that isn't a workbook.
         assert_eq!(
-            Statement::from_upload(b"PK\x03\x04not really a zip"),
+            upload(b"PK\x03\x04not really a zip"),
             Err(StatementError::Unsupported)
         );
     }
@@ -821,10 +881,7 @@ mod tests {
     #[test]
     fn from_upload_rejects_text_that_is_too_long() {
         let long = "2026-09-02,IGA,1.00\n".repeat(MAX_TEXT_CHARS / 10);
-        assert_eq!(
-            Statement::from_upload(long.as_bytes()),
-            Err(StatementError::TooLong)
-        );
+        assert_eq!(upload(long.as_bytes()), Err(StatementError::TooLong));
     }
 
     #[test]
@@ -848,12 +905,41 @@ mod tests {
         let bytes = workbook.save_to_buffer().unwrap();
 
         assert_eq!(
-            Statement::from_upload(&bytes),
+            upload(&bytes),
             Ok(Statement::Text(
                 "Sheet: Septembre\nDate,Description,Montant\n2026-09-02,\"IGA, Montréal\",-142.37\n\n"
                     .to_string()
             ))
         );
+    }
+
+    #[test]
+    fn from_upload_stops_converting_a_workbook_once_it_is_too_long() {
+        let mut workbook = rust_xlsxwriter::Workbook::new();
+        let sheet = workbook.add_worksheet();
+        for row in 0..(MAX_TEXT_CHARS / 20 + 100) as u32 {
+            sheet.write_string(row, 0, "2026-09-02,IGA,1.00").unwrap();
+        }
+        let bytes = workbook.save_to_buffer().unwrap();
+
+        assert_eq!(upload(&bytes), Err(StatementError::TooLong));
+    }
+
+    #[test]
+    fn from_upload_never_unpacks_a_zip_bomb() {
+        // A stored (uncompressed) entry declaring more than the cap. A real zip bomb compresses
+        // this to a few KB; what matters is the declared size, checked before anything unpacks.
+        let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored);
+        writer
+            .start_file("xl/worksheets/sheet1.xml", options)
+            .unwrap();
+        std::io::Write::write_all(&mut writer, &vec![b' '; MAX_UNPACKED_BYTES as usize + 1])
+            .unwrap();
+        let bytes = writer.finish().unwrap().into_inner();
+
+        assert_eq!(upload(&bytes), Err(StatementError::TooLong));
     }
 
     #[test]
@@ -871,11 +957,15 @@ mod tests {
 
     #[test]
     fn build_request_sends_each_kind_of_statement_as_the_right_block() {
-        let pdf = build_request(&Statement::Pdf(b"%PDF-"), &lists(), None);
+        let pdf = build_request(
+            &Statement::Pdf(Bytes::from_static(b"%PDF-")),
+            &lists(),
+            None,
+        );
         let png = build_request(
             &Statement::Image {
                 mime: "image/png",
-                bytes: b"\x89PNG",
+                bytes: Bytes::from_static(b"\x89PNG"),
             },
             &lists(),
             Some(2),
@@ -949,6 +1039,31 @@ mod tests {
     }
 
     #[test]
+    fn resolve_matches_an_account_saved_without_last_digits() {
+        // "Visa" (id 2) has no last digits saved; the statement prints some.
+        let t = resolve_with_account(
+            line(json!({ "account_id": null })),
+            json!({ "institution": "Caisse Desjardins du Plateau", "name": "Visa", "type": "credit_card", "last_four": "1234" }),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(t.account_id, Some(2));
+        assert_eq!(t.new_account, None);
+    }
+
+    #[test]
+    fn same_institution_name_matches_whole_words_either_way() {
+        assert!(same_institution_name(
+            "Desjardins",
+            "Caisse Desjardins du Plateau"
+        ));
+        assert!(same_institution_name("RBC Royal Bank", "rbc"));
+        assert!(!same_institution_name("TD", "Standard Life"));
+        assert!(!same_institution_name("", "Desjardins"));
+    }
+
+    #[test]
     fn resolve_suggests_a_new_account_the_household_does_not_have() {
         let t = resolve_with_account(
             line(json!({ "account_id": null })),
@@ -1007,6 +1122,11 @@ mod tests {
         assert_eq!(parse_amount("-142.37"), Some(dec("142.37")));
         assert_eq!(parse_amount("$1,234.56"), Some(dec("1234.56")));
         assert_eq!(parse_amount("1 234,56 $"), Some(dec("1234.56")));
+        assert_eq!(parse_amount("1,500"), Some(dec("1500")));
+        assert_eq!(parse_amount("$2,000"), Some(dec("2000")));
+        assert_eq!(parse_amount("1.234,56"), Some(dec("1234.56")));
+        assert_eq!(parse_amount("12,5"), Some(dec("12.5")));
+        assert_eq!(parse_amount("1,234,567"), Some(dec("1234567")));
         assert_eq!(parse_amount("0.00"), None);
         assert_eq!(parse_amount("n/a"), None);
     }
