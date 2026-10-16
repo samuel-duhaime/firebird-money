@@ -1,0 +1,2 @@
+# Personal Claude Code permissions — may hold local paths or credentials.
+.claude/settings.local.json
