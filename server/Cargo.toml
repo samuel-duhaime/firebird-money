@@ -13,6 +13,7 @@ calamine = { version = "0.36.1", features = ["dates"] }
 chrono = { version = "0.4", features = ["serde"] }
 csv = "1"
 dotenvy = "0.15"
+encoding_rs = "0.8"
 env_logger = "0.11.8"
 fluent = "0.16"
 futures-util = { version = "0.3", default-features = false }
@@ -27,7 +28,7 @@ sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "migrate", "c
 tokio = { version = "1", features = ["rt", "sync"] }
 unic-langid = "0.9"
 uuid = { version = "1", features = ["v4", "serde"] }
-zip = { version = "7", default-features = false }
+zip = { version = "8.6", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 actix-http = "3"

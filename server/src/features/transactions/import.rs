@@ -10,12 +10,13 @@
 //! date or amount is skipped, so the client only ever gets well-typed, valid lines.
 
 use std::collections::HashSet;
-use std::io::Cursor;
+use std::io::{Cursor, Read};
 
 use base64::Engine;
 use bytes::Bytes;
 use calamine::{Data, Reader};
 use chrono::NaiveDate;
+use encoding_rs::WINDOWS_1252;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -162,12 +163,15 @@ fn pdf_start(bytes: &[u8]) -> Option<usize> {
         .position(|window| window == b"%PDF-")
 }
 
-/// Plain text, as UTF-8 (a leading byte-order mark dropped) or else Latin-1 — many bank exports
-/// here are Windows-1252. `None` for binary data (control characters other than tab and newlines).
+/// Plain text, as UTF-8 (a leading byte-order mark dropped) or else Windows-1252, which many bank
+/// exports here use (its 0x80–0x9F are printable — ’ € – œ — unlike Latin-1's control codes). `None` for binary data (control characters other than tab and newlines).
 fn decode_text(bytes: &[u8]) -> Option<String> {
     let text = match std::str::from_utf8(bytes) {
         Ok(text) => text.trim_start_matches('\u{feff}').to_string(),
-        Err(_) => bytes.iter().map(|&b| char::from(b)).collect(),
+        Err(_) => WINDOWS_1252
+            .decode_without_bom_handling(bytes)
+            .0
+            .into_owned(),
     };
     let is_binary = text
         .chars()
@@ -179,26 +183,35 @@ fn decode_text(bytes: &[u8]) -> Option<String> {
 /// keeps a "zip bomb" (a tiny archive that unpacks to gigabytes) from ever being unpacked.
 const MAX_UNPACKED_BYTES: u64 = 50 * 1024 * 1024;
 
-/// The total unpacked size a ZIP archive (.xlsx/.ods) declares for its files, from its central
-/// directory — read without unpacking anything. `None` if it isn't a readable archive.
-fn zip_unpacked_size(bytes: &[u8]) -> Option<u64> {
-    let mut archive = zip::ZipArchive::new(Cursor::new(bytes)).ok()?;
-    let mut total: u64 = 0;
+/// Unpacks every file of a ZIP archive (.xlsx/.ods) into nothing, counting the bytes: `TooLong`
+/// as soon as they pass `MAX_UNPACKED_BYTES`, `Unsupported` if it isn't a readable archive. The
+/// sizes an archive declares can be forged, and the zip reader only treats them as a hint, so the
+/// only safe check is unpacking for real, with a hard stop.
+fn check_unpacked_size(bytes: &[u8]) -> Result<(), StatementError> {
+    let mut archive =
+        zip::ZipArchive::new(Cursor::new(bytes)).map_err(|_| StatementError::Unsupported)?;
+    let mut budget = MAX_UNPACKED_BYTES;
     for index in 0..archive.len() {
-        total = total.checked_add(archive.by_index_raw(index).ok()?.size())?;
+        let file = archive
+            .by_index(index)
+            .map_err(|_| StatementError::Unsupported)?;
+        // One byte past what's left, to tell "exactly at the cap" from "over it".
+        let unpacked = std::io::copy(&mut Read::take(file, budget + 1), &mut std::io::sink())
+            .map_err(|_| StatementError::Unsupported)?;
+        if unpacked > budget {
+            return Err(StatementError::TooLong);
+        }
+        budget -= unpacked;
     }
-    Some(total)
+    Ok(())
 }
 
 /// Every non-empty sheet of an .xlsx/.xls/.ods workbook as CSV, each under a `Sheet: <name>` line,
-/// dates written as YYYY-MM-DD. `TooLong` as soon as it passes `MAX_TEXT_CHARS` (or would unpack
-/// past `MAX_UNPACKED_BYTES`), without converting the rest; `Unsupported` if it isn't a workbook.
+/// dates written as YYYY-MM-DD. `TooLong` as soon as it passes `MAX_TEXT_CHARS` (or unpacks past
+/// `MAX_UNPACKED_BYTES`), without converting the rest; `Unsupported` if it isn't a workbook.
 fn spreadsheet_to_csv(bytes: &[u8]) -> Result<String, StatementError> {
     if bytes.starts_with(b"PK\x03\x04") {
-        let unpacked = zip_unpacked_size(bytes).ok_or(StatementError::Unsupported)?;
-        if unpacked > MAX_UNPACKED_BYTES {
-            return Err(StatementError::TooLong);
-        }
+        check_unpacked_size(bytes)?;
     }
 
     let mut workbook = calamine::open_workbook_auto_from_rs(Cursor::new(bytes))
@@ -533,7 +546,9 @@ fn resolve_statement_account(
 fn parse_amount(raw: &str) -> Option<Decimal> {
     let cleaned: String = raw
         .chars()
-        .filter(|c| c.is_ascii_digit() || matches!(c, '.' | ',' | '-'))
+        // No '-': the sign is dropped anyway, and a trailing one ("142.37-", how many banks print
+        // credits) would otherwise fail to parse and lose the line.
+        .filter(|c| c.is_ascii_digit() || matches!(c, '.' | ','))
         .collect();
     let decimal_separator = cleaned.rfind(['.', ',']).filter(|&at| {
         let separator = cleaned.as_bytes()[at] as char;
@@ -865,6 +880,15 @@ mod tests {
     }
 
     #[test]
+    fn from_upload_reads_windows_1252_punctuation() {
+        // ’ is 0x92 in Windows-1252; Latin-1 would read it as an invisible control code.
+        assert_eq!(
+            upload(b"2026-09-02,L\x92\xc9PICERIE,9.40\n"),
+            Ok(Statement::Text("2026-09-02,L’ÉPICERIE,9.40\n".to_string()))
+        );
+    }
+
+    #[test]
     fn from_upload_rejects_binary_and_empty_files() {
         assert_eq!(
             upload(b"\x00\x01\x02\x03binary"),
@@ -940,6 +964,33 @@ mod tests {
         let bytes = writer.finish().unwrap().into_inner();
 
         assert_eq!(upload(&bytes), Err(StatementError::TooLong));
+    }
+
+    #[test]
+    fn from_upload_never_trusts_the_sizes_an_archive_declares() {
+        let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        writer
+            .start_file("xl/worksheets/sheet1.xml", options)
+            .unwrap();
+        std::io::Write::write_all(&mut writer, &vec![b' '; MAX_UNPACKED_BYTES as usize + 1])
+            .unwrap();
+        let mut bytes = writer.finish().unwrap().into_inner();
+
+        // Forge the declared unpacked size down to 1 byte, in both the local and central headers.
+        let forge = |bytes: &mut Vec<u8>, signature: &[u8], offset: usize| {
+            let at = bytes.windows(4).position(|w| w == signature).unwrap();
+            bytes[at + offset..at + offset + 4].copy_from_slice(&1u32.to_le_bytes());
+        };
+        forge(&mut bytes, b"PK\x03\x04", 22);
+        forge(&mut bytes, b"PK\x01\x02", 24);
+
+        // Refused either way — what matters is that it's never unpacked past the cap.
+        assert!(matches!(
+            upload(&bytes),
+            Err(StatementError::TooLong | StatementError::Unsupported)
+        ));
     }
 
     #[test]
@@ -1127,6 +1178,7 @@ mod tests {
         assert_eq!(parse_amount("1.234,56"), Some(dec("1234.56")));
         assert_eq!(parse_amount("12,5"), Some(dec("12.5")));
         assert_eq!(parse_amount("1,234,567"), Some(dec("1234567")));
+        assert_eq!(parse_amount("142.37-"), Some(dec("142.37")));
         assert_eq!(parse_amount("0.00"), None);
         assert_eq!(parse_amount("n/a"), None);
     }
