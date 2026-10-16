@@ -44,6 +44,9 @@ const ImportStatement = () => {
   const [accountId, setAccountId] = useState<number | null>(null);
   const readAbort = useRef<AbortController | null>(null);
   const importTransactions = useImportTransactions();
+  // `isPending` only re-renders the disabled button a tick later, so a quick double click could
+  // send the import twice — and the server adds every line it gets. This blocks it right away.
+  const isAdding = useRef(false);
 
   // Leaving the page mid-read stops the read on the server too, so it stops spending tokens.
   useEffect(() => () => readAbort.current?.abort(), []);
@@ -136,7 +139,9 @@ const ImportStatement = () => {
         onLinesChange={(lines) => setPhase({ ...phase, lines })}
         onDiscard={() => setPhase({ kind: 'pick' })}
         isAdding={importTransactions.isPending}
-        onAdd={() =>
+        onAdd={() => {
+          if (isAdding.current) return;
+          isAdding.current = true;
           importTransactions.mutate(
             phase.lines
               .filter((line) => line.selected)
@@ -144,9 +149,12 @@ const ImportStatement = () => {
             {
               onSuccess: () => navigate({ to: '/transactions' }),
               onError: importFailedToast,
+              onSettled: () => {
+                isAdding.current = false;
+              },
             },
-          )
-        }
+          );
+        }}
       />
     );
   }

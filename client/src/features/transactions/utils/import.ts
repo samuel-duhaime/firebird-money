@@ -71,15 +71,23 @@ const readLines = async (
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() ?? '';
-    lines.filter((line) => line.trim() !== '').forEach(onLine);
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+      lines.filter((line) => line.trim() !== '').forEach(onLine);
+    }
+    if (buffer.trim() !== '') onLine(buffer);
+  } catch (error) {
+    // Stop the rest of the stream (and the read on the server) instead of leaving it hanging.
+    await reader.cancel().catch(() => {});
+    throw error;
+  } finally {
+    reader.releaseLock();
   }
-  if (buffer.trim() !== '') onLine(buffer);
 };
 
 /**
@@ -116,7 +124,13 @@ export const readStatement = async (
   let result: StatementTransaction[] | undefined;
   let failure: string | undefined;
   await readLines(response.body, (line) => {
-    const event = JSON.parse(line) as StatementReadEvent;
+    let event: StatementReadEvent;
+    try {
+      event = JSON.parse(line) as StatementReadEvent;
+    } catch {
+      // Not the server's own error event: show the generic message, not a raw SyntaxError.
+      throw new StatementReadError('');
+    }
     if (event.type === 'done') result = event.transactions;
     if (event.type === 'error') failure = event.error;
     onEvent(event);
