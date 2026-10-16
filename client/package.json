@@ -9,8 +9,8 @@
     "lint": "oxlint",
     "format": "prettier --write .",
     "preview": "vite preview",
-    "test:ui": "playwright test --grep-invert @screenshot",
-    "screenshot:readme": "playwright test --grep @screenshot"
+    "test:ui": "playwright test",
+    "screenshot:readme": "README_SCREENSHOT=1 playwright test --grep @screenshot"
   },
   "dependencies": {
     "@fontsource/nunito": "^5.2.7",

@@ -1,5 +1,6 @@
 /** Generates the screenshot shown in the README's Screenshots section (`npm run
- * screenshot:readme`). Tagged `@screenshot` so `test:ui` excludes it from the regular e2e run. */
+ * screenshot:readme`). Tagged `@screenshot` so the regular e2e run excludes it (see
+ * `grepInvert` in playwright.config.ts). */
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';

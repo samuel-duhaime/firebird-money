@@ -12,6 +12,9 @@ export default defineConfig({
   // within one file — and a big spec like transactions-page.spec.ts can spread over every worker.
   fullyParallel: true,
   retries: process.env.CI ? 1 : 0,
+  // The README screenshot test rewrites docs/images/ when it runs, so a plain `playwright test`
+  // leaves it out; `npm run screenshot:readme` opts back in.
+  grepInvert: process.env.README_SCREENSHOT ? undefined : /@screenshot/,
   // Unlike a typical Playwright suite, a "worker" here owns a whole Postgres database plus an
   // Actix process plus a Vite process — a standard 2-vCPU GitHub Actions runner can't sanely
   // scale past its core count. Locally, half the cores leaves room for each worker's server and
