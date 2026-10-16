@@ -1,0 +1,21 @@
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { importTransactions } from '../utils/import';
+import { importSucceededToast } from '../../../lib/toast';
+
+export const useImportTransactions = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: importTransactions,
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      // New merchants may have been created, and every merchant's transaction_count can change.
+      queryClient.invalidateQueries({ queryKey: ['merchants'] });
+      importSucceededToast(
+        result.created_count,
+        result.created_merchant_count,
+        result.created_account_count,
+      );
+    },
+  });
+};

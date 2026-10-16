@@ -17,12 +17,6 @@ import {
   formatDateHeading,
 } from '../../src/features/transactions/utils/format';
 
-// TODO: The import-budget-file flow (ImportButton.tsx, POST /transactions/import) isn't covered
-// here — it shells out to a `claude` CLI subprocess server-side (see
-// server/src/features/transactions/import.rs and the README's "Install" section), which isn't
-// available in this test environment (or CI) and isn't something these tests can/should
-// provision. Revisit once import has a testable seam.
-
 const LOCALE = 'en-US'; // the app's default language until something sets `firebird-language`
 const money = (amount: number) => formatAmount(amount, LOCALE);
 const dateHeading = (isoDate: string) => formatDateHeading(isoDate, LOCALE);

@@ -51,6 +51,10 @@ export const spawnServer = ({
       // would silently break cookie sharing with the Vite origin below.
       CLIENT_BASE_URL: clientOrigin,
       DEFAULT_LANGUAGE: 'en',
+      // Blank on purpose: the server also loads `server/.env`, which may hold a real key, but never
+      // overrides a variable that's already set. With it blank, statement import can never call the
+      // real Claude API from a test (it answers 503); tests mock the read instead.
+      ANTHROPIC_API_KEY: '',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });

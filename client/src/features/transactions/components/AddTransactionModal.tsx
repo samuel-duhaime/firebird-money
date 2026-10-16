@@ -301,7 +301,7 @@ export const AddTransactionModal = ({ onClose }: AddTransactionModalProps) => {
               }}
             >
               {effectiveAccountId === null && (
-                <option value="" disabled>
+                <option value="" disabled hidden>
                   {t('transactions.add.selectAccount')}
                 </option>
               )}

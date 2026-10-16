@@ -26,20 +26,8 @@ export interface Transaction {
   account_id: number;
   account_name: string;
   reviewed: boolean;
+  /** `import` when added from a bank statement, else `manual`. */
+  source: 'manual' | 'import';
   created_at: string;
   tags: TransactionTag[];
-}
-
-export type ImportJobStatus = 'pending' | 'running' | 'succeeded' | 'failed';
-
-export interface ImportJob {
-  id: string;
-  status: ImportJobStatus;
-  file_name: string;
-  created_count: number | null;
-  failed_count: number | null;
-  skipped_count: number | null;
-  error_message: string | null;
-  created_at: string;
-  updated_at: string;
 }
