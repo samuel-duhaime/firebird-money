@@ -14,8 +14,9 @@ use serde_json::Value;
 const MESSAGES_URL: &str = "https://api.anthropic.com/v1/messages";
 const API_VERSION: &str = "2023-06-01";
 
-/// Used when `STATEMENT_IMPORT_MODEL` is unset.
-const DEFAULT_MODEL: &str = "claude-opus-5-5";
+/// Used when `STATEMENT_IMPORT_MODEL` is unset: the cheapest model that reads statements well
+/// enough (about a quarter of Opus's cost per read).
+const DEFAULT_MODEL: &str = "claude-haiku-4-5";
 
 /// Server-side refusal fallback: when a model's safety classifier declines a request, the API
 /// re-runs it on Anthropic's recommended fallback model inside the same call instead of failing.
@@ -170,6 +171,11 @@ impl AnthropicClient {
 
         body["model"] = Value::String(self.model.clone());
         body["stream"] = Value::Bool(true);
+        if !supports_effort(&self.model) {
+            if let Some(output_config) = body["output_config"].as_object_mut() {
+                output_config.remove("effort");
+            }
+        }
         let mut request = self
             .http
             .post(MESSAGES_URL)
@@ -252,6 +258,12 @@ fn parse_event(event: &[u8]) -> Option<StreamEvent> {
     serde_json::from_str(data.trim()).ok()
 }
 
+/// `output_config.effort` is a 400 on these older models, so a caller's effort setting is dropped
+/// for them — e.g. `STATEMENT_IMPORT_MODEL=claude-haiku-4-5`, which then runs without thinking.
+fn supports_effort(model: &str) -> bool {
+    !matches!(model, "claude-haiku-4-5" | "claude-sonnet-4-5")
+}
+
 /// The models that accept `fallbacks: "default"` on the Claude API. Sending it to any other model
 /// is a 400, so an override like `claude-haiku-4-5` goes without.
 fn supports_server_fallback(model: &str) -> bool {
@@ -266,8 +278,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_default_model_gets_the_refusal_fallback() {
-        assert!(supports_server_fallback(DEFAULT_MODEL));
+    fn newer_models_get_the_refusal_fallback() {
+        assert!(supports_server_fallback("claude-opus-5-5"));
+        assert!(supports_server_fallback("claude-sonnet-5-5"));
+    }
+
+    #[test]
+    fn haiku_runs_without_an_effort_setting() {
+        assert!(!supports_effort(DEFAULT_MODEL));
+        assert!(supports_effort("claude-opus-5-5"));
     }
 
     #[test]

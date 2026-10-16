@@ -62,6 +62,7 @@ import-read-failed = The statement couldn’t be read right now, please try agai
 import-empty = Select at least one transaction to import
 import-too-many = Import at most { $n } transactions at a time
 import-merchant-required = Each transaction needs either an existing merchant or a new merchant name
+import-account-required = Each transaction needs either an existing account or a valid new account
 import-merchant-not-found = One of the merchants doesn’t exist
 import-account-not-found = One of the accounts doesn’t exist
 import-category-not-found = One of the categories doesn’t exist

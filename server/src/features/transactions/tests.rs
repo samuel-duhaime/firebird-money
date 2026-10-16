@@ -39,7 +39,7 @@ fn app_with(
 > {
     app_with_anthropic(
         pool,
-        AnthropicClient::new(None, "claude-opus-5-5".to_string()),
+        AnthropicClient::new(None, "claude-haiku-4-5".to_string()),
     )
 }
 
@@ -3346,7 +3346,7 @@ async fn list_transactions_filters_by_account_id_but_search_ignores_account_name
 
 /// A client with a key that's never used — see the note above.
 fn fake_anthropic() -> AnthropicClient {
-    AnthropicClient::new(Some("test-key".to_string()), "claude-opus-5-5".to_string())
+    AnthropicClient::new(Some("test-key".to_string()), "claude-haiku-4-5".to_string())
 }
 
 /// A multipart `POST /transactions/import/read` with `file` (and `account_id`, if given).
@@ -3582,6 +3582,90 @@ async fn import_transactions_reuses_a_merchant_with_the_same_name(pool: PgPool) 
     assert_eq!(body["created_merchant_count"], 0);
     let transactions = list_all(&app, &cookie).await;
     assert!(transactions.iter().all(|t| t["merchant_id"] == bixi_id));
+}
+
+#[sqlx::test]
+async fn import_transactions_creates_a_new_account_once(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+
+    let line = |statement: &str| {
+        serde_json::json!({
+            "date": "2026-09-02",
+            "original_statement": statement,
+            "amount": "10.00",
+            "new_merchant_name": statement,
+            "category_id": category_id,
+            "new_account": {
+                "institution_name": "RBC",
+                "name": "Mastercard",
+                "type": "credit_card",
+                "last_four": "9999"
+            }
+        })
+    };
+    let resp = import_via_api(&app, &cookie, serde_json::json!([line("A"), line("B")])).await;
+
+    assert_eq!(resp.status(), 201);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["created_account_count"], 1);
+
+    let req = test::TestRequest::get()
+        .uri("/accounts")
+        .insert_header(("Cookie", cookie.clone()))
+        .to_request();
+    let accounts: serde_json::Value = test::call_and_read_body_json(&app, req).await;
+    let accounts = accounts.as_array().unwrap();
+    assert_eq!(accounts.len(), 1);
+    assert_eq!(accounts[0]["name"], "Mastercard");
+    assert_eq!(accounts[0]["institution_name"], "RBC");
+    assert_eq!(accounts[0]["last_four"], "9999");
+    let transactions = list_all(&app, &cookie).await;
+    assert!(transactions
+        .iter()
+        .all(|t| t["account_id"] == accounts[0]["id"]));
+
+    // A second import naming the same account reuses it.
+    let resp = import_via_api(&app, &cookie, serde_json::json!([line("C")])).await;
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["created_account_count"], 0);
+}
+
+#[sqlx::test]
+async fn import_transactions_needs_exactly_one_valid_account_per_line(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    let account_id = crate::shared::test_support::test_account_id(&app, &cookie).await;
+    let new_account = |last_four: &str| {
+        serde_json::json!({
+            "institution_name": "RBC",
+            "name": "Mastercard",
+            "type": "credit_card",
+            "last_four": last_four
+        })
+    };
+
+    for account in [
+        serde_json::json!({}),
+        serde_json::json!({ "account_id": account_id, "new_account": new_account("9999") }),
+        // Not what `accounts.last_four` accepts.
+        serde_json::json!({ "new_account": new_account("99-999") }),
+    ] {
+        let mut line = serde_json::json!({
+            "date": "2026-09-02",
+            "original_statement": "IGA",
+            "amount": "1.00",
+            "new_merchant_name": "IGA",
+            "category_id": category_id
+        });
+        for (key, value) in account.as_object().unwrap() {
+            line[key] = value.clone();
+        }
+        let resp = import_via_api(&app, &cookie, serde_json::json!([line])).await;
+        assert_eq!(resp.status(), 400);
+    }
 }
 
 #[sqlx::test]

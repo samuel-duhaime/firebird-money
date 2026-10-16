@@ -1,4 +1,4 @@
-use sqlx::PgPool;
+use sqlx::{PgConnection, PgPool};
 
 use super::defaults::DEFAULT_INSTITUTIONS;
 use super::model::{Institution, InstitutionPatch, NewInstitution};
@@ -135,4 +135,42 @@ pub async fn is_visible_to_household(
     .fetch_one(pool)
     .await?;
     Ok(exists)
+}
+
+/// Finds an institution visible to `household_id` (common or its own) whose name or one of its
+/// aliases is exactly `name` (ignoring case), else creates a custom one named `name`. Returns
+/// `(id, created)`. Used by statement import, for an account a statement names that's new.
+pub async fn find_or_create_named(
+    conn: &mut PgConnection,
+    household_id: i32,
+    name: &str,
+) -> Result<(i32, bool), sqlx::Error> {
+    let existing: Option<i32> = sqlx::query_scalar(
+        "SELECT id FROM institutions
+         WHERE (household_id = $1 OR household_id IS NULL)
+           AND (lower(name) = lower($2)
+                OR EXISTS (SELECT 1 FROM unnest(aliases) a WHERE lower(a) = lower($2)))
+         ORDER BY household_id NULLS LAST, id
+         LIMIT 1",
+    )
+    .bind(household_id)
+    .bind(name)
+    .fetch_optional(&mut *conn)
+    .await?;
+    if let Some(id) = existing {
+        return Ok((id, false));
+    }
+
+    // A no-op `DO UPDATE` to get the id back on a race with itself; `xmax = 0` only holds for a
+    // freshly inserted row.
+    sqlx::query_as(
+        "INSERT INTO institutions (household_id, name) VALUES ($1, $2)
+         ON CONFLICT (household_id, name) WHERE household_id IS NOT NULL
+         DO UPDATE SET name = EXCLUDED.name
+         RETURNING id, (xmax = 0)",
+    )
+    .bind(household_id)
+    .bind(name)
+    .fetch_one(&mut *conn)
+    .await
 }
