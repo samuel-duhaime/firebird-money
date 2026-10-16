@@ -1,6 +1,5 @@
 import { toast } from 'sonner';
 import i18n from '../i18n';
-import { toIntlLocale } from '../i18n/locale';
 
 export const notImplementedToast = () =>
   toast.error(i18n.t('toast.notImplemented'));
@@ -62,13 +61,25 @@ export const amountTooLongToast = () =>
 export const requiredFieldToast = () =>
   toast.error(i18n.t('transactions.add.required'));
 
-export const importStartedToast = () => toast(i18n.t('toast.importStarted'));
+/** "13 transactions added · 2 new merchants · 1 new account" — each extra part only when some were
+ * created. */
+export const importSucceededToast = (
+  createdCount: number,
+  createdMerchantCount: number,
+  createdAccountCount: number,
+) => {
+  const parts = [
+    i18n.t('toast.importSucceeded', { count: createdCount }),
+    createdMerchantCount > 0 &&
+      i18n.t('toast.importNewMerchants', { count: createdMerchantCount }),
+    createdAccountCount > 0 &&
+      i18n.t('toast.importNewAccounts', { count: createdAccountCount }),
+  ].filter(Boolean);
+  toast.success(parts.join(' · '));
+};
 
 export const importFailedToast = () =>
   toast.error(i18n.t('toast.importFailed'));
-
-export const importSucceededToast = (createdCount: number) =>
-  toast.success(i18n.t('toast.importSucceeded', { count: createdCount }));
 
 export const deleteTagFailedToast = () =>
   toast.error(i18n.t('toast.deleteTagFailed'));
@@ -105,28 +116,3 @@ export const reorderCategoriesFailedToast = () =>
 
 export const reorderCategoryGroupsFailedToast = () =>
   toast.error(i18n.t('toast.reorderCategoryGroupsFailed'));
-
-export const importPartialToast = (
-  createdCount: number,
-  failedCount: number,
-  skippedCount: number,
-) => {
-  const issues = [
-    failedCount > 0
-      ? i18n.t('toast.importFailedCount', { count: failedCount })
-      : null,
-    skippedCount > 0
-      ? i18n.t('toast.importSkippedCount', { count: skippedCount })
-      : null,
-  ].filter((issue): issue is string => issue !== null);
-  const locale = toIntlLocale(i18n.resolvedLanguage ?? i18n.language);
-  toast.warning(
-    i18n.t('toast.importPartial', {
-      count: createdCount,
-      issues: new Intl.ListFormat(locale, {
-        style: 'long',
-        type: 'conjunction',
-      }).format(issues),
-    }),
-  );
-};
