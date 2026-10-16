@@ -2759,6 +2759,7 @@ dependencies = [
  "actix-multipart",
  "actix-web",
  "base64",
+ "bytes",
  "calamine",
  "chrono",
  "csv",
@@ -2777,6 +2778,7 @@ dependencies = [
  "tokio",
  "unic-langid",
  "uuid",
+ "zip 7.2.0",
 ]
 
 [[package]]

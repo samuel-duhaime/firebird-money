@@ -139,7 +139,8 @@ pub async fn delete(pool: &PgPool, household_id: i32, id: i32) -> Result<bool, s
 }
 
 /// Finds the household's account at `institution_id` that is clearly this one — the same
-/// `last_four` when given, else the same name and type (ignoring case) — else creates it. Returns
+/// `last_four`, else the same name and type (ignoring case) when either side has no `last_four`
+/// (it's optional, so a saved account may lack it) — else creates it. Returns
 /// `(id, created)`. Used by statement import, for an account a statement names that's new.
 pub async fn find_or_create(
     conn: &mut PgConnection,
@@ -152,9 +153,11 @@ pub async fn find_or_create(
     let existing: Option<i32> = sqlx::query_scalar(
         "SELECT id FROM accounts
          WHERE household_id = $1 AND institution_id = $2
-           AND CASE WHEN $5::text IS NOT NULL THEN lower(last_four) = lower($5)
-                    ELSE lower(name) = lower($3) AND type = $4 END
-         ORDER BY id
+           AND (lower(last_four) = lower($5)
+                OR ((last_four IS NULL OR $5::text IS NULL)
+                    AND lower(name) = lower($3) AND type = $4))
+         -- An exact last-digits match beats a name match.
+         ORDER BY (lower(last_four) = lower($5)) IS TRUE DESC, id
          LIMIT 1",
     )
     .bind(household_id)

@@ -324,9 +324,11 @@ async fn read_statement(
             "import-unavailable",
         );
     }
-    let statement = match Statement::from_upload(&form.file.data) {
-        Ok(statement) => statement,
-        Err(StatementError::Unsupported) => {
+    // Off the async workers: converting a spreadsheet is CPU-bound.
+    let upload = form.file.data.clone();
+    let statement = match web::block(move || Statement::from_upload(upload)).await {
+        Ok(Ok(statement)) => statement,
+        Ok(Err(StatementError::Unsupported)) => {
             return error_response(
                 &l10n,
                 &locale,
@@ -334,13 +336,17 @@ async fn read_statement(
                 "import-file-unsupported",
             )
         }
-        Err(StatementError::TooLong) => {
+        Ok(Err(StatementError::TooLong)) => {
             return error_response(
                 &l10n,
                 &locale,
                 StatusCode::BAD_REQUEST,
                 "import-file-too-long",
             )
+        }
+        Err(e) => {
+            error!("statement import failed to prepare the file error={e}");
+            return internal_error_response(&l10n, &locale);
         }
     };
 

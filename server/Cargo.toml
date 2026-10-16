@@ -8,6 +8,7 @@ actix-cors = "0.7.1"
 actix-multipart = "0.7"
 actix-web = "4.13.0"
 base64 = "0.22"
+bytes = "1"
 calamine = { version = "0.36.1", features = ["dates"] }
 chrono = { version = "0.4", features = ["serde"] }
 csv = "1"
@@ -26,6 +27,7 @@ sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "migrate", "c
 tokio = { version = "1", features = ["rt", "sync"] }
 unic-langid = "0.9"
 uuid = { version = "1", features = ["v4", "serde"] }
+zip = { version = "7", default-features = false }
 
 [dev-dependencies]
 actix-http = "3"

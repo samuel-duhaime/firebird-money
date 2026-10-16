@@ -2,6 +2,7 @@ use sqlx::{PgConnection, PgPool};
 
 use super::defaults::DEFAULT_INSTITUTIONS;
 use super::model::{Institution, InstitutionPatch, NewInstitution};
+use crate::features::transactions::same_institution_name;
 
 /// Ensures every entry in `DEFAULT_INSTITUTIONS` exists as a common institution (`household_id IS
 /// NULL`). Called once at server startup; idempotent, same as `merchants::repository::seed_defaults`.
@@ -137,27 +138,45 @@ pub async fn is_visible_to_household(
     Ok(exists)
 }
 
-/// Finds an institution visible to `household_id` (common or its own) whose name or one of its
-/// aliases is exactly `name` (ignoring case), else creates a custom one named `name`. Returns
-/// `(id, created)`. Used by statement import, for an account a statement names that's new.
+/// Finds an institution visible to `household_id` (common or its own) that is this one — its name
+/// or one of its aliases equal to `name` (ignoring case), else appearing in `name` as whole words or
+/// the other way around ("Caisse Desjardins du Plateau" → "Desjardins"), the longest such name
+/// winning — else creates a custom one named `name`. Returns `(id, created)`. Used by statement
+/// import, for an account a statement names that's new.
 pub async fn find_or_create_named(
     conn: &mut PgConnection,
     household_id: i32,
     name: &str,
 ) -> Result<(i32, bool), sqlx::Error> {
-    let existing: Option<i32> = sqlx::query_scalar(
-        "SELECT id FROM institutions
-         WHERE (household_id = $1 OR household_id IS NULL)
-           AND (lower(name) = lower($2)
-                OR EXISTS (SELECT 1 FROM unnest(aliases) a WHERE lower(a) = lower($2)))
-         ORDER BY household_id NULLS LAST, id
-         LIMIT 1",
+    // Every visible institution's name and aliases, the household's own first so they win ties.
+    let candidates: Vec<(i32, String)> = sqlx::query_as(
+        "SELECT id, candidate FROM (
+            SELECT id, household_id, name AS candidate FROM institutions
+            WHERE household_id = $1 OR household_id IS NULL
+            UNION ALL
+            SELECT id, household_id, unnest(aliases) FROM institutions
+            WHERE household_id = $1 OR household_id IS NULL
+         ) c
+         ORDER BY household_id NULLS LAST, id",
     )
     .bind(household_id)
-    .bind(name)
-    .fetch_optional(&mut *conn)
+    .fetch_all(&mut *conn)
     .await?;
-    if let Some(id) = existing {
+
+    let exact = candidates
+        .iter()
+        .find(|(_, candidate)| candidate.to_lowercase() == name.to_lowercase())
+        .map(|(id, _)| *id);
+    let fuzzy = || {
+        // Reversed: `max_by_key` keeps the last of equal maxima, so this keeps the household's own.
+        candidates
+            .iter()
+            .rev()
+            .filter(|(_, candidate)| same_institution_name(candidate, name))
+            .max_by_key(|(_, candidate)| candidate.len())
+            .map(|(id, _)| *id)
+    };
+    if let Some(id) = exact.or_else(fuzzy) {
         return Ok((id, false));
     }
 
