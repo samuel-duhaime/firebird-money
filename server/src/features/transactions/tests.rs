@@ -10,8 +10,8 @@ use actix_web::{test, web, App};
 use sqlx::PgPool;
 
 use super::handlers::configure;
-use super::jobs::JobStore;
 use crate::features::auth;
+use crate::shared::anthropic::AnthropicClient;
 use crate::shared::config::{AuthConfig, SESSION_COOKIE_NAME};
 use crate::shared::l10n::L10n;
 
@@ -37,15 +37,17 @@ fn app_with(
         InitError = (),
     >,
 > {
-    app_with_jobs(pool, web::Data::new(JobStore::default()))
+    app_with_anthropic(
+        pool,
+        AnthropicClient::new(None, "claude-opus-5-5".to_string()),
+    )
 }
 
-/// Like `app_with`, but takes an externally-owned `JobStore` so a test can seed a job directly
-/// (via `JobStore::create`) without going through `POST /transactions/import`, which would spawn
-/// a real `claude` subprocess.
-fn app_with_jobs(
+/// Like `app_with`, with a given Claude API client — tests never reach the real API, so this is
+/// only ever an unconfigured one or one with a fake key that's never used.
+fn app_with_anthropic(
     pool: PgPool,
-    job_store: web::Data<JobStore>,
+    anthropic: AnthropicClient,
 ) -> App<
     impl actix_web::dev::ServiceFactory<
         actix_web::dev::ServiceRequest,
@@ -60,7 +62,7 @@ fn app_with_jobs(
         .app_data(web::Data::new(L10n::new()))
         .app_data(web::Data::new(test_config()))
         .app_data(web::Data::new(reqwest::Client::new()))
-        .app_data(job_store)
+        .app_data(web::Data::new(anthropic))
         .configure(configure)
         .configure(auth::configure)
         .configure(crate::features::category_groups::configure)
@@ -112,20 +114,6 @@ where
         .to_request();
     let body: serde_json::Value = test::call_and_read_body_json(app, req).await;
     body["user"]["id"].as_i64().unwrap()
-}
-
-/// The `household.household_id` of the signed-in caller, per `GET /auth/me`.
-async fn own_household_id<S, B>(app: &S, cookie: &str) -> i32
-where
-    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
-    B: MessageBody,
-{
-    let req = test::TestRequest::get()
-        .uri("/auth/me")
-        .insert_header(("Cookie", cookie))
-        .to_request();
-    let body: serde_json::Value = test::call_and_read_body_json(app, req).await;
-    body["household"]["household_id"].as_i64().unwrap() as i32
 }
 
 async fn create_group_via_api<S, B>(app: &S, cookie: &str, name_en: &str, name_fr: &str) -> i64
@@ -1919,6 +1907,7 @@ async fn create_transaction_returns_created_row(pool: PgPool) {
     assert_eq!(body["category_name_en"], "Other");
     assert_eq!(body["category_name_fr"], "Autre");
     assert_eq!(body["category_type"], "expense");
+    assert_eq!(body["source"], "manual");
     assert_eq!(
         location,
         format!("/transactions/{}", body["id"].as_i64().unwrap())
@@ -3118,182 +3107,6 @@ async fn delete_transaction_from_another_household_is_not_found(pool: PgPool) {
     assert_eq!(delete_resp.status(), 404);
 }
 
-// --- POST /transactions/import ---
-//
-// Only the size-limit rejection is tested here: it's rejected during multipart extraction, before
-// `import_transactions` ever runs, so — unlike a real successful upload — it never spawns a
-// `claude` subprocess.
-
-#[sqlx::test]
-async fn import_transactions_rejects_a_file_over_the_size_limit(pool: PgPool) {
-    let app = test::init_service(app_with(pool)).await;
-
-    let oversized = vec![b'a'; 11 * 1024 * 1024]; // over the 10 MB field limit
-    let (body, headers) = actix_multipart::test::create_form_data_payload_and_headers(
-        "file",
-        Some("statement.csv".to_string()),
-        None,
-        web::Bytes::from(oversized),
-    );
-
-    let mut req = test::TestRequest::post().uri("/transactions/import");
-    for (name, value) in headers.iter() {
-        req = req.insert_header((name.clone(), value.clone()));
-    }
-    let resp = test::call_service(&app, req.set_payload(body).to_request()).await;
-
-    assert_eq!(resp.status(), 400);
-    let body: serde_json::Value = test::read_body_json(resp).await;
-    // Pins down the specific message, not just "some JSON error" — the field-level size limit
-    // surfaces as `MultipartError::Payload(PayloadError::Overflow)`, easy to mis-map to the wrong
-    // Fluent key (as a first pass here did) since it isn't `MultipartError::Field`.
-    assert!(body["error"].as_str().unwrap().contains("too large"));
-}
-
-// --- /transactions/import/jobs/{id} ---
-//
-// These test the HTTP wiring for the in-memory JobStore directly (seeding a job via
-// `JobStore::create`), never through `POST /transactions/import` — that endpoint spawns a real
-// `claude` subprocess, which has no place in an automated test suite.
-
-#[sqlx::test]
-async fn get_import_job_requires_a_session(pool: PgPool) {
-    let app = test::init_service(app_with(pool)).await;
-
-    let req = test::TestRequest::get()
-        .uri(&format!(
-            "/transactions/import/jobs/{}",
-            uuid::Uuid::new_v4()
-        ))
-        .to_request();
-    let resp = test::call_service(&app, req).await;
-
-    assert_eq!(resp.status(), 401);
-}
-
-#[sqlx::test]
-async fn get_import_job_returns_404_for_unknown_id(pool: PgPool) {
-    let app = test::init_service(app_with(pool)).await;
-    let cookie = sign_in_with_household(&app, "sam@example.com").await;
-
-    let req = test::TestRequest::get()
-        .uri(&format!(
-            "/transactions/import/jobs/{}",
-            uuid::Uuid::new_v4()
-        ))
-        .insert_header(("Cookie", cookie))
-        .to_request();
-    let resp = test::call_service(&app, req).await;
-
-    assert_eq!(resp.status(), 404);
-}
-
-#[sqlx::test]
-async fn get_import_job_returns_a_freshly_created_job_as_pending(pool: PgPool) {
-    let job_store = web::Data::new(JobStore::default());
-    let app = test::init_service(app_with_jobs(pool, job_store.clone())).await;
-    let cookie = sign_in_with_household(&app, "sam@example.com").await;
-    let household_id = own_household_id(&app, &cookie).await;
-    let job = job_store.create("statement.csv".to_string(), household_id);
-
-    let req = test::TestRequest::get()
-        .uri(&format!("/transactions/import/jobs/{}", job.id))
-        .insert_header(("Cookie", cookie))
-        .to_request();
-    let resp = test::call_service(&app, req).await;
-
-    assert_eq!(resp.status(), 200);
-    let body: serde_json::Value = test::read_body_json(resp).await;
-    assert_eq!(body["status"], "pending");
-    assert_eq!(body["file_name"], "statement.csv");
-}
-
-#[sqlx::test]
-async fn report_import_job_requires_a_session(pool: PgPool) {
-    let job_store = web::Data::new(JobStore::default());
-    let job = job_store.create("statement.csv".to_string(), 1);
-    let app = test::init_service(app_with_jobs(pool, job_store)).await;
-
-    let patch_req = test::TestRequest::patch()
-        .uri(&format!("/transactions/import/jobs/{}", job.id))
-        .set_json(serde_json::json!({ "status": "succeeded" }))
-        .to_request();
-    let patch_resp = test::call_service(&app, patch_req).await;
-
-    assert_eq!(patch_resp.status(), 401);
-}
-
-#[sqlx::test]
-async fn report_import_job_updates_status_and_get_reflects_it(pool: PgPool) {
-    let job_store = web::Data::new(JobStore::default());
-    let app = test::init_service(app_with_jobs(pool, job_store.clone())).await;
-    let cookie = sign_in_with_household(&app, "sam@example.com").await;
-    let household_id = own_household_id(&app, &cookie).await;
-    let job = job_store.create("statement.csv".to_string(), household_id);
-
-    let patch_req = test::TestRequest::patch()
-        .uri(&format!("/transactions/import/jobs/{}", job.id))
-        .insert_header(("Cookie", cookie.clone()))
-        .set_json(serde_json::json!({
-            "status": "succeeded",
-            "created_count": 3,
-            "failed_count": 0,
-            "skipped_count": 1,
-        }))
-        .to_request();
-    let patch_resp = test::call_service(&app, patch_req).await;
-    assert_eq!(patch_resp.status(), 204);
-
-    let get_req = test::TestRequest::get()
-        .uri(&format!("/transactions/import/jobs/{}", job.id))
-        .insert_header(("Cookie", cookie))
-        .to_request();
-    let get_resp = test::call_service(&app, get_req).await;
-
-    assert_eq!(get_resp.status(), 200);
-    let body: serde_json::Value = test::read_body_json(get_resp).await;
-    assert_eq!(body["status"], "succeeded");
-    assert_eq!(body["created_count"], 3);
-    assert_eq!(body["skipped_count"], 1);
-}
-
-#[sqlx::test]
-async fn get_import_job_does_not_leak_another_households_job(pool: PgPool) {
-    let job_store = web::Data::new(JobStore::default());
-    let app = test::init_service(app_with_jobs(pool, job_store.clone())).await;
-    let cookie_a = sign_in_with_household(&app, "a@example.com").await;
-    let household_a = own_household_id(&app, &cookie_a).await;
-    let job = job_store.create("statement.csv".to_string(), household_a);
-    let cookie_b = sign_in_with_household(&app, "b@example.com").await;
-
-    let req = test::TestRequest::get()
-        .uri(&format!("/transactions/import/jobs/{}", job.id))
-        .insert_header(("Cookie", cookie_b))
-        .to_request();
-    let resp = test::call_service(&app, req).await;
-
-    assert_eq!(resp.status(), 404);
-}
-
-#[sqlx::test]
-async fn report_import_job_rejects_another_households_job(pool: PgPool) {
-    let job_store = web::Data::new(JobStore::default());
-    let app = test::init_service(app_with_jobs(pool, job_store.clone())).await;
-    let cookie_a = sign_in_with_household(&app, "a@example.com").await;
-    let household_a = own_household_id(&app, &cookie_a).await;
-    let job = job_store.create("statement.csv".to_string(), household_a);
-    let cookie_b = sign_in_with_household(&app, "b@example.com").await;
-
-    let patch_req = test::TestRequest::patch()
-        .uri(&format!("/transactions/import/jobs/{}", job.id))
-        .insert_header(("Cookie", cookie_b))
-        .set_json(serde_json::json!({ "status": "succeeded" }))
-        .to_request();
-    let patch_resp = test::call_service(&app, patch_req).await;
-
-    assert_eq!(patch_resp.status(), 404);
-}
-
 #[sqlx::test]
 async fn delete_transaction_not_found(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
@@ -3524,4 +3337,379 @@ async fn list_transactions_filters_by_account_id_but_search_ignores_account_name
         .to_request();
     let body: serde_json::Value = test::call_and_read_body_json(&app, req).await;
     assert_eq!(body.as_array().unwrap().len(), 0);
+}
+
+// --- POST /transactions/import/read ---
+//
+// Only what's answered before Claude is called: tests never reach the real API. With a fake key,
+// every request below is rejected up front, so the key is never sent anywhere.
+
+/// A client with a key that's never used — see the note above.
+fn fake_anthropic() -> AnthropicClient {
+    AnthropicClient::new(Some("test-key".to_string()), "claude-opus-5-5".to_string())
+}
+
+/// A multipart `POST /transactions/import/read` with `file` (and `account_id`, if given).
+fn read_statement_request(file: &[u8], account_id: Option<&str>) -> test::TestRequest {
+    const BOUNDARY: &str = "statement-boundary";
+    let mut body = Vec::new();
+    if let Some(account_id) = account_id {
+        body.extend_from_slice(
+            format!(
+                "--{BOUNDARY}\r\nContent-Disposition: form-data; name=\"account_id\"\r\n\r\n{account_id}\r\n"
+            )
+            .as_bytes(),
+        );
+    }
+    body.extend_from_slice(
+        format!(
+            "--{BOUNDARY}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"statement\"\r\n\
+             Content-Type: application/octet-stream\r\n\r\n"
+        )
+        .as_bytes(),
+    );
+    body.extend_from_slice(file);
+    body.extend_from_slice(format!("\r\n--{BOUNDARY}--\r\n").as_bytes());
+
+    test::TestRequest::post()
+        .uri("/transactions/import/read")
+        .insert_header((
+            "Content-Type",
+            format!("multipart/form-data; boundary={BOUNDARY}"),
+        ))
+        .set_payload(body)
+}
+
+#[sqlx::test]
+async fn read_statement_requires_a_session(pool: PgPool) {
+    let app = test::init_service(app_with_anthropic(pool, fake_anthropic())).await;
+
+    let req = read_statement_request(b"%PDF-1.7", None).to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 401);
+}
+
+#[sqlx::test]
+async fn read_statement_is_unavailable_without_an_api_key(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+
+    let req = read_statement_request(b"%PDF-1.7", None)
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 503);
+}
+
+#[sqlx::test]
+async fn read_statement_rejects_a_file_that_is_not_a_pdf_or_image(pool: PgPool) {
+    let app = test::init_service(app_with_anthropic(pool, fake_anthropic())).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+
+    // A `.pdf` name or content type wouldn't help: the file's own bytes decide.
+    let req = read_statement_request(b"\x00\x01\x02\x03 not a statement", None)
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 400);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert!(body["error"].as_str().unwrap().contains("PDF"));
+}
+
+#[sqlx::test]
+async fn read_statement_rejects_a_csv_too_long_to_read_at_once(pool: PgPool) {
+    let app = test::init_service(app_with_anthropic(pool, fake_anthropic())).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+
+    // Well under the 10 MB upload limit, but over what one read accepts.
+    let csv = "2026-09-02,IGA EXTRA #8123,-142.37\n".repeat(10_000);
+    let req = read_statement_request(csv.as_bytes(), None)
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 400);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert!(body["error"].as_str().unwrap().contains("too long"));
+}
+
+#[sqlx::test]
+async fn read_statement_rejects_another_households_account(pool: PgPool) {
+    let app = test::init_service(app_with_anthropic(pool, fake_anthropic())).await;
+    let other_cookie = sign_in_with_household(&app, "other@example.com").await;
+    let other_account_id = crate::shared::test_support::test_account_id(&app, &other_cookie).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+
+    let req = read_statement_request(b"%PDF-1.7", Some(&other_account_id.to_string()))
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 400);
+}
+
+#[sqlx::test]
+async fn read_statement_rejects_a_file_over_the_size_limit(pool: PgPool) {
+    let app = test::init_service(app_with_anthropic(pool, fake_anthropic())).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+
+    let mut oversized = b"%PDF-1.7".to_vec();
+    oversized.resize(11 * 1024 * 1024, b'a'); // over the 10 MB field limit
+    let req = read_statement_request(&oversized, None)
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 400);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    // The field-level size limit surfaces as `MultipartError::Payload(PayloadError::Overflow)`,
+    // easy to mis-map to the wrong Fluent key since it isn't `MultipartError::Field`.
+    assert!(body["error"].as_str().unwrap().contains("too large"));
+}
+
+// --- POST /transactions/import ---
+
+/// `POST /transactions/import` with `lines` as the `transactions` array.
+async fn import_via_api<S, B>(app: &S, cookie: &str, lines: serde_json::Value) -> ServiceResponse<B>
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let req = test::TestRequest::post()
+        .uri("/transactions/import")
+        .insert_header(("Cookie", cookie))
+        .set_json(serde_json::json!({ "transactions": lines }))
+        .to_request();
+    test::call_service(app, req).await
+}
+
+/// Every transaction the caller can see, per `GET /transactions` (most recent first).
+async fn list_all<S, B>(app: &S, cookie: &str) -> Vec<serde_json::Value>
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let req = test::TestRequest::get()
+        .uri("/transactions")
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    let body: serde_json::Value = test::call_and_read_body_json(app, req).await;
+    body.as_array().unwrap().clone()
+}
+
+#[sqlx::test]
+async fn import_transactions_adds_every_line_as_imported(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    let account_id = crate::shared::test_support::test_account_id(&app, &cookie).await;
+    let tag_id = create_tag_via_api(&app, &cookie, "Shared").await;
+    // An existing merchant, created by hand first.
+    let existing_id =
+        create_via_api(&app, &cookie, category_id, "2026-09-01", "IGA", "10.00").await;
+    let iga_id = transaction_merchant_id(&app, &cookie, existing_id).await;
+
+    let resp = import_via_api(
+        &app,
+        &cookie,
+        serde_json::json!([
+            {
+                "date": "2026-09-02",
+                "original_statement": "IGA EXTRA #8123",
+                "amount": "142.37",
+                "merchant_id": iga_id,
+                "category_id": category_id,
+                "account_id": account_id,
+                "tag_ids": [tag_id]
+            },
+            {
+                "date": "2026-09-14",
+                "original_statement": "CAFE OLIMPICO MTL",
+                "amount": "9.40",
+                "new_merchant_name": "Café Olimpico",
+                "category_id": category_id,
+                "account_id": account_id
+            }
+        ]),
+    )
+    .await;
+
+    assert_eq!(resp.status(), 201);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["created_count"], 2);
+    assert_eq!(body["created_merchant_count"], 1);
+
+    let transactions = list_all(&app, &cookie).await;
+    assert_eq!(transactions.len(), 3);
+    let cafe = &transactions[0];
+    assert_eq!(cafe["merchant_name"], "Café Olimpico");
+    assert_eq!(cafe["original_statement"], "CAFE OLIMPICO MTL");
+    assert_eq!(cafe["source"], "import");
+    assert_eq!(cafe["reviewed"], true);
+    let iga = &transactions[1];
+    assert_eq!(iga["merchant_id"], iga_id);
+    assert_eq!(iga["amount"], "142.37");
+    assert_eq!(iga["source"], "import");
+    assert_eq!(iga["tags"][0]["id"], tag_id);
+    assert_eq!(transactions[2]["source"], "manual");
+}
+
+#[sqlx::test]
+async fn import_transactions_reuses_a_merchant_with_the_same_name(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    let account_id = crate::shared::test_support::test_account_id(&app, &cookie).await;
+    let existing_id =
+        create_via_api(&app, &cookie, category_id, "2026-09-01", "BIXI", "5.00").await;
+    let bixi_id = transaction_merchant_id(&app, &cookie, existing_id).await;
+
+    let line = serde_json::json!({
+        "date": "2026-09-22",
+        "original_statement": "BIXI MONTREAL",
+        "amount": "15.00",
+        "new_merchant_name": "bixi",
+        "category_id": category_id,
+        "account_id": account_id
+    });
+    let resp = import_via_api(&app, &cookie, serde_json::json!([line.clone(), line])).await;
+
+    assert_eq!(resp.status(), 201);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["created_merchant_count"], 0);
+    let transactions = list_all(&app, &cookie).await;
+    assert!(transactions.iter().all(|t| t["merchant_id"] == bixi_id));
+}
+
+#[sqlx::test]
+async fn import_transactions_is_all_or_nothing(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    let account_id = crate::shared::test_support::test_account_id(&app, &cookie).await;
+
+    let resp = import_via_api(
+        &app,
+        &cookie,
+        serde_json::json!([
+            {
+                "date": "2026-09-02",
+                "original_statement": "IGA",
+                "amount": "1.00",
+                "new_merchant_name": "IGA",
+                "category_id": category_id,
+                "account_id": account_id
+            },
+            {
+                "date": "2026-09-03",
+                "original_statement": "STM",
+                "amount": "2.00",
+                "new_merchant_name": "STM",
+                "category_id": 999999,
+                "account_id": account_id
+            }
+        ]),
+    )
+    .await;
+
+    assert_eq!(resp.status(), 400);
+    assert!(list_all(&app, &cookie).await.is_empty());
+}
+
+#[sqlx::test]
+async fn import_transactions_rejects_another_households_merchant(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let other_cookie = sign_in_with_household(&app, "other@example.com").await;
+    let other_category_id = create_other_category(&app, &other_cookie).await;
+    let other_transaction_id = create_via_api(
+        &app,
+        &other_cookie,
+        other_category_id,
+        "2026-09-01",
+        "SECRET SHOP",
+        "1.00",
+    )
+    .await;
+    let other_merchant_id =
+        transaction_merchant_id(&app, &other_cookie, other_transaction_id).await;
+
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    let account_id = crate::shared::test_support::test_account_id(&app, &cookie).await;
+
+    let resp = import_via_api(
+        &app,
+        &cookie,
+        serde_json::json!([{
+            "date": "2026-09-02",
+            "original_statement": "SECRET SHOP",
+            "amount": "1.00",
+            "merchant_id": other_merchant_id,
+            "category_id": category_id,
+            "account_id": account_id
+        }]),
+    )
+    .await;
+
+    assert_eq!(resp.status(), 400);
+    assert!(list_all(&app, &cookie).await.is_empty());
+}
+
+#[sqlx::test]
+async fn import_transactions_needs_exactly_one_merchant_per_line(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    let account_id = crate::shared::test_support::test_account_id(&app, &cookie).await;
+    let existing_id = create_via_api(&app, &cookie, category_id, "2026-09-01", "IGA", "1.00").await;
+    let iga_id = transaction_merchant_id(&app, &cookie, existing_id).await;
+
+    let line = |merchant: serde_json::Value| {
+        let mut line = serde_json::json!({
+            "date": "2026-09-02",
+            "original_statement": "IGA",
+            "amount": "1.00",
+            "category_id": category_id,
+            "account_id": account_id
+        });
+        for (key, value) in merchant.as_object().unwrap() {
+            line[key] = value.clone();
+        }
+        line
+    };
+
+    for merchant in [
+        serde_json::json!({}),
+        serde_json::json!({ "new_merchant_name": "   " }),
+        serde_json::json!({ "merchant_id": iga_id, "new_merchant_name": "IGA" }),
+    ] {
+        let resp = import_via_api(&app, &cookie, serde_json::json!([line(merchant)])).await;
+        assert_eq!(resp.status(), 400);
+    }
+}
+
+#[sqlx::test]
+async fn import_transactions_rejects_an_empty_list(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+
+    let resp = import_via_api(&app, &cookie, serde_json::json!([])).await;
+
+    assert_eq!(resp.status(), 400);
+}
+
+#[sqlx::test]
+async fn import_transactions_requires_a_session(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+
+    let req = test::TestRequest::post()
+        .uri("/transactions/import")
+        .set_json(serde_json::json!({ "transactions": [] }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 401);
 }

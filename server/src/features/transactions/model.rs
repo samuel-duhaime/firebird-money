@@ -2,7 +2,6 @@ use chrono::{DateTime, NaiveDate, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
-use uuid::Uuid;
 
 /// A tag attached to a transaction, as embedded in `Transaction::tags` — just enough to render it
 /// (name, color), not the full `tags::model::Tag` row (household id, created_at, ... are noise
@@ -39,6 +38,7 @@ pub struct Transaction {
     pub account_id: i32,
     pub account_name: String,
     pub reviewed: bool,
+    pub source: TransactionSource,
     pub created_at: DateTime<Utc>,
     /// Never read directly off a `transactions` row — there's no such column. Always populated
     /// after the fact by `repository::attach_tags`, in a second batched query (not a `JOIN` on the
@@ -49,8 +49,8 @@ pub struct Transaction {
 
 /// Body for `POST /transactions`. `id` and `created_at` are generated; `household_id` and
 /// `user_id` are never read from the body — they're always the caller's own household and user,
-/// from `CurrentUser`. `reviewed` defaults to `true` when absent; automated imports set it to
-/// `false` so they can be found later.
+/// from `CurrentUser`. `reviewed` defaults to `true` when absent. Always stored with
+/// `source: manual` — statement imports go through `POST /transactions/import` instead.
 ///
 /// At least one of `merchant_id`/`original_statement` must be given (checked in the handler):
 /// - `merchant_id` given, `original_statement` absent: used directly (validated against the
@@ -58,9 +58,9 @@ pub struct Transaction {
 ///   defaults to that merchant's own name. The shape a manual "Add Transaction" picker uses.
 /// - `original_statement` given, `merchant_id` absent: `merchants::repository::resolve_or_create`
 ///   matches an existing merchant, or creates a new custom one named exactly `original_statement` if
-///   nothing matches. The shape the budget-file importer uses.
-/// - Both given: `merchant_id` is used as-is, `original_statement` stored as given (lets an import
-///   override the resolved merchant while still keeping the real statement text on record).
+///   nothing matches. For a caller that only has raw statement text.
+/// - Both given: `merchant_id` is used as-is, `original_statement` stored as given (overrides the
+///   resolved merchant while still keeping the real statement text on record).
 #[derive(Debug, Deserialize)]
 pub struct NewTransaction {
     pub date: NaiveDate,
@@ -77,45 +77,97 @@ pub struct NewTransaction {
     pub tag_ids: Option<Vec<i32>>,
 }
 
-/// In-memory status of an async budget-file import, tracked for as long as this server process
-/// runs — a job doesn't need to survive a restart, since a restart also kills the subprocess
-/// tracking it.
-#[derive(Debug, Clone, Serialize)]
-pub struct ImportJob {
-    pub id: Uuid,
-    /// Whoever kicked off the import — checked on every later read so one household can't poll or
-    /// complete another's job by guessing its (random, but not secret-strength) UUID.
-    #[serde(skip_serializing)]
-    pub household_id: i32,
-    pub status: ImportJobStatus,
-    pub file_name: String,
-    pub created_count: Option<i32>,
-    pub failed_count: Option<i32>,
-    pub skipped_count: Option<i32>,
-    pub error_message: Option<String>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-/// Status of an [`ImportJob`]. `Succeeded`/`Failed` are terminal.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+/// Where a transaction came from. Set once on insert, never changed afterward.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, sqlx::Type)]
+#[sqlx(type_name = "text", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
-pub enum ImportJobStatus {
-    Pending,
-    Running,
-    Succeeded,
-    Failed,
+pub enum TransactionSource {
+    /// Typed in by hand (`POST /transactions`).
+    Manual,
+    /// Read from a bank statement and accepted by the user (`POST /transactions/import`).
+    Import,
 }
 
-/// Body for `PATCH /transactions/import/jobs/{id}` — how the unattended import subprocess itself
-/// reports its final result back to the server.
+/// One transaction read from a bank statement by `POST /transactions/import/read`, already matched
+/// against the caller's household — every id here is one of the household's own (or a common
+/// merchant). Nothing is stored yet: the client shows these for review, then sends back the ones
+/// the user accepts to `POST /transactions/import` as [`ImportTransaction`]s.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct StatementTransaction {
+    pub date: NaiveDate,
+    /// The line's description exactly as the statement printed it.
+    pub original_statement: String,
+    /// Always positive, same convention as every other transaction: direction comes from the
+    /// category, not the sign.
+    pub amount: Decimal,
+    /// An existing merchant (common or the household's own). Exactly one of `merchant_id` and
+    /// `new_merchant_name` is set.
+    pub merchant_id: Option<i32>,
+    /// A merchant the household doesn't have yet, created only if the user accepts the line.
+    pub new_merchant_name: Option<String>,
+    /// `None` only when the household has no category to fall back on — the user must pick one.
+    pub category_id: Option<i32>,
+    /// `false` when the category is a guess the user should double-check.
+    pub category_confident: bool,
+    /// `None` when neither the statement nor the request said which account this is.
+    pub account_id: Option<i32>,
+    pub tag_ids: Vec<i32>,
+    /// An existing transaction with the same date, amount, and account (when known) — most likely
+    /// this same line, imported or typed in before.
+    pub duplicate_of_transaction_id: Option<i64>,
+}
+
+/// One line of `POST /transactions/import/read`'s streamed response (newline-delimited JSON), so
+/// the client can show real progress while the statement is read: `reading`, any number of
+/// `found`, `matching`, `checking_duplicates`, then exactly one `done` or `error`.
+#[derive(Debug, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum StatementReadEvent {
+    /// Claude has started reading the statement.
+    Reading,
+    /// How many lines Claude has found so far — sent each time it goes up.
+    Found { count: usize },
+    /// Matching the lines to the household's merchants, categories, accounts, and tags.
+    Matching,
+    /// Comparing the lines with transactions already added.
+    CheckingDuplicates,
+    /// The statement's lines, ready to review. Nothing is stored.
+    Done {
+        transactions: Vec<StatementTransaction>,
+    },
+    /// Reading failed. `error` is a localized message to show as-is.
+    Error { error: String },
+}
+
+/// One accepted line in `POST /transactions/import`. Same shape as [`StatementTransaction`] minus
+/// the review-only hints, with the fields the user had to settle (category, account) now required.
 #[derive(Debug, Deserialize)]
-pub struct ImportJobReport {
-    pub status: ImportJobStatus,
-    pub created_count: Option<i32>,
-    pub failed_count: Option<i32>,
-    pub skipped_count: Option<i32>,
-    pub error_message: Option<String>,
+pub struct ImportTransaction {
+    pub date: NaiveDate,
+    pub original_statement: String,
+    pub amount: Decimal,
+    /// Exactly one of `merchant_id` and `new_merchant_name` must be set (checked in the handler).
+    pub merchant_id: Option<i32>,
+    pub new_merchant_name: Option<String>,
+    pub category_id: i32,
+    pub account_id: i32,
+    /// Ids outside the caller's own household are silently dropped, same as `NewTransaction`.
+    #[serde(default)]
+    pub tag_ids: Vec<i32>,
+}
+
+/// Body for `POST /transactions/import`.
+#[derive(Debug, Deserialize)]
+pub struct ImportRequest {
+    pub transactions: Vec<ImportTransaction>,
+}
+
+/// Response for `POST /transactions/import`.
+#[derive(Debug, Serialize, PartialEq, Eq)]
+pub struct ImportResult {
+    pub created_count: usize,
+    /// How many of `new_merchant_name`s didn't exist yet and were created.
+    pub created_merchant_count: usize,
 }
 
 /// Optional query params for `GET /transactions`. Absent fields mean "no filter".

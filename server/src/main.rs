@@ -7,7 +7,7 @@ use actix_cors::Cors;
 use actix_web::{web, App, HttpServer};
 use log::{info, warn};
 
-use crate::features::transactions::JobStore;
+use crate::shared::anthropic::AnthropicClient;
 use crate::shared::config::AuthConfig;
 use crate::shared::l10n::L10n;
 
@@ -68,7 +68,12 @@ async fn main() -> std::io::Result<()> {
         )));
     }
 
-    let import_jobs = web::Data::new(JobStore::default());
+    // Statement import's Claude API client. Without `ANTHROPIC_API_KEY` the server still runs, and
+    // statement import answers `503`.
+    let anthropic = web::Data::new(AnthropicClient::from_env());
+    if !anthropic.is_configured() {
+        warn!("ANTHROPIC_API_KEY is not set: statement import is off.");
+    }
     let auth_config = web::Data::new(auth_config);
     // One client, shared by every magic-link send, so the TLS connection pool is reused. Short
     // timeouts keep a stalled Resend call from tying up the request for the 30s default.
@@ -98,7 +103,7 @@ async fn main() -> std::io::Result<()> {
             .wrap(cors)
             .app_data(l10n.clone())
             .app_data(pool.clone())
-            .app_data(import_jobs.clone())
+            .app_data(anthropic.clone())
             .app_data(auth_config.clone())
             .app_data(http_client.clone())
             .configure(features::auth::configure)
