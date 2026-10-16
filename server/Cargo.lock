@@ -2764,6 +2764,7 @@ dependencies = [
  "chrono",
  "csv",
  "dotenvy",
+ "encoding_rs",
  "env_logger",
  "fluent",
  "futures-util",
@@ -2778,7 +2779,7 @@ dependencies = [
  "tokio",
  "unic-langid",
  "uuid",
- "zip 7.2.0",
+ "zip 8.6.0",
 ]
 
 [[package]]
