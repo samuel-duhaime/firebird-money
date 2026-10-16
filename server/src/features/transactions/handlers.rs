@@ -21,6 +21,7 @@ use super::model::{
     Transaction, TransactionFilter, TransactionPatch,
 };
 use super::repository;
+use crate::features::accounts::ACCOUNT_TYPES;
 use crate::features::auth::CurrentUser;
 use crate::features::{accounts, categories, category_groups, merchants, tags};
 use crate::shared::anthropic::{AnthropicClient, AnthropicError};
@@ -529,6 +530,27 @@ async fn import_transactions(
             .is_some_and(|name| !name.trim().is_empty());
         line.merchant_id.is_some() != has_new_name
     });
+    let each_has_one_account = lines.iter().all(|line| {
+        let has_new_account = line.new_account.as_ref().is_some_and(|account| {
+            !account.institution_name.trim().is_empty()
+                && !account.name.trim().is_empty()
+                && ACCOUNT_TYPES.contains(&account.kind.as_str())
+                // Same rule as the `accounts_last_four_valid` CHECK.
+                && account.last_four.as_deref().is_none_or(|digits| {
+                    (1..=4).contains(&digits.len())
+                        && digits.chars().all(|c| c.is_ascii_alphanumeric())
+                })
+        });
+        line.account_id.is_some() != has_new_account
+    });
+    if !each_has_one_account {
+        return error_response(
+            &l10n,
+            &locale,
+            StatusCode::BAD_REQUEST,
+            "import-account-required",
+        );
+    }
     if !each_has_one_merchant {
         return error_response(
             &l10n,

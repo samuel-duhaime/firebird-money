@@ -1,4 +1,4 @@
-use sqlx::PgPool;
+use sqlx::{PgConnection, PgPool};
 
 use super::model::{Account, AccountPatch, NewAccount};
 use crate::features::institutions::repository as institutions_repository;
@@ -136,4 +136,49 @@ pub async fn delete(pool: &PgPool, household_id: i32, id: i32) -> Result<bool, s
         .execute(pool)
         .await?;
     Ok(result.rows_affected() > 0)
+}
+
+/// Finds the household's account at `institution_id` that is clearly this one — the same
+/// `last_four` when given, else the same name and type (ignoring case) — else creates it. Returns
+/// `(id, created)`. Used by statement import, for an account a statement names that's new.
+pub async fn find_or_create(
+    conn: &mut PgConnection,
+    household_id: i32,
+    institution_id: i32,
+    name: &str,
+    kind: &str,
+    last_four: Option<&str>,
+) -> Result<(i32, bool), sqlx::Error> {
+    let existing: Option<i32> = sqlx::query_scalar(
+        "SELECT id FROM accounts
+         WHERE household_id = $1 AND institution_id = $2
+           AND CASE WHEN $5::text IS NOT NULL THEN lower(last_four) = lower($5)
+                    ELSE lower(name) = lower($3) AND type = $4 END
+         ORDER BY id
+         LIMIT 1",
+    )
+    .bind(household_id)
+    .bind(institution_id)
+    .bind(name)
+    .bind(kind)
+    .bind(last_four)
+    .fetch_optional(&mut *conn)
+    .await?;
+    if let Some(id) = existing {
+        return Ok((id, false));
+    }
+
+    let id: i32 = sqlx::query_scalar(
+        "INSERT INTO accounts (household_id, institution_id, name, type, last_four)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id",
+    )
+    .bind(household_id)
+    .bind(institution_id)
+    .bind(name)
+    .bind(kind)
+    .bind(last_four)
+    .fetch_one(&mut *conn)
+    .await?;
+    Ok((id, true))
 }

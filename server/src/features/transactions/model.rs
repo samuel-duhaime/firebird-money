@@ -109,12 +109,30 @@ pub struct StatementTransaction {
     pub category_id: Option<i32>,
     /// `false` when the category is a guess the user should double-check.
     pub category_confident: bool,
-    /// `None` when neither the statement nor the request said which account this is.
+    /// `None` when neither the request nor the statement matched one of the household's accounts.
     pub account_id: Option<i32>,
+    /// The account the statement names when it isn't one of the household's yet — created only if
+    /// the user accepts the line with it. Only set when `account_id` is `None`.
+    pub new_account: Option<SuggestedAccount>,
     pub tag_ids: Vec<i32>,
     /// An existing transaction with the same date, amount, and account (when known) — most likely
     /// this same line, imported or typed in before.
     pub duplicate_of_transaction_id: Option<i64>,
+}
+
+/// An account a statement names that the household doesn't have yet. Statement import suggests it
+/// on the lines that belong to it; `POST /transactions/import` creates it (and its institution,
+/// when that's new too) on first use, reusing it for every other line naming the same account.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SuggestedAccount {
+    /// e.g. "Desjardins". Matched against existing institutions by name or alias first.
+    pub institution_name: String,
+    /// What to call it, e.g. "Visa" or "Compte conjoint".
+    pub name: String,
+    /// One of `accounts::model::ACCOUNT_TYPES`.
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub last_four: Option<String>,
 }
 
 /// One line of `POST /transactions/import/read`'s streamed response (newline-delimited JSON), so
@@ -150,7 +168,9 @@ pub struct ImportTransaction {
     pub merchant_id: Option<i32>,
     pub new_merchant_name: Option<String>,
     pub category_id: i32,
-    pub account_id: i32,
+    /// Exactly one of `account_id` and `new_account` must be set (checked in the handler).
+    pub account_id: Option<i32>,
+    pub new_account: Option<SuggestedAccount>,
     /// Ids outside the caller's own household are silently dropped, same as `NewTransaction`.
     #[serde(default)]
     pub tag_ids: Vec<i32>,
@@ -168,6 +188,8 @@ pub struct ImportResult {
     pub created_count: usize,
     /// How many of `new_merchant_name`s didn't exist yet and were created.
     pub created_merchant_count: usize,
+    /// How many distinct `new_account`s didn't exist yet and were created.
+    pub created_account_count: usize,
 }
 
 /// Optional query params for `GET /transactions`. Absent fields mean "no filter".

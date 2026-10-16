@@ -62,6 +62,7 @@ import-read-failed = Le relevé n’a pas pu être lu pour l’instant, réessai
 import-empty = Choisis au moins une transaction à importer
 import-too-many = Importe au plus { $n } transactions à la fois
 import-merchant-required = Chaque transaction a besoin d’un marchand existant ou d’un nom de nouveau marchand
+import-account-required = Chaque transaction a besoin d’un compte existant ou d’un nouveau compte valide
 import-merchant-not-found = Un des marchands n’existe pas
 import-account-not-found = Un des comptes n’existe pas
 import-category-not-found = Une des catégories n’existe pas

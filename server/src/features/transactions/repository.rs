@@ -8,6 +8,8 @@ use super::model::{
     BulkTransactionPatch, ImportResult, ImportTransaction, NewTransaction, SortOrder, Transaction,
     TransactionFilter, TransactionPatch, TransactionTag,
 };
+use crate::features::accounts::repository as accounts_repository;
+use crate::features::institutions::repository as institutions_repository;
 use crate::features::merchants::repository as merchants_repository;
 
 const SELECT_COLUMNS: &str = "
@@ -212,7 +214,8 @@ pub async fn create(
 /// Adds statement-import lines the user accepted, all or nothing: one database transaction, so a
 /// bad id on line 12 doesn't leave lines 1-11 behind. Each row is stored with `source: import` and
 /// `reviewed: true` (the user just reviewed it). A `new_merchant_name` reuses a merchant with that
-/// exact name if one exists by now, else creates it — see `find_or_create_named`.
+/// exact name if one exists by now, else creates it — see `find_or_create_named`. A `new_account`
+/// does the same with its institution and account, so every line naming it lands in one account.
 ///
 /// Every `merchant_id` is checked against the caller's household first, on `pool` before `tx`
 /// opens (same reasoning as `create`): `Err(sqlx::Error::RowNotFound)` if any isn't visible. An
@@ -235,6 +238,7 @@ pub async fn create_imported(
 
     let mut tx = pool.begin().await?;
     let mut created_merchant_count = 0;
+    let mut created_account_count = 0;
 
     for line in lines {
         let merchant_id = match (line.merchant_id, line.new_merchant_name.as_deref()) {
@@ -245,6 +249,33 @@ pub async fn create_imported(
                         .await?;
                 if created {
                     created_merchant_count += 1;
+                }
+                id
+            }
+            // The handler rejects a line with neither before getting here.
+            (None, None) => return Err(sqlx::Error::RowNotFound),
+        };
+
+        let account_id = match (line.account_id, &line.new_account) {
+            (Some(id), _) => id,
+            (None, Some(account)) => {
+                let (institution_id, _) = institutions_repository::find_or_create_named(
+                    &mut tx,
+                    household_id,
+                    account.institution_name.trim(),
+                )
+                .await?;
+                let (id, created) = accounts_repository::find_or_create(
+                    &mut tx,
+                    household_id,
+                    institution_id,
+                    account.name.trim(),
+                    &account.kind,
+                    account.last_four.as_deref(),
+                )
+                .await?;
+                if created {
+                    created_account_count += 1;
                 }
                 id
             }
@@ -266,7 +297,7 @@ pub async fn create_imported(
         .bind(merchant_id)
         .bind(line.amount)
         .bind(line.category_id)
-        .bind(line.account_id)
+        .bind(account_id)
         .fetch_one(&mut *tx)
         .await?;
 
@@ -279,6 +310,7 @@ pub async fn create_imported(
     Ok(ImportResult {
         created_count: lines.len(),
         created_merchant_count,
+        created_account_count,
     })
 }
 
