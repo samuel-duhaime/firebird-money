@@ -1,3 +1,4 @@
+pub mod anthropic;
 pub mod config;
 pub mod email;
 pub mod http_error;
@@ -13,16 +14,14 @@ const DEFAULT_PORT: u16 = 3055;
 fn resolve_server_addr(port_env: Option<&str>) -> String {
     let port = port_env
         .and_then(|value| value.trim().parse::<u16>().ok())
-        // 0 asks the OS for an ephemeral port, which `server_addr()`'s caller here can't discover
-        // after the fact (see the import callback below) — fall back instead of binding to it.
+        // 0 asks the OS for an ephemeral port, which nothing logs or reports back — fall back
+        // instead of binding to it.
         .filter(|port| *port != 0)
         .unwrap_or(DEFAULT_PORT);
     format!("127.0.0.1:{port}")
 }
 
-/// Address this server binds to (`main.rs`) and that the unattended import subprocess calls back
-/// into (`features::transactions::import`) — a single source of truth so the two can't drift.
-/// Reads `PORT` from the environment so multiple instances can run side by side (e.g. one per
+/// Address this server binds to (`main.rs`). Reads `PORT` from the environment so multiple instances can run side by side (e.g. one per
 /// Playwright worker in `client/e2e`); unset falls back to the historical default, so ordinary
 /// `cargo run` behavior is unchanged.
 pub fn server_addr() -> String {

@@ -7,23 +7,26 @@ edition = "2021"
 actix-cors = "0.7.1"
 actix-multipart = "0.7"
 actix-web = "4.13.0"
+base64 = "0.22"
+calamine = { version = "0.36.1", features = ["dates"] }
 chrono = { version = "0.4", features = ["serde"] }
 csv = "1"
 dotenvy = "0.15"
 env_logger = "0.11.8"
 fluent = "0.16"
+futures-util = { version = "0.3", default-features = false }
 log = "0.4.28"
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "charset", "http2"] }
 rust_decimal = { version = "1", features = ["serde-with-str"] }
 rust_xlsxwriter = { version = "0.96", features = ["rust_decimal", "chrono"] }
 serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1"
 sha2 = "0.10"
 sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "migrate", "chrono", "rust_decimal"] }
-tokio = { version = "1", features = ["process"] }
+tokio = { version = "1", features = ["rt", "sync"] }
 unic-langid = "0.9"
 uuid = { version = "1", features = ["v4", "serde"] }
 
 [dev-dependencies]
 actix-http = "3"
-serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt"] }

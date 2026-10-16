@@ -1,25 +1,29 @@
-//! HTTP API for transactions: JSON CRUD backed by Postgres, plus the async budget-file import.
+//! HTTP API for transactions: JSON CRUD backed by Postgres, plus statement import.
 
-use actix_multipart::form::tempfile::TempFile;
+use actix_multipart::form::bytes::Bytes as UploadBytes;
+use actix_multipart::form::text::Text;
 use actix_multipart::form::{MultipartForm, MultipartFormConfig};
 use actix_multipart::MultipartError;
 use actix_web::error::{InternalError, PayloadError};
 use actix_web::http::StatusCode;
+use actix_web::web::Bytes;
 use actix_web::{web, HttpRequest, HttpResponse, Responder};
 use log::error;
 use serde::Deserialize;
 use sqlx::PgPool;
-use uuid::Uuid;
+use tokio::sync::mpsc::UnboundedSender;
+use unic_langid::LanguageIdentifier;
 
 use super::download;
-use super::import;
-use super::jobs::JobStore;
+use super::import::{self, HouseholdLists, LineCounter, MatchContext, Statement, StatementError};
 use super::model::{
-    BulkDeleteRequest, BulkUpdateRequest, ImportJobReport, NewTransaction, Transaction,
-    TransactionFilter, TransactionPatch,
+    BulkDeleteRequest, BulkUpdateRequest, ImportRequest, NewTransaction, StatementReadEvent,
+    Transaction, TransactionFilter, TransactionPatch,
 };
 use super::repository;
-use crate::features::auth::{session_token, CurrentUser};
+use crate::features::auth::CurrentUser;
+use crate::features::{accounts, categories, category_groups, merchants, tags};
+use crate::shared::anthropic::{AnthropicClient, AnthropicError};
 use crate::shared::http_error::{
     error_response, error_response_with_n, internal_error_response, is_foreign_key_violation,
     is_foreign_key_violation_on, not_found_response,
@@ -32,18 +36,19 @@ struct TransactionIdPath {
     id: u32,
 }
 
-/// Import job id path (`/transactions/import/jobs/{id}`)
-#[derive(Deserialize)]
-struct ImportJobIdPath {
-    id: Uuid,
+/// Multipart body for `POST /transactions/import/read`: the statement, capped at 10 MB and held in
+/// memory only (never written to a temp file, unlike a `TempFile` field), plus the account it's
+/// from when the user picked one.
+#[derive(MultipartForm)]
+struct StatementForm {
+    #[multipart(limit = "10MB")]
+    file: UploadBytes,
+    account_id: Option<Text<i32>>,
 }
 
-/// Multipart body for `POST /transactions/import`: a single file field, capped at 10 MB.
-#[derive(MultipartForm)]
-struct ImportUploadForm {
-    #[multipart(limit = "10MB")]
-    file: TempFile,
-}
+/// Most lines one `POST /transactions/import` accepts — far past any real statement, low enough to
+/// keep one request's database transaction short.
+const MAX_IMPORT_LINES: usize = 1000;
 
 /// The FK on `transactions (household_id, account_id)` — see the
 /// `replace_transactions_account_with_account_id` migration. Every other FK a transaction write can
@@ -213,7 +218,7 @@ async fn download_transactions(
 }
 
 /// Converts a multipart parsing/extraction failure — in practice almost always the 10 MB field
-/// size limit on `ImportUploadForm` being exceeded — into the same localized JSON error shape the
+/// size limit on `StatementForm` being exceeded — into the same localized JSON error shape the
 /// rest of this API uses, instead of actix-multipart's plain-text default.
 fn import_upload_error_handler(err: MultipartError, req: &HttpRequest) -> actix_web::Error {
     let response = match req.app_data::<web::Data<L10n>>() {
@@ -234,16 +239,75 @@ fn import_upload_error_handler(err: MultipartError, req: &HttpRequest) -> actix_
     InternalError::from_response(err, response).into()
 }
 
-/// `POST /transactions/import` — accepts a single budget-export file, stages it to disk, and
-/// spawns an unattended `claude` subprocess (running the `budget-file-to-transaction` skill) to
-/// parse and import it in the background. Returns immediately with the job id; poll
-/// `GET /transactions/import/jobs/{id}` for status.
-async fn import_transactions(
-    MultipartForm(form): MultipartForm<ImportUploadForm>,
+/// Loads everything statement import shows Claude: the household's accounts, categories (with
+/// their group's name and type), tags, and active merchants.
+async fn load_household_lists(
+    pool: &PgPool,
+    household_id: i32,
+) -> Result<HouseholdLists, sqlx::Error> {
+    let groups = category_groups::repository::list(pool, household_id).await?;
+    let categories = categories::repository::list(pool, household_id)
+        .await?
+        .into_iter()
+        .filter_map(|category| {
+            let group = groups.iter().find(|g| g.id == category.group_id)?;
+            Some(import::PromptCategory {
+                id: category.id,
+                name_en: category.name_en,
+                name_fr: category.name_fr,
+                group: group.name_en.clone(),
+                kind: group.r#type.clone(),
+            })
+        })
+        .collect();
+    let accounts = accounts::repository::list(pool, household_id)
+        .await?
+        .into_iter()
+        .map(|account| import::PromptAccount {
+            id: account.id,
+            name: account.name,
+            institution: account.institution_name,
+            kind: account.r#type,
+            last_four: account.last_four,
+        })
+        .collect();
+    let tags = tags::repository::list(pool, household_id)
+        .await?
+        .into_iter()
+        .map(|tag| import::PromptNamed {
+            id: tag.id,
+            name: tag.name,
+        })
+        .collect();
+    let merchants = merchants::repository::list_active(pool, household_id)
+        .await?
+        .into_iter()
+        .map(|(id, name)| import::PromptNamed { id, name })
+        .collect();
+
+    Ok(HouseholdLists {
+        accounts,
+        categories,
+        tags,
+        merchants,
+    })
+}
+
+/// `POST /transactions/import/read` — reads a bank statement (multipart: `file`, up to 10 MB — a
+/// PDF, image, CSV, or Excel/OpenDocument spreadsheet — and optional `account_id`) with Claude and streams back its lines, matched to the
+/// caller's household, as newline-delimited `StatementReadEvent`s. Stores nothing: the file is
+/// only held in memory for the one Claude call, and the lines only come back to the caller, who
+/// sends the accepted ones to `POST /transactions/import`.
+///
+/// Everything that can be checked up front (household, Claude configured, file type, account) is
+/// answered as an ordinary JSON error before the stream starts; once it has, a failure arrives as
+/// a final `error` event instead.
+async fn read_statement(
+    MultipartForm(form): MultipartForm<StatementForm>,
     current_user: CurrentUser,
-    req: HttpRequest,
-    job_store: web::Data<JobStore>,
+    pool: web::Data<PgPool>,
     l10n: web::Data<L10n>,
+    anthropic: web::Data<AnthropicClient>,
 ) -> impl Responder {
     let locale = l10n.locale();
     let household_id = match current_user.require_household_id(&l10n, &locale) {
@@ -251,46 +315,192 @@ async fn import_transactions(
         Err(response) => return response,
     };
 
-    // Guaranteed present: `CurrentUser` already resolved this same cookie to a live session.
-    let session_token = session_token(&req).expect("CurrentUser implies a session cookie");
-
-    let original_name = form.file.file_name.clone().unwrap_or_default();
-    if !import::is_valid_upload(&original_name, form.file.size as u64) {
+    if !anthropic.is_configured() {
         return error_response(
             &l10n,
             &locale,
-            StatusCode::BAD_REQUEST,
-            "import-file-required",
+            StatusCode::SERVICE_UNAVAILABLE,
+            "import-unavailable",
         );
     }
+    let statement = match Statement::from_upload(&form.file.data) {
+        Ok(statement) => statement,
+        Err(StatementError::Unsupported) => {
+            return error_response(
+                &l10n,
+                &locale,
+                StatusCode::BAD_REQUEST,
+                "import-file-unsupported",
+            )
+        }
+        Err(StatementError::TooLong) => {
+            return error_response(
+                &l10n,
+                &locale,
+                StatusCode::BAD_REQUEST,
+                "import-file-too-long",
+            )
+        }
+    };
 
-    let job = job_store.create(import::sanitize_filename(&original_name), household_id);
-    let dest_path = match import::stage_upload(job.id, &original_name, form.file.file.path()).await
-    {
-        Ok(dest_path) => dest_path,
+    let loaded = match load_household_lists(&pool, household_id).await {
+        Ok(lists) => merchants::repository::match_candidates(&pool, household_id)
+            .await
+            .map(|candidates| (lists, candidates)),
+        Err(e) => Err(e),
+    };
+    let (lists, merchant_candidates) = match loaded {
+        Ok(loaded) => loaded,
         Err(e) => {
-            error!("failed to stage import upload job_id={} error={e}", job.id);
+            error!("failed to load household lists for statement import error={e}");
             return internal_error_response(&l10n, &locale);
         }
     };
 
-    let job_store_for_task = job_store.clone();
-    let job_id = job.id;
-    tokio::spawn(async move {
-        import::run_import(&job_store_for_task, job_id, dest_path, session_token).await;
-    });
+    let selected_account_id = form.account_id.map(Text::into_inner);
+    if let Some(id) = selected_account_id {
+        if !lists.accounts.iter().any(|account| account.id == id) {
+            return error_response_with_n(
+                &l10n,
+                &locale,
+                StatusCode::BAD_REQUEST,
+                "account-not-found",
+                id as u32,
+            );
+        }
+    }
 
-    HttpResponse::Accepted()
-        .insert_header(("Location", format!("/transactions/import/jobs/{}", job.id)))
-        .json(job)
+    let request = import::build_request(&statement, &lists, selected_account_id);
+    // From here on the statement only lives inside `request`, dropped once Claude has answered.
+    drop(statement);
+    drop(form.file);
+
+    let (events, received) = tokio::sync::mpsc::unbounded_channel();
+    actix_web::rt::spawn(stream_statement_read(
+        StatementRead {
+            anthropic: anthropic.into_inner(),
+            pool: pool.into_inner(),
+            l10n: l10n.into_inner(),
+            locale,
+            household_id,
+            lists,
+            merchant_candidates,
+            selected_account_id,
+        },
+        request,
+        events,
+    ));
+
+    let body = futures_util::stream::unfold(received, |mut received| async move {
+        let event = received.recv().await?;
+        let mut line = serde_json::to_vec(&event).expect("events always serialize");
+        line.push(b'\n');
+        Some((Ok::<_, actix_web::Error>(Bytes::from(line)), received))
+    });
+    HttpResponse::Ok()
+        .content_type("application/x-ndjson")
+        // Keeps proxies from holding the stream back until it ends.
+        .insert_header(("X-Accel-Buffering", "no"))
+        .streaming(body)
 }
 
-/// `GET /transactions/import/jobs/{id}` — poll the status of an import job from the caller's own
-/// household.
-async fn get_import_job(
-    path: web::Path<ImportJobIdPath>,
+/// Everything the background half of `read_statement` needs once the response has started.
+struct StatementRead {
+    anthropic: std::sync::Arc<AnthropicClient>,
+    pool: std::sync::Arc<PgPool>,
+    l10n: std::sync::Arc<L10n>,
+    locale: LanguageIdentifier,
+    household_id: i32,
+    lists: HouseholdLists,
+    merchant_candidates: Vec<(i32, String)>,
+    selected_account_id: Option<i32>,
+}
+
+/// Reads the statement and sends each step to `events`. Stops early, abandoning the Claude call,
+/// as soon as nobody is listening anymore (the client went away), so a dropped request doesn't
+/// keep spending tokens.
+async fn stream_statement_read(
+    read: StatementRead,
+    request: serde_json::Value,
+    events: UnboundedSender<StatementReadEvent>,
+) {
+    let fail = |message_id: &str| {
+        let error = read.l10n.format_message(&read.locale, message_id, None);
+        let _ = events.send(StatementReadEvent::Error { error });
+    };
+
+    if events.send(StatementReadEvent::Reading).is_err() {
+        return;
+    }
+
+    let mut counter = LineCounter::default();
+    let answer = read
+        .anthropic
+        .stream_message(request, |text| match counter.update(text) {
+            Some(count) => events.send(StatementReadEvent::Found { count }).is_ok(),
+            None => !events.is_closed(),
+        })
+        .await;
+    let lines = match answer.map(|text| import::parse_answer(&text)) {
+        Ok(Ok(lines)) => lines,
+        Err(AnthropicError::Cancelled) => return,
+        Err(AnthropicError::Truncated) => return fail("import-file-too-long"),
+        Err(e @ (AnthropicError::Refusal | AnthropicError::UnexpectedResponse)) => {
+            error!("statement import could not read the file error={e}");
+            return fail("import-file-unreadable");
+        }
+        Ok(Err(e)) => {
+            // Only the error's kind and position: its message can quote statement text.
+            error!(
+                "statement import got an answer that isn't the expected JSON kind={:?} line={} column={}",
+                e.classify(),
+                e.line(),
+                e.column()
+            );
+            return fail("import-file-unreadable");
+        }
+        Err(e) => {
+            error!("statement import Claude call failed error={e}");
+            return fail("import-read-failed");
+        }
+    };
+
+    if events.send(StatementReadEvent::Matching).is_err() {
+        return;
+    }
+    let mut transactions = import::resolve(
+        lines,
+        &MatchContext {
+            lists: &read.lists,
+            merchant_candidates: &read.merchant_candidates,
+            selected_account_id: read.selected_account_id,
+        },
+    );
+
+    if events.send(StatementReadEvent::CheckingDuplicates).is_err() {
+        return;
+    }
+    let mut dates: Vec<_> = transactions.iter().map(|t| t.date).collect();
+    dates.sort_unstable();
+    dates.dedup();
+    match repository::list_on_dates(&read.pool, read.household_id, &dates).await {
+        Ok(existing) => import::flag_duplicates(&mut transactions, &existing),
+        Err(e) => {
+            error!("statement import failed to look for duplicates error={e}");
+            return fail("internal-db-error");
+        }
+    }
+
+    let _ = events.send(StatementReadEvent::Done { transactions });
+}
+
+/// `POST /transactions/import` — adds the statement lines the user accepted (`ImportRequest`), all
+/// or nothing, each stored with `source: import`. Creates any `new_merchant_name` that doesn't
+/// exist yet. Answers `201` with how many transactions and merchants were created.
+async fn import_transactions(
+    body: web::Json<ImportRequest>,
     current_user: CurrentUser,
-    job_store: web::Data<JobStore>,
+    pool: web::Data<PgPool>,
     l10n: web::Data<L10n>,
 ) -> impl Responder {
     let locale = l10n.locale();
@@ -299,55 +509,60 @@ async fn get_import_job(
         Err(response) => return response,
     };
 
-    match job_store.get(path.id, household_id) {
-        Some(job) => HttpResponse::Ok().json(job),
-        None => error_response(
+    let lines = &body.transactions;
+    if lines.is_empty() {
+        return error_response(&l10n, &locale, StatusCode::BAD_REQUEST, "import-empty");
+    }
+    if lines.len() > MAX_IMPORT_LINES {
+        return error_response_with_n(
             &l10n,
             &locale,
-            StatusCode::NOT_FOUND,
-            "import-job-not-found",
-        ),
+            StatusCode::BAD_REQUEST,
+            "import-too-many",
+            MAX_IMPORT_LINES as u32,
+        );
     }
-}
-
-/// `PATCH /transactions/import/jobs/{id}` — how the unattended import subprocess reports its own
-/// final result back to the server (see the skill's "Unattended mode" section), authenticating
-/// with the session cookie forwarded to it in `import::build_command`. Not intended to be called
-/// from the client.
-async fn report_import_job(
-    path: web::Path<ImportJobIdPath>,
-    report: web::Json<ImportJobReport>,
-    current_user: CurrentUser,
-    job_store: web::Data<JobStore>,
-    l10n: web::Data<L10n>,
-) -> impl Responder {
-    let locale = l10n.locale();
-    let household_id = match current_user.require_household_id(&l10n, &locale) {
-        Ok(id) => id,
-        Err(response) => return response,
-    };
-
-    // Confirms the job belongs to the caller's household before letting them report a result for
-    // it — `complete` itself is id-only, trusted by its other caller (the server's own fallback
-    // failure handler in `import::run_import`, which never takes untrusted input).
-    if job_store.get(path.id, household_id).is_none() {
+    let each_has_one_merchant = lines.iter().all(|line| {
+        let has_new_name = line
+            .new_merchant_name
+            .as_deref()
+            .is_some_and(|name| !name.trim().is_empty());
+        line.merchant_id.is_some() != has_new_name
+    });
+    if !each_has_one_merchant {
         return error_response(
             &l10n,
             &locale,
-            StatusCode::NOT_FOUND,
-            "import-job-not-found",
+            StatusCode::BAD_REQUEST,
+            "import-merchant-required",
         );
     }
 
-    job_store.complete(
-        path.id,
-        report.status,
-        report.created_count,
-        report.failed_count,
-        report.skipped_count,
-        report.error_message.clone(),
-    );
-    HttpResponse::NoContent().finish()
+    match repository::create_imported(&pool, household_id, current_user.user.id, lines).await {
+        Ok(result) => HttpResponse::Created().json(result),
+        Err(sqlx::Error::RowNotFound) => error_response(
+            &l10n,
+            &locale,
+            StatusCode::BAD_REQUEST,
+            "import-merchant-not-found",
+        ),
+        Err(e) if is_foreign_key_violation_on(&e, ACCOUNT_FKEY) => error_response(
+            &l10n,
+            &locale,
+            StatusCode::BAD_REQUEST,
+            "import-account-not-found",
+        ),
+        Err(e) if is_foreign_key_violation(&e) => error_response(
+            &l10n,
+            &locale,
+            StatusCode::BAD_REQUEST,
+            "import-category-not-found",
+        ),
+        Err(e) => {
+            error!("failed to import transactions error={e}");
+            internal_error_response(&l10n, &locale)
+        }
+    }
 }
 
 /// `GET /transactions/{id}` — fetch a single transaction.
@@ -529,15 +744,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             "/transactions/download",
             web::get().to(download_transactions),
         )
+        .route("/transactions/import/read", web::post().to(read_statement))
         .route("/transactions/import", web::post().to(import_transactions))
-        .route(
-            "/transactions/import/jobs/{id}",
-            web::get().to(get_import_job),
-        )
-        .route(
-            "/transactions/import/jobs/{id}",
-            web::patch().to(report_import_job),
-        )
         .route(
             "/transactions/bulk",
             web::patch().to(bulk_update_transactions),

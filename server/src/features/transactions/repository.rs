@@ -1,10 +1,12 @@
 use std::collections::HashMap;
 
+use chrono::NaiveDate;
+use rust_decimal::Decimal;
 use sqlx::{PgConnection, PgPool};
 
 use super::model::{
-    BulkTransactionPatch, NewTransaction, SortOrder, Transaction, TransactionFilter,
-    TransactionPatch, TransactionTag,
+    BulkTransactionPatch, ImportResult, ImportTransaction, NewTransaction, SortOrder, Transaction,
+    TransactionFilter, TransactionPatch, TransactionTag,
 };
 use crate::features::merchants::repository as merchants_repository;
 
@@ -12,7 +14,7 @@ const SELECT_COLUMNS: &str = "
     t.id, t.household_id, t.user_id, t.date, t.original_statement, t.merchant_id,
     mch.name AS merchant_name, mch.logo_url AS merchant_logo_url, t.amount, t.category_id,
     c.name_en AS category_name_en, c.name_fr AS category_name_fr, g.type AS category_type,
-    t.account_id, a.name AS account_name, t.reviewed, t.created_at";
+    t.account_id, a.name AS account_name, t.reviewed, t.source, t.created_at";
 
 const FROM_JOIN: &str = "FROM transactions t
     JOIN merchants mch ON mch.id = t.merchant_id
@@ -205,6 +207,100 @@ pub async fn create(
 
     attach_tags(pool, std::slice::from_mut(&mut transaction)).await?;
     Ok(transaction)
+}
+
+/// Adds statement-import lines the user accepted, all or nothing: one database transaction, so a
+/// bad id on line 12 doesn't leave lines 1-11 behind. Each row is stored with `source: import` and
+/// `reviewed: true` (the user just reviewed it). A `new_merchant_name` reuses a merchant with that
+/// exact name if one exists by now, else creates it — see `find_or_create_named`.
+///
+/// Every `merchant_id` is checked against the caller's household first, on `pool` before `tx`
+/// opens (same reasoning as `create`): `Err(sqlx::Error::RowNotFound)` if any isn't visible. An
+/// unknown `category_id`/`account_id` surfaces as the usual foreign-key violation.
+pub async fn create_imported(
+    pool: &PgPool,
+    household_id: i32,
+    user_id: i32,
+    lines: &[ImportTransaction],
+) -> Result<ImportResult, sqlx::Error> {
+    let mut explicit_ids: Vec<i32> = lines.iter().filter_map(|l| l.merchant_id).collect();
+    explicit_ids.sort_unstable();
+    explicit_ids.dedup();
+    if !explicit_ids.is_empty() {
+        let visible = merchants_repository::visible_ids(pool, household_id, &explicit_ids).await?;
+        if visible.len() != explicit_ids.len() {
+            return Err(sqlx::Error::RowNotFound);
+        }
+    }
+
+    let mut tx = pool.begin().await?;
+    let mut created_merchant_count = 0;
+
+    for line in lines {
+        let merchant_id = match (line.merchant_id, line.new_merchant_name.as_deref()) {
+            (Some(id), _) => id,
+            (None, Some(name)) => {
+                let (id, created) =
+                    merchants_repository::find_or_create_named(&mut tx, household_id, name.trim())
+                        .await?;
+                if created {
+                    created_merchant_count += 1;
+                }
+                id
+            }
+            // The handler rejects a line with neither before getting here.
+            (None, None) => return Err(sqlx::Error::RowNotFound),
+        };
+
+        let (transaction_id,): (i64,) = sqlx::query_as(
+            "INSERT INTO transactions
+                (household_id, user_id, date, original_statement, merchant_id, amount,
+                 category_id, account_id, reviewed, source)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, 'import')
+             RETURNING id",
+        )
+        .bind(household_id)
+        .bind(user_id)
+        .bind(line.date)
+        .bind(line.original_statement.trim())
+        .bind(merchant_id)
+        .bind(line.amount)
+        .bind(line.category_id)
+        .bind(line.account_id)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        if !line.tag_ids.is_empty() {
+            set_transaction_tags(&mut tx, household_id, transaction_id, &line.tag_ids).await?;
+        }
+    }
+
+    tx.commit().await?;
+    Ok(ImportResult {
+        created_count: lines.len(),
+        created_merchant_count,
+    })
+}
+
+/// `(id, date, amount, account_id)` of every one of the household's transactions dated on any of
+/// `dates` — what statement import compares freshly read lines against to flag likely duplicates.
+pub async fn list_on_dates(
+    pool: &PgPool,
+    household_id: i32,
+    dates: &[NaiveDate],
+) -> Result<Vec<(i64, NaiveDate, Decimal, i32)>, sqlx::Error> {
+    if dates.is_empty() {
+        return Ok(Vec::new());
+    }
+    sqlx::query_as(
+        "SELECT id, date, amount, account_id FROM transactions
+         WHERE household_id = $1 AND date = ANY($2)
+         ORDER BY id",
+    )
+    .bind(household_id)
+    .bind(dates)
+    .fetch_all(pool)
+    .await
 }
 
 /// Lists a household's transactions, optionally narrowed by an exact date match, a

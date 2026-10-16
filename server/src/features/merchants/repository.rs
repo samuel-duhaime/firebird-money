@@ -193,7 +193,7 @@ fn contains_word_boundary(haystack: &str, needle: &str) -> bool {
 /// case-insensitive, word-bounded containment of a candidate's `name` inside `statement` (see
 /// `contains_word_boundary`), longest candidate name wins on a tie (most specific match, and — since
 /// a name can't be longer than the text it's found inside — an exact match always wins outright).
-fn best_match(statement: &str, candidates: &[(i32, String)]) -> Option<i32> {
+pub fn best_match(statement: &str, candidates: &[(i32, String)]) -> Option<i32> {
     let lower_statement = statement.to_lowercase();
     candidates
         .iter()
@@ -202,6 +202,101 @@ fn best_match(statement: &str, candidates: &[(i32, String)]) -> Option<i32> {
         })
         .max_by_key(|(_, name)| name.len())
         .map(|(id, _)| *id)
+}
+
+/// One `(id, name)` row per name and alias of every merchant visible to `$1` — the candidates
+/// `best_match` picks from.
+const MATCH_CANDIDATES_QUERY: &str = "
+    SELECT id, name FROM merchants WHERE household_id = $1 OR household_id IS NULL
+    UNION ALL
+    SELECT id, unnest(aliases) FROM merchants WHERE household_id = $1 OR household_id IS NULL";
+
+/// `best_match`'s candidates for `household_id`, for a caller that matches many statements at once
+/// without a transaction open (statement import's read step).
+pub async fn match_candidates(
+    pool: &PgPool,
+    household_id: i32,
+) -> Result<Vec<(i32, String)>, sqlx::Error> {
+    sqlx::query_as(MATCH_CANDIDATES_QUERY)
+        .bind(household_id)
+        .fetch_all(pool)
+        .await
+}
+
+/// The merchants this household actually uses: its own custom ones, plus every common one it has
+/// at least one transaction with — `(id, name)`, alphabetical. The short list statement import
+/// shows Claude, instead of every common merchant in `DEFAULT_MERCHANTS`.
+pub async fn list_active(
+    pool: &PgPool,
+    household_id: i32,
+) -> Result<Vec<(i32, String)>, sqlx::Error> {
+    sqlx::query_as(
+        "SELECT m.id, m.name FROM merchants m
+         WHERE m.household_id = $1
+            OR (m.household_id IS NULL
+                AND EXISTS (SELECT 1 FROM transactions t
+                            WHERE t.merchant_id = m.id AND t.household_id = $1))
+         ORDER BY lower(m.name), m.id",
+    )
+    .bind(household_id)
+    .fetch_all(pool)
+    .await
+}
+
+/// Which of `ids` are visible to `household_id` (common, or its own). Lets a batch of explicit
+/// `merchant_id`s be checked in one query — see `is_visible_to_household` for the single-id case.
+pub async fn visible_ids(
+    pool: &PgPool,
+    household_id: i32,
+    ids: &[i32],
+) -> Result<Vec<i32>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT id FROM merchants
+         WHERE id = ANY($1) AND (household_id = $2 OR household_id IS NULL)",
+    )
+    .bind(ids)
+    .bind(household_id)
+    .fetch_all(pool)
+    .await
+}
+
+/// Finds a merchant visible to `household_id` whose name or one of its aliases is exactly `name`
+/// (ignoring case), else creates a custom one named `name`. Returns `(id, created)`. Unlike
+/// `resolve_or_create`, never matches on a substring: `name` is already a clean merchant name the
+/// user approved, not raw statement text.
+pub async fn find_or_create_named(
+    conn: &mut PgConnection,
+    household_id: i32,
+    name: &str,
+) -> Result<(i32, bool), sqlx::Error> {
+    let existing: Option<i32> = sqlx::query_scalar(
+        "SELECT id FROM merchants
+         WHERE (household_id = $1 OR household_id IS NULL)
+           AND (lower(name) = lower($2)
+                OR EXISTS (SELECT 1 FROM unnest(aliases) a WHERE lower(a) = lower($2)))
+         ORDER BY household_id NULLS LAST, id
+         LIMIT 1",
+    )
+    .bind(household_id)
+    .bind(name)
+    .fetch_optional(&mut *conn)
+    .await?;
+    if let Some(id) = existing {
+        return Ok((id, false));
+    }
+
+    // Same no-op `DO UPDATE` as `resolve_or_create`, to get the id back on a race with itself.
+    // `xmax = 0` only holds for a freshly inserted row, not one the conflict branch touched.
+    sqlx::query_as(
+        "INSERT INTO merchants (household_id, name) VALUES ($1, $2)
+         ON CONFLICT (household_id, name) WHERE household_id IS NOT NULL
+         DO UPDATE SET name = EXCLUDED.name
+         RETURNING id, (xmax = 0)",
+    )
+    .bind(household_id)
+    .bind(name)
+    .fetch_one(&mut *conn)
+    .await
 }
 
 /// Case-insensitive substring match against every merchant visible to `household_id` (common + this
@@ -213,14 +308,10 @@ async fn find_match(
     household_id: i32,
     statement: &str,
 ) -> Result<Option<i32>, sqlx::Error> {
-    let candidates: Vec<(i32, String)> = sqlx::query_as(
-        "SELECT id, name FROM merchants WHERE household_id = $1 OR household_id IS NULL
-         UNION ALL
-         SELECT id, unnest(aliases) FROM merchants WHERE household_id = $1 OR household_id IS NULL",
-    )
-    .bind(household_id)
-    .fetch_all(&mut *conn)
-    .await?;
+    let candidates: Vec<(i32, String)> = sqlx::query_as(MATCH_CANDIDATES_QUERY)
+        .bind(household_id)
+        .fetch_all(&mut *conn)
+        .await?;
 
     Ok(best_match(statement, &candidates))
 }
