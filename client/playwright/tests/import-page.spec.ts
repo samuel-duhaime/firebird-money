@@ -253,6 +253,25 @@ test.describe('import page: reading', () => {
     );
   });
 
+  test('a garbled line in the stream shows the generic error, not a raw parse error', async ({
+    authedPage,
+  }) => {
+    await authedPage.route(READ_URL, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/x-ndjson',
+        body: '{"type":"reading"}\nnot json at all\n',
+      }),
+    );
+    await authedPage.goto('/transactions/import');
+
+    await uploadPdf(authedPage);
+
+    await expect(authedPage.getByRole('alert')).toHaveText(
+      "The statement couldn't be read. Please try again.",
+    );
+  });
+
   test('a stream that ends without a result shows a generic error', async ({
     authedPage,
   }) => {
@@ -560,6 +579,48 @@ test.describe('import page: review', () => {
         last_four: '9999',
       }),
     ]);
+  });
+
+  test('a quick double click on Add imports only once', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    const groceries = await getCategoryId(
+      context.request,
+      workerInfra.apiOrigin,
+      'Groceries',
+    );
+    const accountId = await ensureAccount(
+      context.request,
+      workerInfra.apiOrigin,
+      'Chequing',
+    );
+    await mockReadDone(authedPage, [
+      line({ category_id: groceries, account_id: accountId }),
+    ]);
+    let imports = 0;
+    await authedPage.route(
+      `${workerInfra.apiOrigin}/transactions/import`,
+      async (route) => {
+        imports += 1;
+        await route.continue();
+      },
+    );
+    await authedPage.goto('/transactions/import');
+    await uploadPdf(authedPage);
+    await hideDevtools(authedPage);
+
+    await authedPage
+      .getByRole('button', { name: 'Add 1 transaction' })
+      .dblclick();
+
+    await expect(authedPage).toHaveURL(/\/transactions$/);
+    expect(imports).toBe(1);
+    const transactions: unknown[] = await (
+      await context.request.get(`${workerInfra.apiOrigin}/transactions`)
+    ).json();
+    expect(transactions).toHaveLength(1);
   });
 
   test('a failed add shows an error and keeps the review', async ({
