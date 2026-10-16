@@ -7,11 +7,12 @@ import {
   dropWorkerDatabase,
   truncateTransactions,
 } from '../lib/db';
+import { prepareWorkerApp, removeWorkerApp } from '../lib/app-build';
 import { serverPortFor, vitePortFor } from '../lib/ports';
 import {
   killTree,
+  spawnPreview,
   spawnServer,
-  spawnVite,
   waitForPort,
 } from '../lib/processes';
 
@@ -30,8 +31,9 @@ type WorkerFixtures = {
 };
 
 /**
- * One throwaway Postgres database + one Actix server instance + one Vite dev server, all scoped
- * to a single Playwright worker process and reused by every test that lands on it. This is what
+ * One throwaway Postgres database + one Actix server instance + one Vite preview server (serving
+ * this worker's copy of the app build from global setup), all scoped to a single Playwright
+ * worker process and reused by every test that lands on it. This is what
  * makes cross-worker parallelism safe without any changes to the (currently unscoped)
  * `transactions` table: two workers never touch the same database.
  */
@@ -56,6 +58,7 @@ export const test = base.extend<{}, WorkerFixtures>({
 
       let server: ChildProcess | undefined;
       let vite: ChildProcess | undefined;
+      const appDir = prepareWorkerApp(`w${idx}`, apiOrigin);
 
       try {
         server = spawnServer({
@@ -66,9 +69,9 @@ export const test = base.extend<{}, WorkerFixtures>({
         });
         await waitForPort('127.0.0.1', serverPort);
 
-        vite = spawnVite({
+        vite = spawnPreview({
           port: vitePort,
-          apiOrigin,
+          outDir: appDir,
           label: `vite:w${idx}`,
         });
         await waitForPort('127.0.0.1', vitePort);
@@ -77,6 +80,7 @@ export const test = base.extend<{}, WorkerFixtures>({
         // leaking whatever of the server/Vite/database this worker already stood up.
         if (vite) await killTree(vite);
         if (server) await killTree(server);
+        removeWorkerApp(appDir);
         await dropWorkerDatabase(databaseName);
         throw error;
       }
@@ -90,6 +94,7 @@ export const test = base.extend<{}, WorkerFixtures>({
       });
 
       await killTree(vite);
+      removeWorkerApp(appDir);
       // The server must fully exit (releasing its Postgres connections) before the DB is dropped.
       await killTree(server);
       await closeTransactionPool(databaseUrl);
@@ -99,8 +104,8 @@ export const test = base.extend<{}, WorkerFixtures>({
   ],
 
   // Overrides Playwright's built-in `baseURL` option so `page.goto('/relative')` and
-  // `context.request` calls in spec files resolve against this worker's own Vite origin, with no
-  // per-spec setup. Deliberately not using the `webServer` config option — it starts exactly one
+  // `context.request` calls in spec files resolve against this worker's own Vite preview origin,
+  // with no per-spec setup. Deliberately not using the `webServer` config option — it starts exactly one
   // shared server for the whole run, incompatible with per-worker database isolation.
   baseURL: async ({ workerInfra }, use) => {
     await use(workerInfra.clientOrigin);

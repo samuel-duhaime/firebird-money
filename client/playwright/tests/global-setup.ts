@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildApp } from '../lib/app-build';
 import { sweepStaleDatabases } from '../lib/db';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -24,7 +25,8 @@ const buildServerBinary = (): Promise<void> =>
   });
 
 export default async function globalSetup(): Promise<void> {
-  await buildServerBinary();
+  // Independent of each other, so the server and client builds run side by side.
+  await Promise.all([buildServerBinary(), buildApp()]);
   // Defensive pre-clean: a previous run that crashed (Ctrl+C, OOM kill, ...) may have left worker
   // databases behind. Sweeping by prefix rather than a fixed worker count handles a prior run
   // that used a different --workers value than this one.
