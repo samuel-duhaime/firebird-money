@@ -2,7 +2,8 @@ use sqlx::PgPool;
 
 use super::model::{Settings, SettingsPatch};
 
-const SELECT_COLUMNS: &str = "user_id, show_category_column, show_tags_column, show_account_column, language";
+const SELECT_COLUMNS: &str =
+    "user_id, show_category_column, show_tags_column, show_account_column, language";
 
 /// Fetches the user's settings row, or `None` if they've never saved any — callers fall back to
 /// `Settings::defaults` in that case.
