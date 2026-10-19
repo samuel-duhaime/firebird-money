@@ -1,9 +1,14 @@
 import { useTranslation } from 'react-i18next';
-import { SUPPORTED_LANGUAGES } from '../i18n';
+import { SUPPORTED_LANGUAGES, type SupportedLanguage } from '../i18n';
 import './LanguageSwitcher.css';
 
+interface LanguageSwitcherProps {
+  /** Called after the UI switches language, e.g. to save the choice to the user's settings. */
+  onChange?: (language: SupportedLanguage) => void;
+}
+
 /** Minimalist en/fr selector; will grow into a full language picker later. */
-export const LanguageSwitcher = () => {
+export const LanguageSwitcher = ({ onChange }: LanguageSwitcherProps) => {
   const { t, i18n } = useTranslation();
 
   return (
@@ -18,7 +23,10 @@ export const LanguageSwitcher = () => {
               : 'language-switcher-option'
           }
           aria-pressed={i18n.resolvedLanguage === language}
-          onClick={() => i18n.changeLanguage(language)}
+          onClick={() => {
+            void i18n.changeLanguage(language);
+            onChange?.(language);
+          }}
         >
           {language}
         </button>

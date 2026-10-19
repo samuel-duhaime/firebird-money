@@ -15,6 +15,7 @@ import { LanguageSwitcher } from './LanguageSwitcher';
 import { useAnchoredPopover } from '../lib/use-anchored-popover';
 import { useSignOut } from '../features/auth/hooks/use-sign-out';
 import { useCurrentUser } from '../features/auth/hooks/use-current-user';
+import { useUpdateSettings } from '../features/settings/hooks/use-update-settings';
 import './Popover.css';
 import './LeftMenu.css';
 
@@ -29,6 +30,7 @@ export const LeftMenu = () => {
   const navigate = useNavigate();
   const signOut = useSignOut();
   const { data: session } = useCurrentUser();
+  const { mutate: updateSettings } = useUpdateSettings();
   const { isOpen, setIsOpen, position, triggerRef, popoverRef } =
     useAnchoredPopover<HTMLButtonElement>();
 
@@ -51,7 +53,7 @@ export const LeftMenu = () => {
           </li>
         ))}
       </ul>
-      <LanguageSwitcher />
+      <LanguageSwitcher onChange={(language) => updateSettings({ language })} />
       <button
         type="button"
         className="left-menu-profile"

@@ -11,7 +11,7 @@ use crate::shared::http_error::internal_error_response;
 use crate::shared::l10n::L10n;
 
 /// `GET /settings` — the signed-in user's display preferences, defaulted to every column visible
-/// if they've never saved any.
+/// and no language if they've never saved any.
 async fn get_settings(
     current_user: CurrentUser,
     pool: web::Data<PgPool>,

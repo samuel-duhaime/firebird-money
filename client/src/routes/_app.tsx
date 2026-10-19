@@ -2,19 +2,24 @@ import { createFileRoute, Outlet } from '@tanstack/react-router';
 import { TopMenu } from '../components/TopMenu';
 import { LeftMenu } from '../components/LeftMenu';
 import { requireOnboarded } from '../features/auth/utils/require-auth';
+import { useSyncLanguage } from '../features/settings/hooks/use-sync-language';
 import './_app.css';
 
-const AppLayout = () => (
-  <div className="app-layout">
-    <TopMenu />
-    <div className="app-body">
-      <LeftMenu />
-      <main className="app-main">
-        <Outlet />
-      </main>
+const AppLayout = () => {
+  useSyncLanguage();
+
+  return (
+    <div className="app-layout">
+      <TopMenu />
+      <div className="app-body">
+        <LeftMenu />
+        <main className="app-main">
+          <Outlet />
+        </main>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 export const Route = createFileRoute('/_app')({
   beforeLoad: ({ context }) => requireOnboarded(context.queryClient),
