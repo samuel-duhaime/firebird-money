@@ -87,6 +87,7 @@ async fn get_settings_defaults_to_every_column_visible(pool: PgPool) {
     assert_eq!(body["show_category_column"], true);
     assert_eq!(body["show_tags_column"], true);
     assert_eq!(body["show_account_column"], true);
+    assert_eq!(body["language"], serde_json::Value::Null);
 }
 
 #[sqlx::test]
@@ -125,6 +126,51 @@ async fn update_settings_persists_a_partial_change(pool: PgPool) {
         .to_request();
     let get_body: serde_json::Value = test::call_and_read_body_json(&app, get_req).await;
     assert_eq!(get_body["show_category_column"], false);
+}
+
+#[sqlx::test]
+async fn update_settings_persists_the_language(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in(&app, "sam@example.com").await;
+
+    let patch_req = test::TestRequest::patch()
+        .uri("/settings")
+        .insert_header(("Cookie", cookie.clone()))
+        .set_json(serde_json::json!({ "language": "fr" }))
+        .to_request();
+    let patch_resp = test::call_service(&app, patch_req).await;
+    assert_eq!(patch_resp.status(), 200);
+
+    // A later column change leaves the language alone.
+    let column_req = test::TestRequest::patch()
+        .uri("/settings")
+        .insert_header(("Cookie", cookie.clone()))
+        .set_json(serde_json::json!({ "show_tags_column": false }))
+        .to_request();
+    assert_eq!(test::call_service(&app, column_req).await.status(), 200);
+
+    let get_req = test::TestRequest::get()
+        .uri("/settings")
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    let get_body: serde_json::Value = test::call_and_read_body_json(&app, get_req).await;
+    assert_eq!(get_body["language"], "fr");
+    assert_eq!(get_body["show_tags_column"], false);
+}
+
+#[sqlx::test]
+async fn update_settings_rejects_an_unsupported_language(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in(&app, "sam@example.com").await;
+
+    let req = test::TestRequest::patch()
+        .uri("/settings")
+        .insert_header(("Cookie", cookie))
+        .set_json(serde_json::json!({ "language": "de" }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 400);
 }
 
 #[sqlx::test]
