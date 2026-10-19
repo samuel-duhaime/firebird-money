@@ -7,7 +7,11 @@ import {
   dropWorkerDatabase,
   truncateTransactions,
 } from '../lib/db';
-import { prepareWorkerApp, removeWorkerApp } from '../lib/app-build';
+import {
+  prepareWorkerApp,
+  removeWorkerApp,
+  workerAppDir,
+} from '../lib/app-build';
 import { serverPortFor, vitePortFor } from '../lib/ports';
 import {
   killTree,
@@ -58,9 +62,10 @@ export const test = base.extend<{}, WorkerFixtures>({
 
       let server: ChildProcess | undefined;
       let vite: ChildProcess | undefined;
-      const appDir = prepareWorkerApp(`w${idx}`, apiOrigin);
+      const appDir = workerAppDir(`w${idx}`);
 
       try {
+        prepareWorkerApp(appDir, apiOrigin);
         server = spawnServer({
           port: serverPort,
           databaseUrl,
@@ -76,8 +81,9 @@ export const test = base.extend<{}, WorkerFixtures>({
         });
         await waitForPort('127.0.0.1', vitePort);
       } catch (error) {
-        // A timed-out waitForPort otherwise skips `use(...)` and the teardown below entirely,
-        // leaking whatever of the server/Vite/database this worker already stood up.
+        // A failed app copy or a timed-out waitForPort otherwise skips `use(...)` and the teardown
+        // below entirely, leaking whatever of the app copy/server/Vite/database this worker
+        // already stood up.
         if (vite) await killTree(vite);
         if (server) await killTree(server);
         removeWorkerApp(appDir);
@@ -105,8 +111,8 @@ export const test = base.extend<{}, WorkerFixtures>({
 
   // Overrides Playwright's built-in `baseURL` option so `page.goto('/relative')` and
   // `context.request` calls in spec files resolve against this worker's own Vite preview origin,
-  // with no per-spec setup. Deliberately not using the `webServer` config option — it starts exactly one
-  // shared server for the whole run, incompatible with per-worker database isolation.
+  // with no per-spec setup. Deliberately not using the `webServer` config option — it starts
+  // exactly one shared server for the whole run, incompatible with per-worker database isolation.
   baseURL: async ({ workerInfra }, use) => {
     await use(workerInfra.clientOrigin);
   },

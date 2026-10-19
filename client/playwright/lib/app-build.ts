@@ -50,10 +50,14 @@ export const buildApp = (): Promise<void> =>
     });
   });
 
-/** Copies the shared build for one worker with its own API origin in place of the placeholder,
- * and returns the copy's directory. */
-export const prepareWorkerApp = (label: string, apiOrigin: string): string => {
-  const outDir = path.join(BUILD_ROOT, label);
+/** Where one worker's copy of the build lives — known before `prepareWorkerApp` runs, so a
+ * failed preparation can still clean up a partial copy. */
+export const workerAppDir = (label: string): string =>
+  path.join(BUILD_ROOT, label);
+
+/** Copies the shared build into `outDir` with this worker's API origin in place of the
+ * placeholder. */
+export const prepareWorkerApp = (outDir: string, apiOrigin: string): void => {
   fs.rmSync(outDir, { recursive: true, force: true });
   fs.cpSync(SHARED_BUILD_DIR, outDir, { recursive: true });
 
@@ -80,7 +84,6 @@ export const prepareWorkerApp = (label: string, apiOrigin: string): string => {
       `no "${API_ORIGIN_PLACEHOLDER}" found in the app build — did VITE_API_BASE_URL change?`,
     );
   }
-  return outDir;
 };
 
 export const removeWorkerApp = (outDir: string): void => {
