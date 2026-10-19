@@ -62,24 +62,35 @@ export const spawnServer = ({
   return child;
 };
 
-export type SpawnViteOptions = {
+export type SpawnPreviewOptions = {
   port: number;
-  apiOrigin: string;
+  /** A worker's own copy of the app build, from `prepareWorkerApp`. */
+  outDir: string;
   label: string;
 };
 
-export const spawnVite = ({
+/** Serves a built copy of the app (`vite preview`), with the same SPA fallback to index.html as
+ * the dev server — so a deep link like /transactions still loads. */
+export const spawnPreview = ({
   port,
-  apiOrigin,
+  outDir,
   label,
-}: SpawnViteOptions): ChildProcess => {
+}: SpawnPreviewOptions): ChildProcess => {
   const child = spawn(
     VITE_BINARY,
     // Same "always 127.0.0.1, never localhost" reasoning as spawnServer's CLIENT_BASE_URL above.
-    ['--port', String(port), '--strictPort', '--host', '127.0.0.1'],
+    [
+      'preview',
+      '--outDir',
+      outDir,
+      '--port',
+      String(port),
+      '--strictPort',
+      '--host',
+      '127.0.0.1',
+    ],
     {
       cwd: clientDir,
-      env: { ...process.env, VITE_API_BASE_URL: apiOrigin },
       stdio: ['ignore', 'pipe', 'pipe'],
     },
   );
@@ -93,8 +104,8 @@ export type WaitForPortOptions = {
 };
 
 /** Raw TCP-connect retry loop — sufficient readiness signal since the server doesn't bind until
- * its startup migrations finish, and Vite doesn't listen until it's ready to serve. No dedicated
- * `/health` endpoint needed. */
+ * its startup migrations finish, and Vite preview doesn't listen until it's ready to serve. No
+ * dedicated `/health` endpoint needed. */
 export const waitForPort = (
   host: string,
   port: number,
@@ -111,7 +122,7 @@ export const waitForPort = (
         if (Date.now() >= deadline) {
           reject(
             new Error(
-              `nothing listening on ${host}:${port} after ${timeoutMs}ms — check DATABASE_URL/migrations or the Vite dev server's own startup log above`,
+              `nothing listening on ${host}:${port} after ${timeoutMs}ms — check DATABASE_URL/migrations or the Vite preview server's own startup log above`,
             ),
           );
           return;

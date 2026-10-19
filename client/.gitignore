@@ -19,6 +19,7 @@ src/routeTree.gen.ts
 playwright/test-results
 playwright/playwright-report
 playwright/blob-report
+playwright/.app-build
 
 # Environment variables
 .env
