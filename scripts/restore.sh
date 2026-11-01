@@ -17,20 +17,36 @@ read -r -p "Replace ALL current data with $backup? Type yes to continue: " answe
 
 docker compose up -d --wait db
 
+# Nothing else may be writing to the database from here on, so the safety backup misses nothing.
+docker compose stop client server backup
+
 if safety="$(./scripts/backup.sh)"; then
     echo "Current data saved to $safety"
 else
     read -r -p "The current data could not be backed up. Replace it anyway? Type yes to continue: " answer
-    [ "$answer" = "yes" ] || { echo "Nothing changed."; exit 1; }
+    if [ "$answer" != "yes" ]; then
+        docker compose up -d --wait --wait-timeout 180
+        echo "Nothing changed."
+        exit 1
+    fi
 fi
 
-# Nothing else may be writing to the database while it's replaced.
-docker compose stop client server backup
+# Restored beside the current database, which is only replaced once this has fully worked, so a
+# damaged backup can't leave you with nothing.
+scratch="firebird-money-restore"
+docker compose exec -T db dropdb -U firebird --force --if-exists "$scratch"
+docker compose exec -T db createdb -U firebird "$scratch"
+if ! docker compose exec -T db pg_restore -U firebird -d "$scratch" \
+    --no-owner --no-privileges --exit-on-error --single-transaction <"$backup"; then
+    docker compose exec -T db dropdb -U firebird --force "$scratch"
+    docker compose up -d --wait --wait-timeout 180
+    echo "$backup could not be restored. Nothing changed." >&2
+    exit 1
+fi
 
 docker compose exec -T db dropdb -U firebird --force --if-exists firebird-money
-docker compose exec -T db createdb -U firebird firebird-money
-docker compose exec -T db pg_restore -U firebird -d firebird-money \
-    --no-owner --no-privileges --exit-on-error --single-transaction <"$backup"
+docker compose exec -T db psql -U firebird -d postgres -c \
+    "ALTER DATABASE \"$scratch\" RENAME TO \"firebird-money\""
 
 docker compose up -d --wait --wait-timeout 180
 echo "Restored $backup"
