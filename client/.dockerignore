@@ -1,0 +1,10 @@
+node_modules
+dist
+playwright/test-results
+playwright/playwright-report
+playwright/blob-report
+playwright/.app-build
+.env
+.env.*
+Dockerfile
+.dockerignore

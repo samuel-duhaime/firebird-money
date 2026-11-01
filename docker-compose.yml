@@ -1,0 +1,81 @@
+# Runs the whole app on this computer. See "Run with Docker" in the README.
+name: firebird-money
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: firebird
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env (see .env.example)}
+      POSTGRES_DB: firebird-money
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      # -h 127.0.0.1: during its first setup Postgres only answers on its local socket, then
+      # restarts. Checking over TCP means "ready" is only reported once that's over.
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "firebird", "-d", "firebird-money"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  server:
+    build: ./server
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      HOST: 0.0.0.0
+      DATABASE_URL: postgres://firebird:${POSTGRES_PASSWORD}@db:5432/firebird-money
+      DEFAULT_LANGUAGE: ${DEFAULT_LANGUAGE:-en}
+      # Signs in without an email. Safe here only because the app is reachable from this computer
+      # alone (see the client's ports below).
+      APP_ENV: development
+      SKIP_EMAIL_VERIFICATION: "true"
+      CLIENT_BASE_URL: http://localhost:${APP_PORT:-8055}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      STATEMENT_IMPORT_MODEL: ${STATEMENT_IMPORT_MODEL:-claude-haiku-4-5}
+    healthcheck:
+      # The server only opens its port after migrations succeed, so this also catches a failed one.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/3055"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+
+  client:
+    build: ./client
+    restart: unless-stopped
+    depends_on:
+      server:
+        condition: service_healthy
+    ports:
+      # 127.0.0.1: reachable from this computer only, never from the rest of the network.
+      - 127.0.0.1:${APP_PORT:-8055}:80
+
+  # Keeps a daily database backup in ./backups (see scripts/backup-loop.sh).
+  backup:
+    image: postgres:16
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    # Runs as you, so the backup files are yours. Postgres's own startup isn't needed here.
+    user: ${APP_UID:-1000}:${APP_GID:-1000}
+    entrypoint: ["sh", "/backup-loop.sh"]
+    environment:
+      PGHOST: db
+      PGUSER: firebird
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: firebird-money
+    volumes:
+      - ./backups:/backups
+      - ./scripts/backup-loop.sh:/backup-loop.sh:ro
+
+volumes:
+  # `external` means Docker Compose never creates or deletes this volume by itself: `docker compose
+  # down -v` leaves it alone, and if it's ever missing the app refuses to start instead of quietly
+  # starting with an empty database. It's created once by hand (see the README).
+  db-data:
+    name: firebird-money-db-data
+    external: true

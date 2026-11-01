@@ -12,6 +12,20 @@ permissions:
   contents: read
 
 jobs:
+  migrations:
+    name: migration safety
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          # Full history, to compare with the base branch.
+          fetch-depth: 0
+      # Without a base branch (a push to main), only the check for deleted data runs.
+      - run: ./scripts/check-migrations.sh ${BASE_REF:+"origin/$BASE_REF"}
+        env:
+          BASE_REF: ${{ github.base_ref }}
+
   fmt:
     name: cargo fmt
     runs-on: ubuntu-latest

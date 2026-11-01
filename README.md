@@ -8,6 +8,7 @@
 - [Install](#install)
 - [Configuration](#configuration)
 - [How to run](#how-to-run)
+- [Run with Docker](#run-with-docker)
 - [API](#api)
 - [Data schema](#data-schema)
 - [Tests](#tests)
@@ -108,6 +109,27 @@ Or use the VS Code "Run Client" task.
 ### Both at once
 
 In VS Code, run the "Run Client and Server" task (`Ctrl+Shift+P` → `Tasks: Run Task`) to start the server and client together, each with auto-reload on save.
+
+## Run with Docker
+
+Runs the whole app on this computer at <http://localhost:8055>. It signs you in without an email, so don't expose it to a network.
+
+First time:
+
+```bash
+cp .env.example .env # Then set POSTGRES_PASSWORD in it.
+docker volume create firebird-money-db-data
+./scripts/update.sh
+```
+
+To update:
+
+```bash
+git pull
+./scripts/update.sh
+```
+
+Your data stays in the `firebird-money-db-data` volume through updates. A backup goes to `backups/` daily and before each update, kept for 30 days, and one per month is kept for good in `backups/monthly/`. Copy them off this computer. To restore one: `./scripts/restore.sh backups/<file>.dump`.
 
 ## API
 

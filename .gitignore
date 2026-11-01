@@ -1,2 +1,7 @@
 # Personal Claude Code permissions — may hold local paths or credentials.
 .claude/settings.local.json
+
+# Docker settings and database backups — both hold private data.
+.env
+backups/*
+!backups/.gitkeep
