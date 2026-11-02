@@ -145,6 +145,47 @@ async fn request_login_signs_in_directly_when_email_is_skipped(pool: PgPool) {
 }
 
 #[sqlx::test]
+async fn request_login_shortcut_answers_on_this_computers_names(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+
+    for host in ["localhost", "localhost:3055", "127.0.0.1:3055"] {
+        let req = test::TestRequest::post()
+            .uri("/auth/request-login")
+            .insert_header(("Host", host))
+            .set_json(serde_json::json!({ "email": "sam@example.com" }))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), 200, "{host}");
+    }
+}
+
+#[sqlx::test]
+async fn request_login_shortcut_refuses_any_other_host(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+
+    for (host, forwarded) in [
+        ("evil.example", "localhost"),
+        ("evil.example:3055", "localhost"),
+        ("localhost.evil.example", "localhost"),
+    ] {
+        let req = test::TestRequest::post()
+            .uri("/auth/request-login")
+            .insert_header(("Host", host))
+            .insert_header(("X-Forwarded-Host", forwarded))
+            .set_json(serde_json::json!({ "email": "sam@example.com" }))
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), 403, "{host}");
+        assert!(!resp
+            .response()
+            .cookies()
+            .any(|cookie| cookie.name() == SESSION_COOKIE_NAME));
+    }
+}
+
+#[sqlx::test]
 async fn request_login_reuses_the_user_on_a_second_sign_in(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
 

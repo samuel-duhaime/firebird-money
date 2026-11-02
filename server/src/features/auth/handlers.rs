@@ -6,7 +6,7 @@
 //! `SKIP_EMAIL_VERIFICATION=true` the first step spends its own token immediately and signs the
 //! caller in, so localhost needs no mail provider and nobody has to dig a link out of a log.
 
-use actix_web::http::StatusCode;
+use actix_web::http::{header, StatusCode};
 use actix_web::{web, HttpRequest, HttpResponse, Responder};
 use chrono::{Duration, Utc};
 use log::error;
@@ -28,9 +28,25 @@ use crate::shared::email;
 use crate::shared::http_error::{error_response, internal_error_response};
 use crate::shared::l10n::L10n;
 
+/// Whether a request's `Host` header names this computer. Reads the raw header because a browser
+/// can't forge it, unlike the `X-Forwarded-Host` that `connection_info()` prefers.
+fn host_is_this_computer(req: &HttpRequest) -> bool {
+    let Some(host) = req.headers().get(header::HOST) else {
+        return true;
+    };
+    let name = host
+        .to_str()
+        .unwrap_or_default()
+        .split(':')
+        .next()
+        .unwrap_or_default();
+    matches!(name, "localhost" | "127.0.0.1")
+}
+
 /// `POST /auth/request-login` — find-or-create the user, issue a one-time token, and either mail
 /// the magic link or (dev shortcut) spend the token right away.
 async fn request_login(
+    req: HttpRequest,
     body: web::Json<LoginRequest>,
     pool: web::Data<PgPool>,
     l10n: web::Data<L10n>,
@@ -38,6 +54,12 @@ async fn request_login(
     http_client: web::Data<reqwest::Client>,
 ) -> impl Responder {
     let locale = l10n.locale();
+
+    // The shortcut signs in anyone who asks, so it only answers on this computer's own names:
+    // otherwise a malicious website could point its name at the server and sign itself in.
+    if config.skip_email_verification && !host_is_this_computer(&req) {
+        return error_response(&l10n, &locale, StatusCode::FORBIDDEN, "auth-host-refused");
+    }
 
     let Some(email_address) = normalize_email(&body.email) else {
         return error_response(
