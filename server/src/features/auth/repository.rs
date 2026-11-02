@@ -2,11 +2,13 @@ use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 
 use super::model::Membership;
-use crate::features::users::model::User;
+use crate::features::users::model::{picture_url_column, User};
 
-const USER_COLUMNS: &str = "users.id, users.email, users.google_id, users.status, \
-     users.first_name, users.last_name, users.avatar_url, users.onboarding_steps, users.household_id, \
-     users.household_role, users.created_at";
+const USER_COLUMNS: &str = concat!(
+    "users.id, users.email, users.google_id, users.status, users.first_name, users.last_name, \
+     users.onboarding_steps, users.household_id, users.household_role, users.created_at, ",
+    picture_url_column!()
+);
 
 /// Stores a freshly issued magic-link token (by hash) for this user.
 pub async fn create_login_token(

@@ -1,15 +1,22 @@
 import { useState } from 'react';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import { useMutation } from '@tanstack/react-query';
+import { useIsMutating, useMutation } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faHouse, faUser, faUserPlus } from '@fortawesome/free-solid-svg-icons';
+import {
+  faCamera,
+  faHouse,
+  faUser,
+  faUserPlus,
+} from '@fortawesome/free-solid-svg-icons';
 import { submitOnboarding } from '../features/auth/utils/api';
 import {
   useCurrentUser,
   useSetCurrentUser,
 } from '../features/auth/hooks/use-current-user';
 import { requireNotOnboarded } from '../features/auth/utils/require-auth';
+import { MemberPicturePicker } from '../features/members/components/MemberPicturePicker';
+import { memberPictureMutationKey } from '../features/members/hooks/use-member-picture';
 import {
   firstNameRequiredToast,
   joinCodeNotFoundToast,
@@ -17,12 +24,15 @@ import {
 } from '../lib/toast';
 import './auth.css';
 
-type Step = 'name' | 'household' | 'join';
+type Step = 'name' | 'household' | 'join' | 'picture';
 
 /**
  * Where a signed-in user lands until they've finished onboarding: first their name (what the rest
  * of their household sees), then start a household (and manage it) or join one someone already
  * started, using the code they share. Steps the server says are already done are skipped.
+ *
+ * Last comes an optional photo. The server doesn't track it as a step: saving a picture needs a
+ * household, and leaving this page before choosing one mustn't bring anyone back here.
  */
 const OnboardingPage = () => {
   const { t } = useTranslation();
@@ -45,7 +55,7 @@ const OnboardingPage = () => {
     mutationFn: submitOnboarding,
     onSuccess: (newSession) => {
       setCurrentUser(newSession);
-      navigate({ to: '/dashboard' });
+      setStep('picture');
     },
     onError: (error: Error) => {
       // The API answers 404 when no household carries that code — worth saying precisely, since
@@ -64,6 +74,40 @@ const OnboardingPage = () => {
       lastName: lastName.trim(),
       joinCode: code,
     });
+
+  const isSavingPicture =
+    useIsMutating({ mutationKey: memberPictureMutationKey }) > 0;
+
+  if (step === 'picture' && session) {
+    return (
+      <div className="auth-page">
+        <div className="auth-card">
+          <FontAwesomeIcon icon={faCamera} className="auth-icon" />
+          <h1>{t('onboarding.picture.title')}</h1>
+          <p className="auth-description">
+            {t('onboarding.picture.description')}
+          </p>
+          <MemberPicturePicker
+            memberId={session.user.id}
+            name={session.user.first_name ?? session.user.email}
+            pictureUrl={session.user.picture_url}
+          />
+          <div className="auth-form">
+            <button
+              type="button"
+              className="auth-primary"
+              disabled={isSavingPicture}
+              onClick={() => navigate({ to: '/dashboard' })}
+            >
+              {session.user.picture_url
+                ? t('onboarding.picture.continue')
+                : t('onboarding.picture.skip')}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (step === 'name') {
     return (

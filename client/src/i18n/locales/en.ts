@@ -49,6 +49,13 @@ export const en = {
       submit: 'Join household',
     },
     back: 'Back',
+    picture: {
+      title: 'Add a photo',
+      description:
+        'Optional. It helps your household recognize you, and you can change it later in Household > Members.',
+      skip: 'Skip for now',
+      continue: 'Continue',
+    },
   },
   nav: {
     dashboard: 'Dashboard',
@@ -79,6 +86,14 @@ export const en = {
       error: 'Failed to load members.',
       manager: 'Manager',
       member: 'Member',
+      edit: 'Edit',
+      picture: {
+        choose: 'Choose photo',
+        remove: 'Remove photo',
+      },
+      owner: {
+        shared: 'Shared',
+      },
       status: {
         verified: 'Verified',
         pending: 'Pending',
@@ -565,6 +580,10 @@ export const en = {
     signInFailed: 'Could not send the sign-in link. Please try again.',
     signOutFailed: 'Could not sign out. Please try again.',
     onboardingFailed: 'Could not set up your household. Please try again.',
+    memberPictureUnreadable:
+      'This photo could not be read. Try a PNG, JPEG, or WebP image.',
+    uploadMemberPictureFailed: 'Could not save the photo. Please try again.',
+    deleteMemberPictureFailed: 'Could not remove the photo. Please try again.',
     joinCodeNotFound: 'No household matches this join code.',
     firstNameRequired: 'A first name is required.',
     copyInviteCodeSucceeded: 'Invite code copied.',

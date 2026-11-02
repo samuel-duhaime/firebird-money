@@ -12,6 +12,9 @@ export class ApiError extends Error {
   }
 }
 
+/** The full address of an API path, for what the browser fetches itself, like an image's `src`. */
+export const apiUrl = (path: string) => `${API_BASE_URL}${path}`;
+
 export const apiFetch = async <T>(
   path: string,
   init?: RequestInit,
@@ -42,17 +45,21 @@ export const apiFetch = async <T>(
 export const apiFetchUpload = async <T>(
   path: string,
   formData: FormData,
+  method: 'POST' | 'PUT' = 'POST',
 ): Promise<T> => {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     // Sends the session cookie: the API is a different origin, so the browser withholds it
     // otherwise.
     credentials: 'include',
-    method: 'POST',
+    method,
     body: formData,
   });
 
   if (!response.ok) {
-    throw new ApiError(response.status, `POST ${path} failed: ${response.status}`);
+    throw new ApiError(
+      response.status,
+      `${method} ${path} failed: ${response.status}`,
+    );
   }
 
   return response.json() as Promise<T>;
@@ -72,7 +79,10 @@ export const apiFetchFile = async (
   });
 
   if (!response.ok) {
-    throw new ApiError(response.status, `GET ${path} failed: ${response.status}`);
+    throw new ApiError(
+      response.status,
+      `GET ${path} failed: ${response.status}`,
+    );
   }
 
   return {

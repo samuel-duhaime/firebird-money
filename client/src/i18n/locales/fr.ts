@@ -51,6 +51,13 @@ export const fr: typeof en = {
       submit: 'Rejoindre le ménage',
     },
     back: 'Retour',
+    picture: {
+      title: 'Ajoute une photo',
+      description:
+        'C’est optionnel. Ça aide les membres de ton ménage à te reconnaître, et tu pourras la changer plus tard dans Ménage > Membres.',
+      skip: 'Passer pour l’instant',
+      continue: 'Continuer',
+    },
   },
   nav: {
     dashboard: 'Tableau de bord',
@@ -81,6 +88,14 @@ export const fr: typeof en = {
       error: 'Impossible de charger les membres.',
       manager: 'Gestionnaire',
       member: 'Membre',
+      edit: 'Modifier',
+      picture: {
+        choose: 'Choisir une photo',
+        remove: 'Retirer la photo',
+      },
+      owner: {
+        shared: 'Partagé',
+      },
       status: {
         verified: 'Vérifié',
         pending: 'En attente',
@@ -570,6 +585,10 @@ export const fr: typeof en = {
     signInFailed: 'Impossible d’envoyer le lien de connexion. Réessaie.',
     signOutFailed: 'Impossible de te déconnecter. Réessaie.',
     onboardingFailed: 'Impossible de configurer ton ménage. Réessaie.',
+    memberPictureUnreadable:
+      'Impossible de lire cette photo. Essaie une image PNG, JPEG ou WebP.',
+    uploadMemberPictureFailed: 'Impossible d’enregistrer la photo. Réessaie.',
+    deleteMemberPictureFailed: 'Impossible de retirer la photo. Réessaie.',
     joinCodeNotFound: 'Aucun ménage ne correspond à ce code d’invitation.',
     firstNameRequired: 'Un prénom est requis.',
     copyInviteCodeSucceeded: 'Code d’invitation copié.',

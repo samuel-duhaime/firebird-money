@@ -22,6 +22,15 @@ export const copyInviteCodeSucceededToast = () =>
 export const copyInviteCodeFailedToast = () =>
   toast.error(i18n.t('toast.copyInviteCodeFailed'));
 
+export const memberPictureUnreadableToast = () =>
+  toast.error(i18n.t('toast.memberPictureUnreadable'));
+
+export const uploadMemberPictureFailedToast = () =>
+  toast.error(i18n.t('toast.uploadMemberPictureFailed'));
+
+export const deleteMemberPictureFailedToast = () =>
+  toast.error(i18n.t('toast.deleteMemberPictureFailed'));
+
 export const joinCodeNotFoundToast = () =>
   toast.error(i18n.t('toast.joinCodeNotFound'));
 

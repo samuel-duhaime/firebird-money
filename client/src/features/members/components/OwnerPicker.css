@@ -1,0 +1,70 @@
+.owner-picker-trigger,
+.owner-picker-option {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  width: 100%;
+  background: none;
+  color: var(--color-white);
+  font:
+    400 15px/1.5 Quicksand,
+    sans-serif;
+  text-align: left;
+  cursor: pointer;
+}
+
+.owner-picker-trigger {
+  padding: var(--spacing-xs) var(--spacing-s);
+  border: 1px solid var(--color-medium);
+  border-radius: var(--spacing-xs);
+}
+
+.owner-picker-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.owner-picker-name--placeholder {
+  color: var(--color-lightest);
+}
+
+.owner-picker-chevron {
+  flex-shrink: 0;
+  width: 12px;
+  color: var(--color-lightest);
+}
+
+.owner-picker-shared-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--color-medium);
+  font-size: 10px;
+}
+
+.owner-picker-popover {
+  min-width: 200px;
+  max-width: 320px;
+  padding: var(--spacing-xs);
+  gap: 2px;
+}
+
+.owner-picker-option {
+  padding: var(--spacing-xs) var(--spacing-s);
+  border: none;
+  border-radius: var(--spacing-xs);
+  transition: background-color 0.15s ease;
+}
+
+.owner-picker-option:hover,
+.owner-picker-option:focus-visible,
+.owner-picker-option[aria-selected='true'] {
+  background: var(--color-medium);
+}
