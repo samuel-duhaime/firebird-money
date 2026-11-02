@@ -46,6 +46,7 @@ auth-email-ignore = Si tu n’as pas demandé à te connecter, tu peux ignorer c
 auth-email-invalid = Une adresse courriel valide est requise
 auth-token-invalid = Ce lien de connexion est invalide, expiré ou déjà utilisé
 auth-email-send-failed = Le courriel de connexion n’a pas pu être envoyé, veuillez réessayer
+auth-host-refused = La connexion sans courriel fonctionne seulement sur cet ordinateur
 auth-not-signed-in = Vous devez être connecté
 auth-no-household = Vous devez appartenir à un ménage
 auth-join-code-not-found = Aucun ménage ne correspond à ce code d’invitation

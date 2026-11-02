@@ -46,6 +46,7 @@ auth-email-ignore = If you didn't ask to sign in, you can ignore this email.
 auth-email-invalid = A valid email address is required
 auth-token-invalid = This sign-in link is invalid, expired, or already used
 auth-email-send-failed = The sign-in email could not be sent, please try again
+auth-host-refused = Sign-in without an email only works on this computer
 auth-not-signed-in = You must be signed in
 auth-no-household = You must belong to a household
 auth-join-code-not-found = No household matches this join code
