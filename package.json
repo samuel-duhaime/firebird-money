@@ -1,0 +1,7 @@
+{
+  "name": "firebird-money",
+  "private": true,
+  "scripts": {
+    "backup": "./scripts/backup.sh"
+  }
+}
