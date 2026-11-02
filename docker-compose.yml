@@ -60,7 +60,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    # Runs as you, so the backup files are yours. Postgres's own startup isn't needed here.
+    # Runs as you, so the backup files are yours: 1000 is the first user on most Linux computers. If
+    # `id -u` says otherwise, set APP_UID and APP_GID in .env. Postgres's own startup isn't needed here.
     user: ${APP_UID:-1000}:${APP_GID:-1000}
     entrypoint: ["sh", "/backup-loop.sh"]
     environment:
