@@ -620,6 +620,52 @@ async fn refuses_a_picture_over_the_size_limit(pool: PgPool) {
 }
 
 #[sqlx::test]
+async fn refuses_a_picture_just_over_the_size_limit(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = onboard(&app, "a@example.com", None).await;
+    let id = my_id(&app, &cookie).await;
+
+    let mut just_over = PNG.to_vec();
+    just_over.resize(2_000_001, 0);
+
+    assert_eq!(
+        put_picture(&app, &cookie, id, &just_over).await.status(),
+        400
+    );
+}
+
+#[sqlx::test]
+async fn a_picture_upload_waits_for_a_removal_in_progress_and_then_fails(pool: PgPool) {
+    let app = test::init_service(app_with(pool.clone())).await;
+    let manager = onboard(&app, "manager@example.com", None).await;
+    let (_, member_id) = join(&app, &manager, "member@example.com").await;
+    let household_id = me(&app, &manager).await["household"]["household_id"]
+        .as_i64()
+        .unwrap() as i32;
+
+    // A removal that has changed the row but not committed yet, so the upload's first look at the
+    // member still finds them in the household.
+    let mut removal = pool.begin().await.unwrap();
+    sqlx::query("UPDATE users SET household_id = NULL, household_role = NULL WHERE id = $1")
+        .bind(member_id as i32)
+        .execute(&mut *removal)
+        .await
+        .unwrap();
+
+    let upload = tokio::spawn({
+        let pool = pool.clone();
+        async move {
+            super::repository::set_picture(&pool, household_id, member_id as i32, "image/png", PNG)
+                .await
+        }
+    });
+    actix_web::rt::time::sleep(std::time::Duration::from_millis(100)).await;
+    removal.commit().await.unwrap();
+
+    assert!(!upload.await.unwrap().unwrap());
+}
+
+#[sqlx::test]
 async fn refuses_an_upload_without_a_file(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
     let cookie = onboard(&app, "a@example.com", None).await;

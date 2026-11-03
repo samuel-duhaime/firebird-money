@@ -88,7 +88,8 @@ pub async fn get_picture(
 }
 
 /// Sets or replaces a member's picture, scoped to `household_id`. Returns `false` if the id doesn't
-/// exist (including when they belong to a different household).
+/// exist (including when they belong to a different household). `FOR SHARE` makes it wait for any
+/// household change in progress on that member and check against the result.
 pub async fn set_picture(
     pool: &PgPool,
     household_id: i32,
@@ -98,7 +99,7 @@ pub async fn set_picture(
 ) -> Result<bool, sqlx::Error> {
     let result = sqlx::query(
         "INSERT INTO user_pictures (user_id, content_type, data)
-         SELECT id, $3, $4 FROM users WHERE id = $1 AND household_id = $2
+         SELECT id, $3, $4 FROM users WHERE id = $1 AND household_id = $2 FOR SHARE
          ON CONFLICT (user_id) DO UPDATE
          SET content_type = EXCLUDED.content_type, data = EXCLUDED.data, updated_at = now()",
     )

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { memberDisplayName } from '../utils/format';
@@ -19,6 +19,16 @@ export const MemberEditModal = ({ member, onClose }: MemberEditModalProps) => {
   const { t } = useTranslation();
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
+  // The Edit button that opened this: closing removes whatever is focused in here, so focus goes
+  // back to it instead of being lost.
+  const [returnFocusTarget] = useState<HTMLElement | null>(
+    () => document.activeElement as HTMLElement | null,
+  );
+
+  const handleClose = () => {
+    onClose();
+    returnFocusTarget?.focus();
+  };
 
   useEffect(() => {
     closeRef.current?.focus();
@@ -26,7 +36,7 @@ export const MemberEditModal = ({ member, onClose }: MemberEditModalProps) => {
 
   const handleKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Escape') {
-      onClose();
+      handleClose();
       return;
     }
 
@@ -56,7 +66,7 @@ export const MemberEditModal = ({ member, onClose }: MemberEditModalProps) => {
     <div
       className="modal-overlay"
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget) handleClose();
       }}
     >
       <div
@@ -74,7 +84,7 @@ export const MemberEditModal = ({ member, onClose }: MemberEditModalProps) => {
             ref={closeRef}
             type="button"
             className="modal-close"
-            onClick={onClose}
+            onClick={handleClose}
             aria-label={t('transactions.add.close', 'Close')}
           >
             ×

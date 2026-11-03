@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { APIRequestContext, BrowserContext, Page } from '@playwright/test';
 import { test, expect, type WorkerInfra } from '../fixtures';
-import { pngFile } from '../lib/pictures';
+import { expectLoadedPicture, pngFile } from '../lib/pictures';
 
 /** Signs `context` in as a brand-new user who hasn't started onboarding, and opens the app. */
 const signInFresh = async (
@@ -231,16 +231,16 @@ test.describe('Onboarding', () => {
 
     await page.getByLabel('Choose photo').setInputFiles(await pngFile(page));
 
-    await expect(page.locator('.auth-card img.avatar')).toBeVisible();
+    await expectLoadedPicture(page.locator('.auth-card'));
     await expect(
       page.getByRole('button', { name: 'Skip for now', exact: true }),
     ).toHaveCount(0);
     await page.getByRole('button', { name: 'Continue', exact: true }).click();
 
     await expect(page).toHaveURL('/dashboard');
-    await expect(page.locator('.left-menu-profile img.avatar')).toBeVisible();
+    await expectLoadedPicture(page.locator('.left-menu-profile'));
     await page.goto('/settings/members');
-    await expect(page.locator('li.members-list-row img.avatar')).toBeVisible();
+    await expectLoadedPicture(page.locator('li.members-list-row'));
   });
 
   test('a photo can be removed again during onboarding', async ({
@@ -251,7 +251,7 @@ test.describe('Onboarding', () => {
     await signInFresh(page, context, workerInfra, testInfo.workerIndex);
     await reachPhotoStep(page);
     await page.getByLabel('Choose photo').setInputFiles(await pngFile(page));
-    await expect(page.locator('.auth-card img.avatar')).toBeVisible();
+    await expectLoadedPicture(page.locator('.auth-card'));
 
     await page.getByRole('button', { name: 'Remove photo' }).click();
 
@@ -286,7 +286,7 @@ test.describe('Onboarding', () => {
       page.getByRole('heading', { name: 'Add a photo' }),
     ).toBeVisible();
     await page.getByLabel('Choose photo').setInputFiles(await pngFile(page));
-    await expect(page.locator('.auth-card img.avatar')).toBeVisible();
+    await expectLoadedPicture(page.locator('.auth-card'));
   });
 
   test('a failed photo upload does not block finishing onboarding', async ({

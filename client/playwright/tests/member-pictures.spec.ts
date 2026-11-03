@@ -1,7 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import type { APIRequestContext, Locator, Page } from '@playwright/test';
 import { test, expect, type WorkerInfra } from '../fixtures';
-import { notAnImageFile, pngFile } from '../lib/pictures';
+import {
+  edgeColors,
+  expectLoadedPicture,
+  notAnImageFile,
+  pngFile,
+} from '../lib/pictures';
 import { ensureAccount } from '../lib/seed';
 
 /** Has someone else (own cookie jar, via `request`) join `page`'s household. */
@@ -33,18 +38,6 @@ const choosePhoto = (
   scope: Page | Locator,
   file: Awaited<ReturnType<typeof pngFile>>,
 ) => scope.getByLabel('Choose photo').setInputFiles(file);
-
-/** Waits for the picture in `scope` to really load, not just for its element to appear. */
-const expectLoadedPicture = async (scope: Locator) => {
-  const image = scope.locator('img.avatar');
-  await expect(image).toBeVisible();
-  await expect
-    .poll(() =>
-      image.evaluate((img: { naturalWidth: number }) => img.naturalWidth),
-    )
-    .toBeGreaterThan(0);
-  return image;
-};
 
 const expectInitial = async (scope: Locator, initial: string) => {
   await expect(scope.locator('img.avatar')).toHaveCount(0);
@@ -91,7 +84,11 @@ test.describe('Member pictures', () => {
     await authedPage.goto('/settings/members');
     const dialog = await openEditor(authedPage, 'Test User');
 
-    await choosePhoto(dialog, await pngFile(authedPage, 1200, 300));
+    // Only the middle band is inside a centered square, so stretching would show all three.
+    await choosePhoto(
+      dialog,
+      await pngFile(authedPage, 1200, 300, ['red', 'lime', 'blue']),
+    );
 
     const image = await expectLoadedPicture(dialog);
     const size = await image.evaluate(
@@ -107,6 +104,17 @@ test.describe('Member pictures', () => {
     );
     expect(response.headers()['content-type']).toBe('image/jpeg');
     expect(response.headers()['x-content-type-options']).toBe('nosniff');
+
+    const colors = await edgeColors(
+      authedPage,
+      await response.body(),
+      'image/jpeg',
+    );
+    for (const [red, green, blue] of colors) {
+      expect(green).toBeGreaterThan(200);
+      expect(red).toBeLessThan(60);
+      expect(blue).toBeLessThan(60);
+    }
   });
 
   test('choosing another photo replaces the first', async ({ authedPage }) => {
@@ -116,11 +124,16 @@ test.describe('Member pictures', () => {
     await choosePhoto(dialog, await pngFile(authedPage));
     const image = await expectLoadedPicture(dialog);
     const firstSrc = await image.getAttribute('src');
+    const firstBytes = await (await authedPage.request.get(firstSrc!)).body();
 
-    await choosePhoto(dialog, await pngFile(authedPage, 300, 300));
+    await choosePhoto(dialog, await pngFile(authedPage, 300, 300, ['orange']));
 
     await expect(image).not.toHaveAttribute('src', firstSrc!);
     await expectLoadedPicture(dialog);
+    const secondBytes = await (
+      await authedPage.request.get((await image.getAttribute('src'))!)
+    ).body();
+    expect(secondBytes.equals(firstBytes)).toBe(false);
   });
 
   test('removing the photo brings the initial back everywhere', async ({
@@ -233,8 +246,17 @@ test.describe('Member pictures', () => {
     await choosePhoto(dialog, await pngFile(authedPage));
     await expect(choose).toBeDisabled();
 
+    // Still waiting after closing the editor and opening it again.
+    await authedPage.keyboard.press('Escape');
+    const reopened = await openEditor(authedPage, 'Test User');
+    await expect(
+      reopened.getByRole('button', { name: 'Choose photo' }),
+    ).toBeDisabled();
+
     finishUpload();
-    await expect(choose).toBeEnabled();
+    await expect(
+      reopened.getByRole('button', { name: 'Choose photo' }),
+    ).toBeEnabled();
     await expectLoadedPicture(dialog);
   });
 
@@ -253,22 +275,28 @@ test.describe('Member pictures', () => {
     await expectInitial(authedPage.locator('.left-menu-profile'), 'T');
   });
 
-  test('the editor closes with its X, Escape, or a click outside', async ({
+  test('the editor closes with its X, Escape, or a click outside, and focus returns to Edit', async ({
     authedPage,
   }) => {
     await authedPage.goto('/settings/members');
+    const edit = rowOf(authedPage, 'Test User').getByRole('button', {
+      name: 'Edit',
+    });
 
     let dialog = await openEditor(authedPage, 'Test User');
     await dialog.getByRole('button', { name: 'Close' }).click();
     await expect(dialog).toHaveCount(0);
+    await expect(edit).toBeFocused();
 
     dialog = await openEditor(authedPage, 'Test User');
     await authedPage.keyboard.press('Escape');
     await expect(dialog).toHaveCount(0);
+    await expect(edit).toBeFocused();
 
     dialog = await openEditor(authedPage, 'Test User');
     await authedPage.mouse.click(5, 5);
     await expect(dialog).toHaveCount(0);
+    await expect(edit).toBeFocused();
   });
 
   test('a manager can change the picture of anyone in the household', async ({

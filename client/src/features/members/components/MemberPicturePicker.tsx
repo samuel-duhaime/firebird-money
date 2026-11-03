@@ -1,8 +1,10 @@
 import { useRef } from 'react';
 import type { ChangeEvent } from 'react';
+import { useIsMutating } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Avatar } from '../../../components/Avatar';
 import {
+  memberPictureMutationKey,
   useDeleteMemberPicture,
   useUploadMemberPicture,
 } from '../hooks/use-member-picture';
@@ -25,7 +27,10 @@ export const MemberPicturePicker = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const upload = useUploadMemberPicture();
   const remove = useDeleteMemberPicture();
-  const isPending = upload.isPending || remove.isPending;
+  // Any picture change, not just this picker's: one still running after the editor was closed and
+  // reopened could otherwise finish after a newer choice and overwrite it.
+  const isPending =
+    useIsMutating({ mutationKey: memberPictureMutationKey }) > 0;
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
