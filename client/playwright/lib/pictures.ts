@@ -58,8 +58,11 @@ export const expectLoadedPicture = async (scope: Locator) => {
   await expect(image).toBeVisible();
   await expect
     .poll(() =>
-      image.evaluate((img: { naturalWidth: number }) => img.naturalWidth),
+      image.evaluate(
+        (img: { complete: boolean; naturalWidth: number }) =>
+          img.complete && img.naturalWidth > 0,
+      ),
     )
-    .toBeGreaterThan(0);
+    .toBe(true);
   return image;
 };

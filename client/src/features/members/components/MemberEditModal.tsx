@@ -45,7 +45,9 @@ export const MemberEditModal = ({ member, onClose }: MemberEditModalProps) => {
     const focusable = Array.from(
       dialogRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR) ??
         [],
-    ).filter((element) => element.tabIndex !== -1);
+    ).filter(
+      (element) => element.tabIndex !== -1 && !element.matches(':disabled'),
+    );
     if (focusable.length === 0) return;
 
     const first = focusable[0];

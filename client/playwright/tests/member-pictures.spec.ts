@@ -253,6 +253,12 @@ test.describe('Member pictures', () => {
       reopened.getByRole('button', { name: 'Choose photo' }),
     ).toBeDisabled();
 
+    // Tab stays inside the editor: its only button that can take focus right now is Close.
+    const close = reopened.getByRole('button', { name: 'Close' });
+    await expect(close).toBeFocused();
+    await authedPage.keyboard.press('Tab');
+    await expect(close).toBeFocused();
+
     finishUpload();
     await expect(
       reopened.getByRole('button', { name: 'Choose photo' }),

@@ -662,7 +662,27 @@ async fn a_picture_upload_waits_for_a_removal_in_progress_and_then_fails(pool: P
                 .await
         }
     });
-    actix_web::rt::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    // Only commit once the upload is really stuck behind the removal: earlier, it would find the
+    // member already gone and pass without ever reaching the lock.
+    let mut attempts = 0;
+    loop {
+        let waiting: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM pg_stat_activity
+             WHERE datname = current_database()
+               AND wait_event_type = 'Lock'
+               AND query LIKE 'INSERT INTO user_pictures%'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        if waiting > 0 {
+            break;
+        }
+        attempts += 1;
+        assert!(attempts < 100, "the upload never waited for the removal");
+        actix_web::rt::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
     removal.commit().await.unwrap();
 
     assert!(!upload.await.unwrap().unwrap());
