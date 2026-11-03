@@ -240,17 +240,20 @@ Beyond `id`/`created_at`, a household carries only a `join_code`, generated on c
 
 - `GET /users/{id}` — fetch a single user.
 - `POST /users` — create a user (`email`, `google_id` optional). `status` starts at `pending`.
-- `PATCH /users/{id}` — partially update a user (`email`, `google_id`, `status`, `first_name`, `last_name`, `avatar_url`; only the fields you send change). `status` must be `verified`, `pending`, or `suspended`.
+- `PATCH /users/{id}` — partially update a user (`email`, `google_id`, `status`, `first_name`, `last_name`; only the fields you send change). `status` must be `verified`, `pending`, or `suspended`.
 - `DELETE /users/{id}` — delete a user. Fails while they still belong to a household (see `/members`).
 
 A user is a login identity, plus the (at most one) household they belong to and their role in it (`household_id`, `household_role`; both `null` until onboarding). In practice signing in creates them (see [`/auth`](#api)); these routes are for direct management.
 
 `/members`:
 
-- `GET /members` — list the users in the caller's household, each with their `role`, `email`, `first_name`, `last_name`, and `status`. A member's `id` is their user id.
+- `GET /members` — list the users in the caller's household, each with their `role`, `email`, `first_name`, `last_name`, `status`, and `picture_url` (`null` without a picture). A member's `id` is their user id.
 - `GET /members/{id}` — fetch a single member.
 - `PATCH /members/{id}` — change a member's `role` (`family_manager` or `family_member`). Managers only.
 - `DELETE /members/{id}` — remove a member from the household (their user account is kept). Managers only. Fails while they still have transactions in it.
+- `GET /members/{id}/picture` — a household member's picture, as image bytes.
+- `PUT /members/{id}/picture` — set or replace a member's picture (multipart: `file`, a PNG, JPEG, or WebP up to 2 MB, checked against its actual bytes). That member or a manager only. Returns the updated member.
+- `DELETE /members/{id}/picture` — remove a member's picture. That member or a manager only. Returns the updated member.
 
 Nobody is added here: people join a household through `POST /auth/onboarding` with its `join_code`.
 
@@ -273,6 +276,7 @@ erDiagram
     USERS ||--o{ LOGIN_TOKENS : has
     USERS ||--o{ SESSIONS : has
     USERS ||--o| SETTINGS : has
+    USERS ||--o| USER_PICTURES : has
 ```
 
 **Household finances:**

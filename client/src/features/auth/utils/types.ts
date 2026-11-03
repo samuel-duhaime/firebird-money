@@ -6,7 +6,8 @@ export interface AuthUser {
   status: 'verified' | 'pending' | 'suspended';
   first_name: string | null;
   last_name: string | null;
-  avatar_url: string | null;
+  /** Where to fetch their picture, relative to the API, or `null` if they have none. */
+  picture_url: string | null;
   /** Onboarding steps this user has finished. */
   onboarding_steps: OnboardingStep[];
   /** `null` until onboarding. */

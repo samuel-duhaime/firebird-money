@@ -441,3 +441,401 @@ async fn delete_member_requires_a_family_manager(pool: PgPool) {
     assert_eq!(resp.status(), 403);
     assert!(!me(&app, &manager_cookie).await["household"].is_null());
 }
+
+// --- /members/{id}/picture ---
+
+/// The smallest bytes each accepted type is recognized by, enough for the server's type check.
+const PNG: &[u8] = b"\x89PNG\r\n\x1a\nrest of a png";
+const JPEG: &[u8] = b"\xFF\xD8\xFF\xE0rest of a jpeg";
+const WEBP: &[u8] = b"RIFF\x00\x00\x00\x00WEBPrest of a webp";
+
+/// `PUT /members/{id}/picture` for `cookie` with `file` as the multipart body, claiming to be a PNG
+/// whatever it really is.
+async fn put_picture<S, B>(app: &S, cookie: &str, id: i64, file: &[u8]) -> ServiceResponse<B>
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let boundary = "picture-test-boundary";
+    let mut body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"me.png\"\r\n\
+         Content-Type: image/png\r\n\r\n"
+    )
+    .into_bytes();
+    body.extend_from_slice(file);
+    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+
+    let req = test::TestRequest::put()
+        .uri(&format!("/members/{id}/picture"))
+        .insert_header(("Cookie", cookie))
+        .insert_header((
+            "Content-Type",
+            format!("multipart/form-data; boundary={boundary}"),
+        ))
+        .set_payload(body)
+        .to_request();
+    test::call_service(app, req).await
+}
+
+/// `GET /members/{id}/picture` for `cookie`.
+async fn get_picture<S, B>(app: &S, cookie: &str, id: i64) -> ServiceResponse<B>
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let req = test::TestRequest::get()
+        .uri(&format!("/members/{id}/picture"))
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    test::call_service(app, req).await
+}
+
+/// `DELETE /members/{id}/picture` for `cookie`.
+async fn delete_picture<S, B>(app: &S, cookie: &str, id: i64) -> ServiceResponse<B>
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let req = test::TestRequest::delete()
+        .uri(&format!("/members/{id}/picture"))
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    test::call_service(app, req).await
+}
+
+/// The signed-in user's id.
+async fn my_id<S, B>(app: &S, cookie: &str) -> i64
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    me(app, cookie).await["user"]["id"].as_i64().unwrap()
+}
+
+#[sqlx::test]
+async fn a_member_has_no_picture_until_they_add_one(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = onboard(&app, "a@example.com", None).await;
+    let id = my_id(&app, &cookie).await;
+
+    assert!(me(&app, &cookie).await["user"]["picture_url"].is_null());
+    assert_eq!(get_picture(&app, &cookie, id).await.status(), 404);
+}
+
+#[sqlx::test]
+async fn an_uploaded_picture_is_served_back_with_its_real_type(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = onboard(&app, "a@example.com", None).await;
+    let id = my_id(&app, &cookie).await;
+
+    // `put_picture` claims every upload is a PNG: the stored type must come from the bytes.
+    for (bytes, content_type) in [
+        (PNG, "image/png"),
+        (JPEG, "image/jpeg"),
+        (WEBP, "image/webp"),
+    ] {
+        let resp = put_picture(&app, &cookie, id, bytes).await;
+        assert_eq!(resp.status(), 200);
+
+        let resp = get_picture(&app, &cookie, id).await;
+        assert_eq!(resp.status(), 200);
+        let header = |name: &str| {
+            resp.headers()
+                .get(name)
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_string()
+        };
+        assert_eq!(header("Content-Type"), content_type);
+        assert_eq!(header("X-Content-Type-Options"), "nosniff");
+        assert_eq!(
+            header("Cache-Control"),
+            "private, max-age=7776000, immutable"
+        );
+        assert_eq!(&test::read_body(resp).await[..], bytes);
+    }
+}
+
+#[sqlx::test]
+async fn the_picture_url_appears_in_members_and_auth_me_and_changes_with_each_upload(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = onboard(&app, "a@example.com", None).await;
+    let id = my_id(&app, &cookie).await;
+
+    let resp = put_picture(&app, &cookie, id, PNG).await;
+    let member: serde_json::Value = test::read_body_json(resp).await;
+    let first_url = member["picture_url"].as_str().unwrap().to_string();
+    assert!(first_url.starts_with(&format!("/members/{id}/picture?v=")));
+    assert_eq!(me(&app, &cookie).await["user"]["picture_url"], first_url);
+
+    let req = test::TestRequest::get()
+        .uri("/members")
+        .insert_header(("Cookie", cookie.clone()))
+        .to_request();
+    let members: serde_json::Value = test::call_and_read_body_json(&app, req).await;
+    assert_eq!(members[0]["picture_url"], first_url);
+
+    // Millisecond versions: make sure the second upload lands on a later one.
+    std::thread::sleep(std::time::Duration::from_millis(5));
+    let resp = put_picture(&app, &cookie, id, JPEG).await;
+    let member: serde_json::Value = test::read_body_json(resp).await;
+    assert_ne!(member["picture_url"], first_url);
+}
+
+#[sqlx::test]
+async fn refuses_a_file_that_is_not_an_accepted_image(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = onboard(&app, "a@example.com", None).await;
+    let id = my_id(&app, &cookie).await;
+
+    for bytes in [
+        b"<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>".as_slice(),
+        b"GIF89a".as_slice(),
+        b"RIFF\x00\x00\x00\x00WAVE".as_slice(),
+        b"".as_slice(),
+    ] {
+        let resp = put_picture(&app, &cookie, id, bytes).await;
+        assert_eq!(resp.status(), 400);
+        let body: serde_json::Value = test::read_body_json(resp).await;
+        assert_eq!(
+            body["error"],
+            "The picture must be a PNG, JPEG, or WebP image"
+        );
+    }
+    assert_eq!(get_picture(&app, &cookie, id).await.status(), 404);
+}
+
+#[sqlx::test]
+async fn refuses_a_picture_over_the_size_limit(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = onboard(&app, "a@example.com", None).await;
+    let id = my_id(&app, &cookie).await;
+
+    let mut too_large = PNG.to_vec();
+    too_large.resize(3 * 1024 * 1024, 0);
+
+    let resp = put_picture(&app, &cookie, id, &too_large).await;
+    assert_eq!(resp.status(), 400);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(body["error"], "The picture is too large (2 MB max)");
+    assert_eq!(get_picture(&app, &cookie, id).await.status(), 404);
+}
+
+#[sqlx::test]
+async fn refuses_a_picture_just_over_the_size_limit(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = onboard(&app, "a@example.com", None).await;
+    let id = my_id(&app, &cookie).await;
+
+    let mut just_over = PNG.to_vec();
+    just_over.resize(2_000_001, 0);
+
+    assert_eq!(
+        put_picture(&app, &cookie, id, &just_over).await.status(),
+        400
+    );
+}
+
+#[sqlx::test]
+async fn a_picture_upload_waits_for_a_removal_in_progress_and_then_fails(pool: PgPool) {
+    let app = test::init_service(app_with(pool.clone())).await;
+    let manager = onboard(&app, "manager@example.com", None).await;
+    let (_, member_id) = join(&app, &manager, "member@example.com").await;
+    let household_id = me(&app, &manager).await["household"]["household_id"]
+        .as_i64()
+        .unwrap() as i32;
+
+    // A removal that has changed the row but not committed yet, so the upload's first look at the
+    // member still finds them in the household.
+    let mut removal = pool.begin().await.unwrap();
+    sqlx::query("UPDATE users SET household_id = NULL, household_role = NULL WHERE id = $1")
+        .bind(member_id as i32)
+        .execute(&mut *removal)
+        .await
+        .unwrap();
+
+    let upload = tokio::spawn({
+        let pool = pool.clone();
+        async move {
+            super::repository::set_picture(&pool, household_id, member_id as i32, "image/png", PNG)
+                .await
+        }
+    });
+
+    // Only commit once the upload is really stuck behind the removal: earlier, it would find the
+    // member already gone and pass without ever reaching the lock.
+    let mut attempts = 0;
+    loop {
+        let waiting: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM pg_stat_activity
+             WHERE datname = current_database()
+               AND wait_event_type = 'Lock'
+               AND query LIKE 'INSERT INTO user_pictures%'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        if waiting > 0 {
+            break;
+        }
+        attempts += 1;
+        assert!(attempts < 100, "the upload never waited for the removal");
+        actix_web::rt::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    removal.commit().await.unwrap();
+
+    assert!(!upload.await.unwrap().unwrap());
+}
+
+#[sqlx::test]
+async fn refuses_an_upload_without_a_file(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = onboard(&app, "a@example.com", None).await;
+    let id = my_id(&app, &cookie).await;
+
+    let boundary = "picture-test-boundary";
+    let req = test::TestRequest::put()
+        .uri(&format!("/members/{id}/picture"))
+        .insert_header(("Cookie", cookie))
+        .insert_header((
+            "Content-Type",
+            format!("multipart/form-data; boundary={boundary}"),
+        ))
+        .set_payload(format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"other\"\r\n\r\nhi\r\n--{boundary}--\r\n"
+        ))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 400);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert_eq!(
+        body["error"],
+        "The picture must be a PNG, JPEG, or WebP image"
+    );
+}
+
+#[sqlx::test]
+async fn deleting_a_picture_removes_it_and_can_be_repeated(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = onboard(&app, "a@example.com", None).await;
+    let id = my_id(&app, &cookie).await;
+    put_picture(&app, &cookie, id, PNG).await;
+
+    for _ in 0..2 {
+        let resp = delete_picture(&app, &cookie, id).await;
+        assert_eq!(resp.status(), 200);
+        let member: serde_json::Value = test::read_body_json(resp).await;
+        assert!(member["picture_url"].is_null());
+    }
+    assert_eq!(get_picture(&app, &cookie, id).await.status(), 404);
+}
+
+#[sqlx::test]
+async fn a_member_can_change_only_their_own_picture(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let manager = onboard(&app, "manager@example.com", None).await;
+    let manager_id = my_id(&app, &manager).await;
+    let (member, member_id) = join(&app, &manager, "member@example.com").await;
+    put_picture(&app, &manager, manager_id, PNG).await;
+
+    assert_eq!(
+        put_picture(&app, &member, member_id, PNG).await.status(),
+        200
+    );
+    assert_eq!(
+        put_picture(&app, &member, manager_id, JPEG).await.status(),
+        403
+    );
+    assert_eq!(
+        delete_picture(&app, &member, manager_id).await.status(),
+        403
+    );
+
+    // The manager's picture came through both refused requests untouched.
+    let resp = get_picture(&app, &member, manager_id).await;
+    assert_eq!(&test::read_body(resp).await[..], PNG);
+}
+
+#[sqlx::test]
+async fn a_manager_can_change_anyone_in_their_household(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let manager = onboard(&app, "manager@example.com", None).await;
+    let (member, member_id) = join(&app, &manager, "member@example.com").await;
+
+    assert_eq!(
+        put_picture(&app, &manager, member_id, PNG).await.status(),
+        200
+    );
+    assert_eq!(get_picture(&app, &member, member_id).await.status(), 200);
+    assert_eq!(
+        delete_picture(&app, &manager, member_id).await.status(),
+        200
+    );
+    assert_eq!(get_picture(&app, &member, member_id).await.status(), 404);
+}
+
+#[sqlx::test]
+async fn pictures_stay_inside_the_household(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let manager_a = onboard(&app, "a@example.com", None).await;
+    let a_id = my_id(&app, &manager_a).await;
+    let manager_b = onboard(&app, "b@example.com", None).await;
+    put_picture(&app, &manager_a, a_id, PNG).await;
+
+    assert_eq!(get_picture(&app, &manager_b, a_id).await.status(), 404);
+    assert_eq!(
+        put_picture(&app, &manager_b, a_id, JPEG).await.status(),
+        404
+    );
+    assert_eq!(delete_picture(&app, &manager_b, a_id).await.status(), 404);
+
+    let resp = get_picture(&app, &manager_a, a_id).await;
+    assert_eq!(&test::read_body(resp).await[..], PNG);
+}
+
+#[sqlx::test]
+async fn picture_routes_require_signing_in(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let req = test::TestRequest::get()
+        .uri("/members/1/picture")
+        .to_request();
+    assert_eq!(test::call_service(&app, req).await.status(), 401);
+}
+
+#[sqlx::test]
+async fn a_removed_member_keeps_their_picture_but_the_household_no_longer_sees_it(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let manager = onboard(&app, "manager@example.com", None).await;
+    let (member, member_id) = join(&app, &manager, "member@example.com").await;
+    put_picture(&app, &member, member_id, PNG).await;
+
+    let req = test::TestRequest::delete()
+        .uri(&format!("/members/{member_id}"))
+        .insert_header(("Cookie", manager.clone()))
+        .to_request();
+    assert_eq!(test::call_service(&app, req).await.status(), 204);
+
+    assert_eq!(get_picture(&app, &manager, member_id).await.status(), 404);
+    assert!(me(&app, &member).await["user"]["picture_url"].is_string());
+}
+
+#[sqlx::test]
+async fn patching_a_user_can_no_longer_set_a_picture(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = onboard(&app, "a@example.com", None).await;
+    let id = my_id(&app, &cookie).await;
+
+    let req = test::TestRequest::patch()
+        .uri(&format!("/users/{id}"))
+        .insert_header(("Cookie", cookie.clone()))
+        .set_json(serde_json::json!({
+            "avatar_url": "https://example.com/tracker.png",
+            "picture_url": "https://example.com/tracker.png",
+        }))
+        .to_request();
+    let user: serde_json::Value = test::call_and_read_body_json(&app, req).await;
+
+    assert!(user["picture_url"].is_null());
+    assert!(user.get("avatar_url").is_none());
+}

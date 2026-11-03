@@ -1,10 +1,13 @@
 use sqlx::PgPool;
 
-use super::model::{NewUser, User, UserPatch};
+use super::model::{picture_url_column, NewUser, User, UserPatch};
 use crate::shared::http_error::is_unique_violation;
 
-const SELECT_COLUMNS: &str = "id, email, google_id, status, first_name, last_name, avatar_url, \
-     onboarding_steps, household_id, household_role, created_at";
+const SELECT_COLUMNS: &str = concat!(
+    "id, email, google_id, status, first_name, last_name, onboarding_steps, household_id, \
+     household_role, created_at, ",
+    picture_url_column!()
+);
 
 /// Inserts a new user and returns the created row. `status` starts at `pending`.
 pub async fn create(pool: &PgPool, new_user: &NewUser) -> Result<User, sqlx::Error> {
@@ -75,8 +78,7 @@ pub async fn update(
              google_id = COALESCE($3, google_id),
              status = COALESCE($4, status),
              first_name = COALESCE($5, first_name),
-             last_name = COALESCE($6, last_name),
-             avatar_url = COALESCE($7, avatar_url)
+             last_name = COALESCE($6, last_name)
          WHERE id = $1
          RETURNING {SELECT_COLUMNS}"
     ))
@@ -86,7 +88,6 @@ pub async fn update(
     .bind(&patch.status)
     .bind(&patch.first_name)
     .bind(&patch.last_name)
-    .bind(&patch.avatar_url)
     .fetch_optional(pool)
     .await
 }

@@ -178,21 +178,6 @@
   font-size: 13px;
 }
 
-.filters-popover-avatar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  object-fit: cover;
-  background: color-mix(in srgb, var(--color-primary) 25%, transparent);
-  color: var(--color-primary);
-  font-size: 11px;
-  font-weight: 700;
-}
-
 .filters-popover-tag-dot {
   flex-shrink: 0;
   width: 8px;

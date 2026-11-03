@@ -84,10 +84,6 @@
   background: var(--color-dark);
 }
 
-.left-menu-profile-icon {
-  width: 20px;
-}
-
 .left-menu-profile-name {
   flex: 1;
   overflow: hidden;

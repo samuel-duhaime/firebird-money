@@ -15,6 +15,7 @@ import { useAnchoredPopover } from '../../../lib/use-anchored-popover';
 import { useCategories } from '../../categories/hooks/use-categories';
 import { useCategoryGroups } from '../../categories/hooks/use-category-groups';
 import { useMerchants } from '../../merchants/hooks/use-merchants';
+import { Avatar } from '../../../components/Avatar';
 import { useAccounts } from '../../accounts/hooks/use-accounts';
 import { useTags } from '../../tags/hooks/use-tags';
 import { accountLabel } from '../../accounts/utils/format';
@@ -156,26 +157,6 @@ const groupState = (ids: number[], selected: number[]) => {
     indeterminate: count > 0 && count < ids.length,
   };
 };
-
-/** First-letter badge, the same stand-in for a logo the settings pages use. */
-const LetterAvatar = ({ name }: { name: string }) => (
-  <span className="filters-popover-avatar" aria-hidden="true">
-    {name.charAt(0).toUpperCase()}
-  </span>
-);
-
-const MerchantAvatar = ({
-  name,
-  logoUrl,
-}: {
-  name: string;
-  logoUrl: string | null;
-}) =>
-  logoUrl ? (
-    <img className="filters-popover-avatar" src={logoUrl} alt="" />
-  ) : (
-    <LetterAvatar name={name} />
-  );
 
 const TagDot = ({ color }: { color: string }) => (
   <span
@@ -403,7 +384,7 @@ export const FiltersButton = () => {
               toggleIds('merchant_ids', [merchant.id], checked)
             }
           >
-            <MerchantAvatar name={merchant.name} logoUrl={merchant.logo_url} />
+            <Avatar name={merchant.name} src={merchant.logo_url} />
             <span className="filters-popover-row-label">{merchant.name}</span>
             <span
               className="filters-popover-row-count"
@@ -445,7 +426,7 @@ export const FiltersButton = () => {
                         toggleIds('account_ids', [account.id], checked)
                       }
                     >
-                      <LetterAvatar name={account.institution_name} />
+                      <Avatar name={account.institution_name} />
                       <span
                         className="filters-popover-row-label"
                         title={`${account.institution_name} · ${accountLabel(account)}`}
@@ -608,10 +589,7 @@ export const FiltersButton = () => {
           {
             key: `m${id}`,
             icon: (
-              <MerchantAvatar
-                name={merchant.name}
-                logoUrl={merchant.logo_url}
-              />
+              <Avatar name={merchant.name} src={merchant.logo_url} />
             ),
             label: merchant.name,
             onRemove: removeId('merchant_ids', id),
@@ -634,7 +612,7 @@ export const FiltersButton = () => {
       ? [
           {
             key: `a${id}`,
-            icon: <LetterAvatar name={account.institution_name} />,
+            icon: <Avatar name={account.institution_name} />,
             label: accountLabel(account),
             onRemove: removeId('account_ids', id),
           },

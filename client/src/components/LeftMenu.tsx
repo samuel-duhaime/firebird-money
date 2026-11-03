@@ -6,15 +6,16 @@ import {
   faHouse,
   faReceipt,
   faPeopleRoof,
-  faCircleUser,
   faChevronUp,
   faGear,
   faRightFromBracket,
 } from '@fortawesome/free-solid-svg-icons';
+import { Avatar } from './Avatar';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { useAnchoredPopover } from '../lib/use-anchored-popover';
 import { useSignOut } from '../features/auth/hooks/use-sign-out';
 import { useCurrentUser } from '../features/auth/hooks/use-current-user';
+import { pictureSrc } from '../features/members/utils/format';
 import { useUpdateSettings } from '../features/settings/hooks/use-update-settings';
 import './Popover.css';
 import './LeftMenu.css';
@@ -33,6 +34,7 @@ export const LeftMenu = () => {
   const { mutate: updateSettings } = useUpdateSettings();
   const { isOpen, setIsOpen, position, triggerRef, popoverRef } =
     useAnchoredPopover<HTMLButtonElement>();
+  const profileName = session?.user.first_name ?? session?.user.email ?? '';
 
   return (
     <nav className="left-menu">
@@ -62,13 +64,11 @@ export const LeftMenu = () => {
         aria-expanded={isOpen}
         onClick={() => setIsOpen((open) => !open)}
       >
-        <FontAwesomeIcon
-          icon={faCircleUser}
-          className="left-menu-profile-icon"
+        <Avatar
+          name={profileName}
+          src={pictureSrc(session?.user.picture_url ?? null)}
         />
-        <span className="left-menu-profile-name">
-          {session?.user.first_name ?? session?.user.email}
-        </span>
+        <span className="left-menu-profile-name">{profileName}</span>
         <FontAwesomeIcon
           icon={faChevronUp}
           className="left-menu-profile-chevron"

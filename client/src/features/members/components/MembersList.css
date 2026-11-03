@@ -20,19 +20,6 @@
   border-top: 1px solid var(--color-medium);
 }
 
-.members-list-avatar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: var(--color-medium);
-  color: var(--color-white);
-  font-weight: 700;
-}
-
 .members-list-identity {
   display: flex;
   flex-direction: column;
@@ -82,4 +69,22 @@
 .members-list-status--suspended {
   border-color: var(--color-error);
   color: var(--color-error);
+}
+
+.members-list-edit {
+  flex-shrink: 0;
+  padding: 4px 12px;
+  border: 1px solid var(--color-light);
+  border-radius: 8px;
+  background: none;
+  color: var(--color-white);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.members-list-edit:hover {
+  background: var(--color-medium);
 }
