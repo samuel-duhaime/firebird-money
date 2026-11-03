@@ -213,7 +213,8 @@ async fn delete_member(
 }
 
 /// `GET /members/{id}/picture` — a picture of someone in the caller's own household, as image bytes.
-/// Cached for good: `picture_url` carries a new version whenever the picture changes.
+/// Cached for 3 months: `picture_url` carries a new version whenever the picture changes, and the
+/// limit means someone removed from the household can't keep showing it from their cache forever.
 async fn get_member_picture(
     path: web::Path<MemberIdPath>,
     current_user: CurrentUser,
@@ -231,7 +232,7 @@ async fn get_member_picture(
         Ok(Some(picture)) => HttpResponse::Ok()
             .content_type(picture.content_type)
             .insert_header(("X-Content-Type-Options", "nosniff"))
-            .insert_header(("Cache-Control", "private, max-age=31536000, immutable"))
+            .insert_header(("Cache-Control", "private, max-age=7776000, immutable"))
             .body(picture.data),
         Ok(None) => not_found_response(&l10n, &locale, "member-picture-not-found", id),
         Err(e) => {

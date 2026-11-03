@@ -549,7 +549,10 @@ async fn an_uploaded_picture_is_served_back_with_its_real_type(pool: PgPool) {
         };
         assert_eq!(header("Content-Type"), content_type);
         assert_eq!(header("X-Content-Type-Options"), "nosniff");
-        assert!(header("Cache-Control").contains("private"));
+        assert_eq!(
+            header("Cache-Control"),
+            "private, max-age=7776000, immutable"
+        );
         assert_eq!(&test::read_body(resp).await[..], bytes);
     }
 }
