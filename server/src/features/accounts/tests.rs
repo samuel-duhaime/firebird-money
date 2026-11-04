@@ -893,6 +893,18 @@ async fn moving_a_transaction_to_another_account_takes_its_owner_unless_overridd
     assert_eq!(status, 200, "{body}");
     assert_eq!(body[0]["owner_user_id"], serde_json::Value::Null);
 
+    // One that had its account's owner takes the new account's.
+    let inherited = add_transaction(&app, &cookie, &pool, sams, serde_json::json!({})).await;
+    let (status, body) = call(
+        &app,
+        &cookie,
+        test::TestRequest::patch().uri("/transactions/bulk"),
+        Some(serde_json::json!({ "ids": [inherited["id"]], "patch": { "account_id": alices } })),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body[0]["owner_user_id"], alice_id);
+
     // An owner given along with the move wins.
     let (_, body) = call(
         &app,

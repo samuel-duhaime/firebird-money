@@ -38,10 +38,13 @@ const SharedIcon = () => (
   </span>
 );
 
-/** The name, and the email when the name isn't already it — what a lone avatar shows on hover. */
-const memberTooltip = (member: Member) => {
+/** The name (with any `suffix`), and the email when the name isn't already it — what a lone
+ * avatar shows on hover. */
+const memberTooltip = (member: Member, suffix = '') => {
   const name = memberDisplayName(member);
-  return name === member.email ? name : `${name}\n${member.email}`;
+  return name === member.email
+    ? name + suffix
+    : `${name}${suffix}\n${member.email}`;
 };
 
 const MemberLabel = ({
@@ -166,7 +169,7 @@ export const OwnerPicker = ({
     ? undefined
     : value === null
       ? sharedLabel + suffix(null)
-      : selected && memberTooltip(selected);
+      : selected && memberTooltip(selected, suffix(selected.id));
 
   // Every choice in list order, with the text type-to-jump matches against.
   const options: { owner: number | null; label: string; member?: Member }[] = [

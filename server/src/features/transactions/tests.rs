@@ -1377,6 +1377,43 @@ async fn download_transactions_includes_tags_column(pool: PgPool) {
 }
 
 #[sqlx::test]
+async fn download_transactions_names_a_member_owner(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let user_id = own_user_id(&app, &cookie).await;
+    let category_id = create_other_category(&app, &cookie).await;
+    let id = create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "12.34",
+    )
+    .await;
+    let patch_req = test::TestRequest::patch()
+        .uri(&format!("/transactions/{id}"))
+        .insert_header(("Cookie", cookie.clone()))
+        .set_json(serde_json::json!({ "owner": user_id }))
+        .to_request();
+    assert_eq!(test::call_service(&app, patch_req).await.status(), 200);
+
+    let req = test::TestRequest::get()
+        .uri("/transactions/download?format=csv")
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    let body = test::read_body(resp).await;
+    let csv = String::from_utf8(body.to_vec()).unwrap();
+    assert_eq!(
+        csv.lines().nth(1).unwrap(),
+        "2024-01-15,STARBUCKS,Other,,Test Account,Test User,12.34"
+    );
+}
+
+#[sqlx::test]
 async fn download_transactions_requires_a_session(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
     let req = test::TestRequest::get()

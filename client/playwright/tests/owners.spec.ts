@@ -1,6 +1,6 @@
 import type { APIRequestContext, Locator, Page } from '@playwright/test';
 import { test, expect } from '../fixtures';
-import { ensureAccount, getCategoryId } from '../lib/seed';
+import { createMerchant, ensureAccount, getCategoryId } from '../lib/seed';
 
 /** A household of two: the signed-in Test User and Alice Gaudreau, who joins with the household's
  * code from her own session. Returns Alice's user id. */
@@ -96,6 +96,7 @@ test.describe('Transaction owners', () => {
     );
     await ownedAccount(context.request, apiOrigin, 'Visa Alice', aliceId);
     await ownedAccount(context.request, apiOrigin, 'Joint', 'shared');
+    await createMerchant(context.request, apiOrigin, 'Corner Store');
 
     await authedPage.goto('/transactions/add-transaction');
     const dialog = authedPage.getByRole('dialog', { name: 'Add transaction' });
@@ -118,6 +119,33 @@ test.describe('Transaction owners', () => {
     await owner.click();
     await pickOwner(authedPage, 'Alice Gaudreau');
     await expect(ownerName(owner)).toHaveText('Alice Gaudreau');
+
+    // Saved with the owner picked, not the Joint account's.
+    await dialog.getByLabel('Amount').fill('12.50');
+    await dialog.getByRole('button', { name: 'Merchant', exact: true }).click();
+    await authedPage
+      .locator('.merchant-picker-popover')
+      .getByRole('button', { name: 'Corner Store', exact: true })
+      .click();
+    await dialog.getByLabel('Date').fill('2026-10-26');
+    await authedPage
+      .getByRole('button', { name: 'Select category', exact: true })
+      .click();
+    await authedPage
+      .locator('.category-picker-popover')
+      .getByRole('button', { name: 'Groceries', exact: true })
+      .click();
+    await dialog
+      .getByRole('button', { name: 'Add transaction', exact: true })
+      .click();
+    await expect(dialog).not.toBeVisible();
+
+    const transactions: { merchant_name: string; owner_user_id: number }[] =
+      await (await context.request.get(`${apiOrigin}/transactions`)).json();
+    expect(
+      transactions.find((t) => t.merchant_name === 'Corner Store')
+        ?.owner_user_id,
+    ).toBe(aliceId);
   });
 
   test('the edit panel marks the default owner and saves another', async ({
@@ -205,7 +233,7 @@ test.describe('Transaction owners', () => {
 
     await cell.hover();
     await expect(authedPage.locator('.tooltip')).toHaveText(
-      /Alice Gaudreau\s*alice-\d+@example\.test/,
+      /Alice Gaudreau \(default\)\s*alice-\d+@example\.test/,
     );
 
     await cell.getByRole('combobox').click();
@@ -281,7 +309,12 @@ test.describe('Edit account owners', () => {
       'Visa',
       'shared',
     );
-    await ownedAccount(context.request, apiOrigin, 'Joint', 'shared');
+    const joint = await ownedAccount(
+      context.request,
+      apiOrigin,
+      'Joint',
+      'shared',
+    );
     const id = await addTransaction(
       context.request,
       apiOrigin,
@@ -318,6 +351,10 @@ test.describe('Edit account owners', () => {
       .getByRole('button', { name: 'Edit owners', exact: true })
       .click();
     await visaOwner.getByRole('radio', { name: 'Alice Gaudreau' }).click();
+    await panel
+      .getByRole('radiogroup', { name: 'Owner: Joint' })
+      .getByRole('radio', { name: 'Alice Gaudreau' })
+      .click();
     await panel.getByRole('button', { name: 'Save', exact: true }).click();
 
     await expect(authedPage.getByText('Account owners saved.')).toBeVisible();
@@ -326,5 +363,9 @@ test.describe('Edit account owners', () => {
       authedPage.locator('li.institutions-list-row', { hasText: 'Visa' }),
     ).toContainText('Alice Gaudreau');
     expect(await ownerOf(context.request, apiOrigin, id)).toBe(aliceId);
+    const joined: { owner_user_id: number | null } = await (
+      await context.request.get(`${apiOrigin}/accounts/${joint}`)
+    ).json();
+    expect(joined.owner_user_id).toBe(aliceId);
   });
 });

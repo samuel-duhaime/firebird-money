@@ -12,6 +12,11 @@ const SELECT_COLUMNS: &str = "
 
 /// Lists a household's accounts, grouped by institution (A-Z), then A-Z by account name within one.
 pub async fn list(pool: &PgPool, household_id: i32) -> Result<Vec<Account>, sqlx::Error> {
+    list_on(&mut *pool.acquire().await?, household_id).await
+}
+
+/// `list` on a given connection, so it can run inside a database transaction.
+async fn list_on(conn: &mut PgConnection, household_id: i32) -> Result<Vec<Account>, sqlx::Error> {
     sqlx::query_as::<_, Account>(&format!(
         "SELECT {SELECT_COLUMNS}
          FROM accounts a
@@ -20,7 +25,7 @@ pub async fn list(pool: &PgPool, household_id: i32) -> Result<Vec<Account>, sqlx
          ORDER BY lower(i.name), i.id, lower(a.name), a.id"
     ))
     .bind(household_id)
-    .fetch_all(pool)
+    .fetch_all(&mut *conn)
     .await
 }
 
@@ -212,18 +217,21 @@ pub async fn set_owners(
 }
 
 /// `set_owners` on its own, for `PATCH /accounts/owners`: all or nothing, committed only when
-/// every account is the household's.
+/// every account is the household's. Returns every account as of the change, read before the
+/// commit so a failed read can't report a saved change as failed; `None` when an account isn't
+/// the household's.
 pub async fn update_owners(
     pool: &PgPool,
     household_id: i32,
     owners: &[AccountOwner],
-) -> Result<bool, sqlx::Error> {
+) -> Result<Option<Vec<Account>>, sqlx::Error> {
     let mut tx = pool.begin().await?;
     if !set_owners(&mut tx, household_id, owners).await? {
-        return Ok(false);
+        return Ok(None);
     }
+    let accounts = list_on(&mut tx, household_id).await?;
     tx.commit().await?;
-    Ok(true)
+    Ok(Some(accounts))
 }
 
 /// Deletes an account, scoped to `household_id`. Returns `false` if the id didn't exist (including

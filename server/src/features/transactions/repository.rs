@@ -42,6 +42,23 @@ fn owner_on_update(take: &str, owner: &str, account: &str) -> String {
     )
 }
 
+/// Waits for an owner change in progress on `account_id` (see
+/// `accounts::repository::set_owners`) and holds the account until `conn`'s transaction ends, so a
+/// transaction moved there reads its new owner. Ignores an id that isn't the household's: the
+/// move then fails on the account's foreign key.
+async fn lock_account(
+    conn: &mut PgConnection,
+    household_id: i32,
+    account_id: i32,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("SELECT 1 FROM accounts WHERE id = $1 AND household_id = $2 FOR SHARE")
+        .bind(account_id)
+        .bind(household_id)
+        .execute(&mut *conn)
+        .await?;
+    Ok(())
+}
+
 const FROM_JOIN: &str = "FROM transactions t
     JOIN merchants mch ON mch.id = t.merchant_id
     JOIN categories c ON c.id = t.category_id
@@ -481,6 +498,9 @@ pub async fn update(
     }
 
     let mut tx = pool.begin().await?;
+    if let Some(account_id) = patch.account_id {
+        lock_account(&mut tx, household_id, account_id).await?;
+    }
 
     let updated = sqlx::query_as::<_, Transaction>(&format!(
         "WITH updated AS (
@@ -558,6 +578,9 @@ pub async fn bulk_update(
     }
 
     let mut tx = pool.begin().await?;
+    if let Some(account_id) = patch.account_id {
+        lock_account(&mut tx, household_id, account_id).await?;
+    }
 
     let mut transactions = sqlx::query_as::<_, Transaction>(&format!(
         "WITH updated AS (

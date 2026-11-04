@@ -44,12 +44,22 @@ export const AccountOwnersModal = ({ onClose }: AccountOwnersModalProps) => {
   // The owners picked so far, by account id; an account missing here keeps its own.
   const [draft, setDraft] = useState<Map<number, number | null>>(new Map());
   const dialogRef = useRef<HTMLDivElement>(null);
+  const hasFocusedRef = useRef(false);
 
+  // Into the dialog right away, so Escape and Tab work there, then onto the first account's
+  // owner once the accounts and members have loaded. Only once: never pulls focus back later.
   useEffect(() => {
-    dialogRef.current
-      ?.querySelector<HTMLElement>('[role="radio"][aria-checked="true"]')
-      ?.focus();
-  }, [accounts]);
+    if (hasFocusedRef.current) return;
+    const chosen = dialogRef.current?.querySelector<HTMLElement>(
+      '[role="radio"][aria-checked="true"]',
+    );
+    if (chosen) {
+      chosen.focus();
+      hasFocusedRef.current = true;
+    } else if (!dialogRef.current?.contains(document.activeElement)) {
+      dialogRef.current?.focus();
+    }
+  }, [accounts, members]);
 
   const handleKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Escape') {
@@ -160,6 +170,7 @@ export const AccountOwnersModal = ({ onClose }: AccountOwnersModalProps) => {
         aria-modal="true"
         aria-labelledby="account-owners-title"
         aria-describedby="account-owners-description"
+        tabIndex={-1}
         onKeyDown={handleKeyDown}
       >
         <div className="modal-header">

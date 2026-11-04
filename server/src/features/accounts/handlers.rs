@@ -253,33 +253,21 @@ async fn update_account_owners(
     }
 
     match repository::update_owners(&pool, household_id, &body.owners).await {
-        Ok(true) => {}
-        Ok(false) => {
-            return error_response(
-                &l10n,
-                &locale,
-                StatusCode::BAD_REQUEST,
-                "account-owners-account-not-found",
-            )
-        }
-        Err(e) if is_foreign_key_violation_on(&e, OWNER_FKEY) => {
-            return error_response(
-                &l10n,
-                &locale,
-                StatusCode::BAD_REQUEST,
-                "account-owner-not-found",
-            )
-        }
+        Ok(Some(accounts)) => HttpResponse::Ok().json(accounts),
+        Ok(None) => error_response(
+            &l10n,
+            &locale,
+            StatusCode::BAD_REQUEST,
+            "account-owners-account-not-found",
+        ),
+        Err(e) if is_foreign_key_violation_on(&e, OWNER_FKEY) => error_response(
+            &l10n,
+            &locale,
+            StatusCode::BAD_REQUEST,
+            "account-owner-not-found",
+        ),
         Err(e) => {
             error!("failed to update account owners error={e}");
-            return internal_error_response(&l10n, &locale);
-        }
-    }
-
-    match repository::list(&pool, household_id).await {
-        Ok(accounts) => HttpResponse::Ok().json(accounts),
-        Err(e) => {
-            error!("failed to list accounts after updating owners error={e}");
             internal_error_response(&l10n, &locale)
         }
     }

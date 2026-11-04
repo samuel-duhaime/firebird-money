@@ -57,9 +57,16 @@
   font-size: 13px;
 }
 
+.account-owners-modal:focus {
+  outline: none;
+}
+
+/* Wraps onto more lines rather than clipping the last choices on a narrow screen. */
 .account-owners-choices {
   display: flex;
-  flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  min-width: 0;
   gap: var(--spacing-xs);
 }
 
