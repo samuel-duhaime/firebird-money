@@ -334,8 +334,13 @@ export const FiltersButton = () => {
     // Tags' and owners' "Select all" also covers "Untagged" or "Shared" (`flagKey`), when it's
     // visible.
     const extra = flagKey === undefined ? undefined : draft[flagKey];
+    // With no ids visible (the search only matches "Untagged" or "Shared"), it alone decides.
     const checked =
-      extra === undefined ? state.checked : state.checked && extra;
+      extra === undefined
+        ? state.checked
+        : ids.length === 0
+          ? extra
+          : state.checked && extra;
     const indeterminate =
       extra === undefined
         ? state.indeterminate
@@ -708,19 +713,20 @@ export const FiltersButton = () => {
   }
   for (const id of draft.owner_ids) {
     const member = memberById.get(id);
-    if (member) {
-      ownerItems.push({
-        key: `o${id}`,
-        icon: (
-          <Avatar
-            name={memberDisplayName(member)}
-            src={pictureSrc(member.picture_url)}
-          />
-        ),
-        label: memberDisplayName(member),
-        onRemove: removeId('owner_ids', id),
-      });
-    }
+    // A member removed since (still in the URL) keeps a row, so it can be taken off.
+    ownerItems.push({
+      key: `o${id}`,
+      icon: member && (
+        <Avatar
+          name={memberDisplayName(member)}
+          src={pictureSrc(member.picture_url)}
+        />
+      ),
+      label: member
+        ? memberDisplayName(member)
+        : t('settings.members.owner.unavailable'),
+      onRemove: removeId('owner_ids', id),
+    });
   }
   if (ownerItems.length > 0) {
     summary.push({

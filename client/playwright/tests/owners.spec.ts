@@ -322,6 +322,15 @@ test.describe('Filter by owner', () => {
       { data: { owner: aliceId } },
     );
     expect(patched.ok()).toBe(true);
+    // Test User's, so it's in none of the filters below.
+    const mine = await ownedAccount(
+      context.request,
+      apiOrigin,
+      'Mine',
+      (await (await context.request.get(`${apiOrigin}/auth/me`)).json()).user
+        .id,
+    );
+    await addTransaction(context.request, apiOrigin, mine, 'Koodo');
 
     const row = (merchant: string) =>
       authedPage.locator('li.transactions-row', { hasText: merchant });
@@ -340,12 +349,14 @@ test.describe('Filter by owner', () => {
       new URL(authedPage.url()).searchParams.get(key);
 
     await authedPage.goto('/transactions');
+    await expect(row('Koodo')).toBeVisible();
 
     await openOwners();
     await owner('Shared').check();
     await apply();
     await expect(row('Tangerine')).toBeVisible();
     await expect(row('Desjardins')).not.toBeVisible();
+    await expect(row('Koodo')).not.toBeVisible();
     expect(searchParam('shared_owner')).toBe('true');
 
     await openOwners();
@@ -354,6 +365,7 @@ test.describe('Filter by owner', () => {
     await apply();
     await expect(row('Desjardins')).toBeVisible();
     await expect(row('Tangerine')).not.toBeVisible();
+    await expect(row('Koodo')).not.toBeVisible();
     expect(searchParam('owner_ids')).toBe(String(aliceId));
     expect(searchParam('shared_owner')).toBeNull();
 
@@ -362,9 +374,18 @@ test.describe('Filter by owner', () => {
     await apply();
     await expect(row('Desjardins')).toBeVisible();
     await expect(row('Tangerine')).toBeVisible();
+    await expect(row('Koodo')).not.toBeVisible();
     await expect(
       authedPage.getByRole('button', { name: 'Filters (2)' }),
     ).toBeVisible();
+
+    // With only Shared matching the search, Select all follows it alone.
+    await openOwners();
+    await popover.getByRole('textbox', { name: 'Search...' }).fill('Shared');
+    const selectAll = popover.getByRole('checkbox', { name: 'Select all' });
+    await expect(selectAll).toBeChecked();
+    await selectAll.uncheck();
+    await expect(owner('Shared')).not.toBeChecked();
   });
 });
 
