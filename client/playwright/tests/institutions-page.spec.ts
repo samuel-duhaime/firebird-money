@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { test, expect } from '../fixtures';
 import { ensureAccount, getCategoryId, seedTransaction } from '../lib/seed';
 
@@ -8,6 +8,13 @@ const openAddAccount = (page: Page) =>
     .locator('.settings-panel-header')
     .getByRole('button', { name: 'Add account', exact: true })
     .click();
+
+/** Picks `owner` ("Shared" or a member's name) in the account form's Owner field. Its options open
+ * in a popover outside the dialog. */
+const pickOwner = async (page: Page, form: Locator, owner: string) => {
+  await form.getByLabel('Owner').click();
+  await page.getByRole('option', { name: owner }).click();
+};
 
 const card = (page: Page, institution: string) =>
   page.locator('section.institutions-list-card', { hasText: institution });
@@ -60,6 +67,7 @@ test.describe('Household > Institutions settings', () => {
     await form.getByLabel('Account name').fill('Compte conjoint');
     await form.getByLabel('Type').selectOption({ label: 'Savings' });
     await form.getByLabel('Last 4 digits (optional)').fill('5012');
+    await pickOwner(authedPage, form, 'Test User');
     await form
       .getByRole('button', { name: 'Add account', exact: true })
       .click();
@@ -68,6 +76,9 @@ test.describe('Household > Institutions settings', () => {
     const nationalBank = card(authedPage, 'National Bank');
     await expect(nationalBank).toContainText('1 account');
     await expect(nationalBank).toContainText('Compte conjoint (…5012)');
+    await expect(nationalBank.locator('.institutions-list-owner')).toHaveText(
+      /Test User/,
+    );
     await expect(nationalBank).toContainText('Savings · CAD · 0 transactions');
     // Common institutions can't be renamed or deleted.
     await expect(
@@ -77,7 +88,7 @@ test.describe('Household > Institutions settings', () => {
     ).toHaveCount(0);
   });
 
-  test('requires an account name, and rejects a bad last four', async ({
+  test('requires an account name and an owner, and rejects a bad last four', async ({
     authedPage,
   }) => {
     await authedPage.goto('/settings/institutions');
@@ -94,6 +105,14 @@ test.describe('Household > Institutions settings', () => {
     await expect(form.getByRole('alert')).toHaveText('A name is required.');
 
     await form.getByLabel('Account name').fill('Épargne');
+    await form
+      .getByRole('button', { name: 'Add account', exact: true })
+      .click();
+    await expect(form.getByRole('alert')).toHaveText(
+      'Choose who owns this account.',
+    );
+
+    await pickOwner(authedPage, form, 'Shared');
     await form.getByLabel('Last 4 digits (optional)').fill('12-4');
     await form
       .getByRole('button', { name: 'Add account', exact: true })
@@ -130,6 +149,7 @@ test.describe('Household > Institutions settings', () => {
 
     const form = authedPage.getByRole('dialog', { name: 'Add account' });
     await form.getByLabel('Account name').fill('Chèques');
+    await pickOwner(authedPage, form, 'Shared');
     await form
       .getByRole('button', { name: 'Add account', exact: true })
       .click();
@@ -158,6 +178,7 @@ test.describe('Household > Institutions settings', () => {
     await expect(form).toContainText('Seed Bank');
     await form.getByLabel('Account name').fill('Visa');
     await form.getByLabel('Type').selectOption({ label: 'Credit card' });
+    await pickOwner(authedPage, form, 'Shared');
     await form
       .getByRole('button', { name: 'Add account', exact: true })
       .click();
@@ -182,14 +203,65 @@ test.describe('Household > Institutions settings', () => {
     await expect(form.getByLabel('Account name')).toHaveValue('Chequing');
     await form.getByLabel('Account name').fill('Compte courant');
     await form.getByLabel('Currency').selectOption('USD');
+    await expect(form.getByLabel('Owner')).toHaveText(/Shared/);
+    await pickOwner(authedPage, form, 'Test User');
     await form.getByRole('button', { name: 'Save', exact: true }).click();
 
     await expect(form).not.toBeVisible();
+    const edited = authedPage.locator('li.institutions-list-row', {
+      hasText: 'Compte courant',
+    });
+    await expect(edited).toContainText('USD');
+    await expect(edited.locator('.institutions-list-owner')).toHaveText(
+      /Test User/,
+    );
+  });
+
+  test('the Owner field works from the keyboard like a select', async ({
+    authedPage,
+    context,
+    workerInfra,
+  }) => {
+    await ensureAccount(context.request, workerInfra.apiOrigin, 'Chequing');
+    await authedPage.goto('/settings/accounts');
+    await authedPage
+      .locator('li.institutions-list-row', { hasText: 'Chequing' })
+      .getByRole('button', { name: 'Edit', exact: true })
+      .click();
+
+    const form = authedPage.getByRole('dialog', { name: 'Edit account' });
+    const owner = form.getByRole('combobox', { name: 'Owner' });
+    await owner.focus();
+
+    // Closed, the arrows change the choice straight away.
+    await authedPage.keyboard.press('ArrowDown');
+    await expect(owner).toHaveText(/Test User/);
+    await authedPage.keyboard.press('ArrowUp');
+    await expect(owner).toHaveText(/Shared/);
+
+    // Open, they move through the list; Enter picks.
+    await authedPage.keyboard.press('Enter');
+    const listbox = authedPage.getByRole('listbox');
+    await expect(listbox).toBeVisible();
+    await authedPage.keyboard.press('ArrowDown');
+    await authedPage.keyboard.press('Enter');
+    await expect(listbox).not.toBeVisible();
+    await expect(owner).toHaveText(/Test User/);
+    await expect(owner).toBeFocused();
+
+    // Escape closes only the list, not the form.
+    await authedPage.keyboard.press('Space');
+    await expect(listbox).toBeVisible();
+    await authedPage.keyboard.press('Escape');
+    await expect(listbox).not.toBeVisible();
+    await expect(form).toBeVisible();
+
+    await form.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(
-      authedPage.locator('li.institutions-list-row', {
-        hasText: 'Compte courant',
-      }),
-    ).toContainText('USD');
+      authedPage
+        .locator('li.institutions-list-row', { hasText: 'Chequing' })
+        .locator('.institutions-list-owner'),
+    ).toHaveText(/Test User/);
   });
 
   test('deleting an account asks for confirmation first', async ({
@@ -285,7 +357,7 @@ test.describe('Household > Institutions settings', () => {
     await expect(renamed).toHaveCount(0);
   });
 
-  test('a transaction count links to that account\'s transactions', async ({
+  test("a transaction count links to that account's transactions", async ({
     authedPage,
     context,
     workerInfra,

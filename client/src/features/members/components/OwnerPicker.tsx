@@ -1,3 +1,5 @@
+import { useEffect, useId, useState } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -16,6 +18,8 @@ type OwnerPickerProps = {
   onChange: (owner: number | null) => void;
   /** Shown while `value` is `undefined`. */
   placeholder?: string;
+  /** For a `<label htmlFor>` to point at the trigger. */
+  id?: string;
   triggerClassName?: string;
   ariaLabel?: string;
 };
@@ -37,11 +41,42 @@ const MemberLabel = ({ member }: { member: Member }) => {
   );
 };
 
-/** Picks who owns something: Shared, or one member of the household, each with their avatar. */
+/** Who owns something, shown the same way the picker shows it: the Shared icon and label, or the
+ * member's avatar and name. Shows nothing until the members have loaded. */
+export const OwnerLabel = ({ owner }: { owner: number | null }) => {
+  const { t } = useTranslation();
+  const { data: members } = useMembers();
+
+  if (owner === null) {
+    return (
+      <>
+        <SharedIcon />
+        <span className="owner-picker-name">
+          {t('settings.members.owner.shared')}
+        </span>
+      </>
+    );
+  }
+
+  const member = members?.find((m) => m.id === owner);
+  return member ? <MemberLabel member={member} /> : null;
+};
+
+/** The keys that move through a closed or open list the way they do in a native `<select>`. */
+const NAVIGATION_KEYS = ['ArrowDown', 'ArrowUp', 'Home', 'End'];
+
+/**
+ * Picks who owns something: Shared, or one member of the household, each with their avatar.
+ * Behaves like a native `<select>` from the keyboard (a select-only combobox): focus stays on the
+ * trigger, the arrows, Home and End change the choice while closed or move through the list while
+ * open, a letter jumps to the next choice starting with it, Alt+Down, Enter or Space opens, and
+ * Enter, Space or Tab picks the highlighted choice, Escape closes without picking.
+ */
 export const OwnerPicker = ({
   value,
   onChange,
   placeholder,
+  id,
   triggerClassName,
   ariaLabel,
 }: OwnerPickerProps) => {
@@ -49,25 +84,123 @@ export const OwnerPicker = ({
   const { data: members } = useMembers();
   const { isOpen, setIsOpen, position, triggerRef, popoverRef } =
     useAnchoredPopover<HTMLButtonElement>();
+  const listboxId = useId();
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
 
   const selected = members?.find((member) => member.id === value);
   const sharedLabel = t('settings.members.owner.shared');
 
-  const pick = (owner: number | null) => {
-    setIsOpen(false);
-    onChange(owner);
+  // Every choice in list order, with the text type-to-jump matches against.
+  const options: { owner: number | null; label: string; member?: Member }[] = [
+    { owner: null, label: sharedLabel },
+    ...(members ?? []).map((member) => ({
+      owner: member.id,
+      label: memberDisplayName(member),
+      member,
+    })),
+  ];
+  const selectedIndex = options.findIndex((option) => option.owner === value);
+  const optionId = (index: number) => `${listboxId}-option-${index}`;
+
+  const open = () => {
+    setHighlightedIndex(Math.max(selectedIndex, 0));
+    setIsOpen(true);
   };
+
+  const pick = (index: number) => {
+    setIsOpen(false);
+    const option = options[index];
+    if (option && option.owner !== value) onChange(option.owner);
+  };
+
+  /** Where a navigation key or a typed letter moves to from `from` (-1 when nothing is picked). */
+  const target = (key: string, from: number) => {
+    const last = options.length - 1;
+    if (key === 'ArrowDown') return Math.min(from + 1, last);
+    if (key === 'ArrowUp') return Math.max(from - 1, 0);
+    if (key === 'Home') return 0;
+    if (key === 'End') return last;
+
+    // A letter: the next choice starting with it, wrapping around.
+    const letter = key.toLocaleLowerCase();
+    for (let step = 1; step <= options.length; step++) {
+      const index = (from + step + options.length) % options.length;
+      if (options[index].label.toLocaleLowerCase().startsWith(letter)) {
+        return index;
+      }
+    }
+    return from;
+  };
+
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    const isLetter = event.key.length === 1 && event.key !== ' ';
+    const isModified = event.ctrlKey || event.metaKey;
+
+    if (!isOpen) {
+      if (event.altKey && event.key === 'ArrowDown') {
+        event.preventDefault();
+        open();
+      } else if (
+        (NAVIGATION_KEYS.includes(event.key) || isLetter) &&
+        !event.altKey &&
+        !isModified
+      ) {
+        event.preventDefault();
+        const index = target(event.key, selectedIndex);
+        if (index >= 0) pick(index);
+      }
+      // Enter and Space click the button, which opens it.
+      return;
+    }
+
+    if (event.key === 'Escape') {
+      // Only the list closes, not a modal the picker sits in.
+      event.preventDefault();
+      event.stopPropagation();
+      setIsOpen(false);
+    } else if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      pick(highlightedIndex);
+    } else if (event.key === 'Tab') {
+      // Picks and lets focus move on, like a native select.
+      pick(highlightedIndex);
+    } else if (event.altKey && event.key === 'ArrowUp') {
+      event.preventDefault();
+      pick(highlightedIndex);
+    } else if (
+      NAVIGATION_KEYS.includes(event.key) ||
+      (isLetter && !isModified)
+    ) {
+      event.preventDefault();
+      setHighlightedIndex(target(event.key, highlightedIndex));
+    }
+  };
+
+  // Keeps the highlighted choice in view in a long list.
+  useEffect(() => {
+    if (!isOpen) return;
+    document
+      .getElementById(`${listboxId}-option-${highlightedIndex}`)
+      ?.scrollIntoView({ block: 'nearest' });
+  }, [isOpen, listboxId, highlightedIndex]);
+
+  const isShown = isOpen && position;
 
   return (
     <>
       <button
+        id={id}
         type="button"
+        role="combobox"
         className={`owner-picker-trigger ${triggerClassName ?? ''}`}
         ref={triggerRef}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
+        aria-controls={isShown ? listboxId : undefined}
+        aria-activedescendant={isShown ? optionId(highlightedIndex) : undefined}
         aria-label={ariaLabel}
-        onClick={() => setIsOpen((open) => !open)}
+        onClick={() => (isOpen ? setIsOpen(false) : open())}
+        onKeyDown={handleKeyDown}
       >
         {value === null && (
           <>
@@ -86,36 +219,46 @@ export const OwnerPicker = ({
           className="owner-picker-chevron"
         />
       </button>
-      {isOpen &&
-        position &&
+      {isShown &&
         createPortal(
           <div
+            id={listboxId}
             className="anchored-popover owner-picker-popover"
             role="listbox"
             ref={popoverRef}
-            style={{ top: position.top, left: position.left }}
+            // As wide as the field it opens from. Read on each render, and the hook re-renders on
+            // resize as it repositions.
+            style={{
+              top: position.top,
+              left: position.left,
+              width: triggerRef.current?.offsetWidth,
+            }}
           >
-            <button
-              type="button"
-              role="option"
-              aria-selected={value === null}
-              className="owner-picker-option"
-              onClick={() => pick(null)}
-            >
-              <SharedIcon />
-              <span className="owner-picker-name">{sharedLabel}</span>
-            </button>
-            {members?.map((member) => (
-              <button
-                key={member.id}
-                type="button"
+            {options.map((option, index) => (
+              <div
+                key={option.owner ?? 'shared'}
+                id={optionId(index)}
                 role="option"
-                aria-selected={value === member.id}
-                className="owner-picker-option"
-                onClick={() => pick(member.id)}
+                aria-selected={option.owner === value}
+                className={
+                  index === highlightedIndex
+                    ? 'owner-picker-option owner-picker-option--highlighted'
+                    : 'owner-picker-option'
+                }
+                // Keeps focus on the trigger, where the keyboard keeps working.
+                onMouseDown={(event) => event.preventDefault()}
+                onMouseEnter={() => setHighlightedIndex(index)}
+                onClick={() => pick(index)}
               >
-                <MemberLabel member={member} />
-              </button>
+                {option.member ? (
+                  <MemberLabel member={option.member} />
+                ) : (
+                  <>
+                    <SharedIcon />
+                    <span className="owner-picker-name">{sharedLabel}</span>
+                  </>
+                )}
+              </div>
             ))}
           </div>,
           document.body,

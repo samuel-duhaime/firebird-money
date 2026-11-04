@@ -59,6 +59,13 @@
   font-weight: 600;
 }
 
+.institutions-list-owner {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: 13px;
+}
+
 .institutions-list-actions {
   display: flex;
   gap: var(--spacing-xs);

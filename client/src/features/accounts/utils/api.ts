@@ -11,6 +11,8 @@ export interface NewAccount {
   last_four?: string;
   /** Defaults to `CAD` server-side when absent. */
   currency?: string;
+  /** `'shared'` or a member's id. Required: there's no default owner. */
+  owner: 'shared' | number;
 }
 
 export const createAccount = (newAccount: NewAccount): Promise<Account> =>

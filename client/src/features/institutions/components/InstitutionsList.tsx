@@ -14,6 +14,7 @@ import { useDeleteAccount } from '../../accounts/hooks/use-delete-account';
 import { accountLabel } from '../../accounts/utils/format';
 import type { Account } from '../../accounts/utils/types';
 import { InstitutionAvatar } from './InstitutionAvatar';
+import { OwnerLabel } from '../../members/components/OwnerPicker';
 import { TransactionCountLink } from '../../transactions/components/ViewTransactionsLink';
 import './InstitutionsList.css';
 
@@ -201,6 +202,9 @@ export const InstitutionsList = ({
                       <div className="institutions-list-account">
                         <span className="institutions-list-account-name">
                           {accountLabel(account)}
+                        </span>
+                        <span className="institutions-list-owner">
+                          <OwnerLabel owner={account.owner_user_id} />
                         </span>
                         <span className="institutions-list-meta">
                           {t(`settings.institutions.types.${account.type}`)}

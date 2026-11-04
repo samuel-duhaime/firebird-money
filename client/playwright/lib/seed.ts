@@ -86,7 +86,12 @@ export const ensureAccount = async (
   }
 
   const response = await request.post(`${apiOrigin}/accounts`, {
-    data: { institution_id: institutionId, name, type: 'checking' },
+    data: {
+      institution_id: institutionId,
+      name,
+      type: 'checking',
+      owner: 'shared',
+    },
   });
   if (!response.ok()) {
     throw new Error(

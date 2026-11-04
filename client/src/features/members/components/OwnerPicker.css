@@ -13,10 +13,21 @@
   cursor: pointer;
 }
 
+/* Same look as a form field (`Select`'s `field` variant, `.modal-body input`). */
 .owner-picker-trigger {
-  padding: var(--spacing-xs) var(--spacing-s);
+  box-sizing: border-box;
+  /* 13px on the right puts the chevron where `Select`'s sits: 14px from the outer edge, border
+   * included. */
+  padding: 11px 13px 11px 14px;
   border: 1px solid var(--color-medium);
-  border-radius: var(--spacing-xs);
+  border-radius: 8px;
+  background: var(--color-background);
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.owner-picker-trigger:focus-visible {
+  border-color: var(--color-primary);
 }
 
 .owner-picker-name {
@@ -31,10 +42,11 @@
   color: var(--color-lightest);
 }
 
+/* Same size as `Select`'s chevron. */
 .owner-picker-chevron {
   flex-shrink: 0;
-  width: 12px;
   color: var(--color-lightest);
+  font-size: 12px;
 }
 
 .owner-picker-shared-icon {
@@ -50,21 +62,21 @@
 }
 
 .owner-picker-popover {
+  box-sizing: border-box;
   min-width: 200px;
-  max-width: 320px;
   padding: var(--spacing-xs);
   gap: 2px;
 }
 
 .owner-picker-option {
+  box-sizing: border-box;
   padding: var(--spacing-xs) var(--spacing-s);
   border: none;
   border-radius: var(--spacing-xs);
   transition: background-color 0.15s ease;
 }
 
-.owner-picker-option:hover,
-.owner-picker-option:focus-visible,
-.owner-picker-option[aria-selected='true'] {
+/* One highlight at a time: the mouse moves it too, and the list opens on the picked choice. */
+.owner-picker-option--highlighted {
   background: var(--color-medium);
 }

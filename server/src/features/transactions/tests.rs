@@ -3173,6 +3173,7 @@ where
             "institution_id": institution["id"],
             "name": name,
             "type": "savings",
+            "owner": "shared",
         }))
         .to_request();
     let account: serde_json::Value = test::call_and_read_body_json(app, req).await;
@@ -3650,6 +3651,7 @@ async fn import_transactions_reuses_an_account_saved_without_last_digits(pool: P
             "institution_id": institution["id"],
             "name": "Visa",
             "type": "credit_card",
+            "owner": "shared",
         }))
         .to_request();
     let visa: serde_json::Value = test::call_and_read_body_json(&app, req).await;

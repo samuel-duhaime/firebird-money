@@ -54,11 +54,16 @@ pub async fn update(
 
 /// Removes a member from `household_id` (the user itself is kept, with no household). Returns
 /// `true` if they were removed, `false` if the id didn't exist (including when they belong to a
-/// different household). Fails with a foreign-key violation while they still have transactions in
-/// the household.
+/// different household). The accounts they own become Shared. Fails with a foreign-key violation
+/// while they still have transactions in the household.
 pub async fn remove(pool: &PgPool, household_id: i32, id: i32) -> Result<bool, sqlx::Error> {
+    // One statement, so a removal refused over transactions leaves their accounts' owner as it was.
     let result = sqlx::query(
-        "UPDATE users SET household_id = NULL, household_role = NULL
+        "WITH unowned AS (
+            UPDATE accounts SET owner_user_id = NULL
+            WHERE owner_user_id = $1 AND household_id = $2
+         )
+         UPDATE users SET household_id = NULL, household_role = NULL
          WHERE id = $1 AND household_id = $2",
     )
     .bind(id)

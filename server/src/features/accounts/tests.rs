@@ -130,6 +130,7 @@ where
             "institution_id": institution_id,
             "name": name,
             "type": "checking",
+            "owner": "shared",
         })),
     )
     .await;
@@ -183,6 +184,7 @@ async fn create_account_returns_the_row_with_its_institution(pool: PgPool) {
             "institution_id": institution_id,
             "name": "  Compte conjoint ",
             "type": "checking",
+            "owner": "shared",
             "last_four": "5012",
             "currency": "cad",
         })),
@@ -213,6 +215,7 @@ async fn create_account_defaults_currency_and_blank_last_four(pool: PgPool) {
             "institution_id": institution_id,
             "name": "Cash",
             "type": "cash",
+            "owner": "shared",
             "last_four": "  ",
         })),
     )
@@ -259,21 +262,23 @@ async fn create_account_rejects_invalid_fields(pool: PgPool) {
         ("type", serde_json::json!("piggy_bank")),
         ("last_four", serde_json::json!("12345")),
         ("currency", serde_json::json!("dollars")),
+        ("owner", serde_json::json!("everyone")),
+        ("owner", serde_json::Value::Null),
     ] {
         let mut body = serde_json::json!({
             "institution_id": institution_id,
             "name": "Chèques",
             "type": "checking",
+            "owner": "shared",
         });
         body[field] = value;
-        let (status, _) = call(
-            &app,
-            &cookie,
-            test::TestRequest::post().uri("/accounts"),
-            Some(body),
-        )
-        .await;
-        assert_eq!(status, 400, "{field}");
+        // Not `call`: a bad `owner` fails in the JSON extractor, whose 400 body isn't JSON.
+        let req = test::TestRequest::post()
+            .uri("/accounts")
+            .insert_header(("Cookie", cookie.as_str()))
+            .set_json(body)
+            .to_request();
+        assert_eq!(test::call_service(&app, req).await.status(), 400, "{field}");
     }
 }
 
@@ -292,6 +297,7 @@ async fn create_account_rejects_another_households_institution(pool: PgPool) {
             "institution_id": institution_id,
             "name": "Sneaky",
             "type": "checking",
+            "owner": "shared",
         })),
     )
     .await;
@@ -386,6 +392,7 @@ async fn update_account_changes_fields_and_clears_last_four(pool: PgPool) {
             "institution_id": first,
             "name": "Visa",
             "type": "credit_card",
+            "owner": "shared",
             "last_four": "3010",
         })),
     )
@@ -471,4 +478,155 @@ async fn delete_account_removes_an_unused_account(pool: PgPool) {
     )
     .await;
     assert_eq!(status, 204);
+}
+
+/// The signed-in user's id.
+async fn my_id<S, B>(app: &S, cookie: &str) -> i64
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let (_, me) = call(app, cookie, test::TestRequest::get().uri("/auth/me"), None).await;
+    me["user"]["id"].as_i64().unwrap()
+}
+
+#[sqlx::test]
+async fn create_account_requires_an_owner(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let institution_id = create_institution(&app, &cookie, "Caisse du coin").await;
+
+    let (status, _) = call(
+        &app,
+        &cookie,
+        test::TestRequest::post().uri("/accounts"),
+        Some(serde_json::json!({
+            "institution_id": institution_id,
+            "name": "Chèques",
+            "type": "checking",
+        })),
+    )
+    .await;
+
+    assert_eq!(status, 400);
+}
+
+#[sqlx::test]
+async fn create_account_with_a_member_or_shared_as_owner(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let sam_id = my_id(&app, &cookie).await;
+    let institution_id = create_institution(&app, &cookie, "Caisse du coin").await;
+
+    for (owner, expected) in [
+        (serde_json::json!(sam_id), serde_json::json!(sam_id)),
+        (serde_json::json!("shared"), serde_json::Value::Null),
+    ] {
+        let (status, body) = call(
+            &app,
+            &cookie,
+            test::TestRequest::post().uri("/accounts"),
+            Some(serde_json::json!({
+                "institution_id": institution_id,
+                "name": "Chèques",
+                "type": "checking",
+                "owner": owner,
+            })),
+        )
+        .await;
+        assert_eq!(status, 201, "{body}");
+        assert_eq!(body["owner_user_id"], expected);
+    }
+
+    let (_, list) = call(
+        &app,
+        &cookie,
+        test::TestRequest::get().uri("/accounts"),
+        None,
+    )
+    .await;
+    let owners: Vec<_> = list
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|account| account["owner_user_id"].clone())
+        .collect();
+    assert!(owners.contains(&serde_json::json!(sam_id)));
+    assert!(owners.contains(&serde_json::Value::Null));
+}
+
+#[sqlx::test]
+async fn create_account_rejects_an_owner_from_another_household(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let other_cookie = sign_in_with_household(&app, "other@example.com").await;
+    let other_id = my_id(&app, &other_cookie).await;
+    let institution_id = create_institution(&app, &cookie, "Caisse du coin").await;
+
+    for owner in [other_id, 999_999] {
+        let (status, body) = call(
+            &app,
+            &cookie,
+            test::TestRequest::post().uri("/accounts"),
+            Some(serde_json::json!({
+                "institution_id": institution_id,
+                "name": "Chèques",
+                "type": "checking",
+                "owner": owner,
+            })),
+        )
+        .await;
+        assert_eq!(status, 400, "{owner}: {body}");
+    }
+}
+
+#[sqlx::test]
+async fn update_account_changes_the_owner_and_back_to_shared(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let other_cookie = sign_in_with_household(&app, "other@example.com").await;
+    let sam_id = my_id(&app, &cookie).await;
+    let other_id = my_id(&app, &other_cookie).await;
+    let institution_id = create_institution(&app, &cookie, "Caisse du coin").await;
+    let account_id = create_account(&app, &cookie, institution_id, "Chèques").await;
+    let uri = format!("/accounts/{account_id}");
+
+    let (status, body) = call(
+        &app,
+        &cookie,
+        test::TestRequest::patch().uri(&uri),
+        Some(serde_json::json!({ "owner": sam_id })),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["owner_user_id"], sam_id);
+
+    // Leaving `owner` out keeps it.
+    let (_, body) = call(
+        &app,
+        &cookie,
+        test::TestRequest::patch().uri(&uri),
+        Some(serde_json::json!({ "name": "Compte chèques" })),
+    )
+    .await;
+    assert_eq!(body["owner_user_id"], sam_id);
+
+    let (status, _) = call(
+        &app,
+        &cookie,
+        test::TestRequest::patch().uri(&uri),
+        Some(serde_json::json!({ "owner": other_id })),
+    )
+    .await;
+    assert_eq!(status, 400);
+
+    let (status, body) = call(
+        &app,
+        &cookie,
+        test::TestRequest::patch().uri(&uri),
+        Some(serde_json::json!({ "owner": "shared" })),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["owner_user_id"], serde_json::Value::Null);
 }

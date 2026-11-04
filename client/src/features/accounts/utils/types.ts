@@ -24,6 +24,8 @@ export interface Account {
   last_four: string | null;
   /** ISO 4217 code, e.g. "CAD". */
   currency: string;
+  /** The member it belongs to, or `null` when it's Shared with the whole household. */
+  owner_user_id: number | null;
   created_at: string;
   /** How many of this household's transactions are in this account. */
   transaction_count: number;

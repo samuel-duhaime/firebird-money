@@ -318,6 +318,62 @@ async fn delete_member_removes_them_from_the_household(pool: PgPool) {
     assert!(jane["household"].is_null());
 }
 
+/// Creates an account in the household owned by `owner`, returning its id.
+async fn create_owned_account<S, B>(app: &S, cookie: &str, owner: i64) -> i64
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let institution_req = test::TestRequest::post()
+        .uri("/institutions")
+        .insert_header(("Cookie", cookie))
+        .set_json(serde_json::json!({ "name": "Caisse du coin" }))
+        .to_request();
+    let institution: serde_json::Value = test::call_and_read_body_json(app, institution_req).await;
+    let account_req = test::TestRequest::post()
+        .uri("/accounts")
+        .insert_header(("Cookie", cookie))
+        .set_json(serde_json::json!({
+            "institution_id": institution["id"],
+            "name": "Chèques",
+            "type": "checking",
+            "owner": owner,
+        }))
+        .to_request();
+    let account: serde_json::Value = test::call_and_read_body_json(app, account_req).await;
+    account["id"].as_i64().unwrap()
+}
+
+/// The `owner_user_id` of `account_id`, as `cookie` sees it.
+async fn account_owner<S, B>(app: &S, cookie: &str, account_id: i64) -> serde_json::Value
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let req = test::TestRequest::get()
+        .uri(&format!("/accounts/{account_id}"))
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    let account: serde_json::Value = test::call_and_read_body_json(app, req).await;
+    account["owner_user_id"].clone()
+}
+
+#[sqlx::test]
+async fn delete_member_makes_their_accounts_shared(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = onboard(&app, "sam@example.com", None).await;
+    let (_, jane_id) = join(&app, &cookie, "jane@example.com").await;
+    let account_id = create_owned_account(&app, &cookie, jane_id).await;
+
+    let delete_req = test::TestRequest::delete()
+        .uri(&format!("/members/{jane_id}"))
+        .insert_header(("Cookie", cookie.clone()))
+        .to_request();
+    assert_eq!(test::call_service(&app, delete_req).await.status(), 204);
+
+    assert!(account_owner(&app, &cookie, account_id).await.is_null());
+}
+
 #[sqlx::test]
 async fn delete_member_is_blocked_while_they_have_transactions(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
@@ -348,13 +404,20 @@ async fn delete_member_is_blocked_while_they_have_transactions(pool: PgPool) {
         201
     );
 
+    let owned_account_id = create_owned_account(&app, &cookie, jane_id).await;
+
     let delete_req = test::TestRequest::delete()
         .uri(&format!("/members/{jane_id}"))
-        .insert_header(("Cookie", cookie))
+        .insert_header(("Cookie", cookie.clone()))
         .to_request();
     let resp = test::call_service(&app, delete_req).await;
 
     assert_eq!(resp.status(), 409);
+    // The refused removal leaves her account hers.
+    assert_eq!(
+        account_owner(&app, &cookie, owned_account_id).await,
+        jane_id
+    );
 }
 
 #[sqlx::test]

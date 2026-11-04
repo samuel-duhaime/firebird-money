@@ -41,6 +41,8 @@ account-name-required = A name is required
 account-invalid-type = type must be one of checking, savings, credit_card, investment, loan, mortgage, cash, or other
 account-invalid-last-four = last_four must be 1 to 4 letters or digits
 account-invalid-currency = currency must be a 3-letter code, e.g. CAD
+account-owner-required = owner is required: "shared" or a member id
+account-owner-not-found = The owner must be a member of this household
 # Magic-link email. The link itself is inserted between the instructions and the sign-off.
 auth-email-subject = Your FireBird Money sign-in link
 auth-email-greeting = Hi,
