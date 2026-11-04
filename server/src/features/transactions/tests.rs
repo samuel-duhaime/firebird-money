@@ -1240,6 +1240,102 @@ async fn list_transactions_filters_by_tag_ids_and_untagged(pool: PgPool) {
     assert_eq!(both, vec!["COSTCO", "METRO", "IGA"]);
 }
 
+/// Signs a new user in and joins them to the household of `manager_cookie`; returns their id.
+async fn join_household<S, B>(app: &S, manager_cookie: &str, email: &str) -> i64
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let req = test::TestRequest::get()
+        .uri("/auth/me")
+        .insert_header(("Cookie", manager_cookie))
+        .to_request();
+    let me: serde_json::Value = test::call_and_read_body_json(app, req).await;
+    let join_code = me["household"]["join_code"].as_str().unwrap().to_string();
+
+    let req = test::TestRequest::post()
+        .uri("/auth/request-login")
+        .set_json(serde_json::json!({ "email": email }))
+        .to_request();
+    let resp = test::call_service(app, req).await;
+    let cookie = resp
+        .response()
+        .cookies()
+        .find(|cookie| cookie.name() == SESSION_COOKIE_NAME)
+        .unwrap();
+    let cookie = format!("{}={}", cookie.name(), cookie.value());
+
+    let req = test::TestRequest::post()
+        .uri("/auth/onboarding")
+        .insert_header(("Cookie", cookie.clone()))
+        .set_json(serde_json::json!({
+            "first_name": "Alice",
+            "last_name": "Gaudreau",
+            "join_code": join_code,
+        }))
+        .to_request();
+    assert_eq!(test::call_service(app, req).await.status(), 201);
+    own_user_id(app, &cookie).await
+}
+
+#[sqlx::test]
+async fn list_transactions_filters_by_owner_ids_and_shared_owner(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let sam_id = own_user_id(&app, &cookie).await;
+    let alice_id = join_household(&app, &cookie, "alice@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+
+    // All on the same Shared account, so IGA and METRO only count through their own owner.
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "10.00",
+    )
+    .await;
+    for (date, statement, owner) in [
+        ("2024-01-16", "IGA", sam_id),
+        ("2024-01-17", "METRO", alice_id),
+    ] {
+        let id = create_via_api(&app, &cookie, category_id, date, statement, "10.00").await;
+        let req = test::TestRequest::patch()
+            .uri(&format!("/transactions/{id}"))
+            .insert_header(("Cookie", cookie.clone()))
+            .set_json(serde_json::json!({ "owner": owner }))
+            .to_request();
+        assert_eq!(test::call_service(&app, req).await.status(), 200);
+    }
+
+    let shared = listed_merchant_names(&app, &cookie, "/transactions?shared_owner=true").await;
+    assert_eq!(shared, vec!["STARBUCKS"]);
+
+    let sam =
+        listed_merchant_names(&app, &cookie, &format!("/transactions?owner_ids={sam_id}")).await;
+    assert_eq!(sam, vec!["IGA"]);
+
+    let both = listed_merchant_names(
+        &app,
+        &cookie,
+        &format!("/transactions?owner_ids={alice_id}&shared_owner=true"),
+    )
+    .await;
+    assert_eq!(both, vec!["METRO", "STARBUCKS"]);
+
+    let req = test::TestRequest::get()
+        .uri(&format!(
+            "/transactions/download?format=csv&owner_ids={sam_id}"
+        ))
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    let body = test::call_and_read_body(&app, req).await;
+    let csv = String::from_utf8(body.to_vec()).unwrap();
+    assert_eq!(csv.lines().count(), 2, "{csv}");
+    assert!(csv.lines().nth(1).unwrap().contains("IGA"), "{csv}");
+}
+
 #[sqlx::test]
 async fn list_transactions_filters_by_amount(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;

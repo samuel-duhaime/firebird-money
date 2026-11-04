@@ -293,7 +293,11 @@ test.describe('add transaction', () => {
     context,
     workerInfra,
   }) => {
-    await createMerchant(context.request, workerInfra.apiOrigin, 'Corner Store');
+    await createMerchant(
+      context.request,
+      workerInfra.apiOrigin,
+      'Corner Store',
+    );
     await authedPage.goto('/transactions');
     await authedPage.getByRole('button', { name: 'Add', exact: true }).click();
 
@@ -333,7 +337,11 @@ test.describe('add transaction', () => {
     context,
     workerInfra,
   }) => {
-    await createMerchant(context.request, workerInfra.apiOrigin, 'Corner Store');
+    await createMerchant(
+      context.request,
+      workerInfra.apiOrigin,
+      'Corner Store',
+    );
     await authedPage.route('**/transactions', async (route) => {
       if (route.request().method() === 'POST') {
         await route.fulfill({
@@ -619,7 +627,11 @@ test.describe('edit and delete transaction', () => {
     workerInfra,
   }) => {
     await seedCornerStore(context.request, workerInfra.apiOrigin);
-    await createMerchant(context.request, workerInfra.apiOrigin, 'Uptown Store');
+    await createMerchant(
+      context.request,
+      workerInfra.apiOrigin,
+      'Uptown Store',
+    );
     const dialog = await openEditPanel(authedPage);
 
     await selectMerchant(dialog, authedPage, 'Uptown Store');
@@ -708,7 +720,9 @@ test.describe('edit and delete transaction', () => {
     await seedCornerStore(context.request, workerInfra.apiOrigin, 'Groceries');
     const dialog = await openEditPanel(authedPage);
 
-    await dialog.getByRole('button', { name: 'Groceries', exact: true }).click();
+    await dialog
+      .getByRole('button', { name: 'Groceries', exact: true })
+      .click();
     await authedPage
       .locator('.category-picker-popover')
       .getByRole('button', { name: 'Coffee Shops', exact: true })
@@ -736,7 +750,11 @@ test.describe('edit and delete transaction', () => {
     workerInfra,
   }) => {
     await seedCornerStore(context.request, workerInfra.apiOrigin);
-    await createMerchant(context.request, workerInfra.apiOrigin, 'Uptown Store');
+    await createMerchant(
+      context.request,
+      workerInfra.apiOrigin,
+      'Uptown Store',
+    );
     const dialog = await openEditPanel(authedPage);
 
     await authedPage.route('**/transactions/*', async (route) => {
@@ -792,7 +810,9 @@ test.describe('edit and delete transaction', () => {
     await expect(dialog).toBeVisible();
     // The category trigger has no Escape handler of its own, so Escape bubbles up to the panel
     // and closes it — unlike from the amount/merchant fields (see the per-field Escape tests).
-    await dialog.getByRole('button', { name: 'Groceries', exact: true }).focus();
+    await dialog
+      .getByRole('button', { name: 'Groceries', exact: true })
+      .focus();
     await authedPage.keyboard.press('Escape');
 
     await expect(dialog).not.toBeVisible();
@@ -908,9 +928,7 @@ test.describe('edit and delete transaction', () => {
     const dialog = authedPage.getByRole('dialog', { name: 'Edit transaction' });
     await expect(dialog).toBeVisible();
     await expect(dialog.getByText('Transaction not found.')).toBeVisible();
-    await expect(
-      dialog.getByText('Loading transaction…'),
-    ).not.toBeVisible();
+    await expect(dialog.getByText('Loading transaction…')).not.toBeVisible();
   });
 });
 
@@ -989,7 +1007,9 @@ test.describe('edit multiple transactions', () => {
     await enterSelectionMode(authedPage);
     await rowCheckbox(authedPage, 'Corner Store').click();
 
-    await authedPage.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await authedPage
+      .getByRole('button', { name: 'Cancel', exact: true })
+      .click();
 
     await expect(
       authedPage.getByRole('button', { name: 'Edit multiple', exact: true }),
@@ -1119,7 +1139,9 @@ test.describe('edit multiple transactions', () => {
     await rowCheckbox(authedPage, 'Corner Store').click();
     await rowCheckbox(authedPage, 'Downtown Store').click();
 
-    await authedPage.getByRole('button', { name: 'Edit 2', exact: true }).click();
+    await authedPage
+      .getByRole('button', { name: 'Edit 2', exact: true })
+      .click();
 
     const dialog = authedPage.getByRole('dialog', {
       name: 'Edit 2 transactions',
@@ -1144,7 +1166,9 @@ test.describe('edit multiple transactions', () => {
     await seedTwo(context.request, workerInfra.apiOrigin);
     await enterSelectionMode(authedPage);
     await rowCheckbox(authedPage, 'Corner Store').click();
-    await authedPage.getByRole('button', { name: 'Edit 1', exact: true }).click();
+    await authedPage
+      .getByRole('button', { name: 'Edit 1', exact: true })
+      .click();
 
     const dialog = authedPage.getByRole('dialog', {
       name: 'Edit 1 transaction',
@@ -1169,7 +1193,9 @@ test.describe('edit multiple transactions', () => {
     await seedTwo(context.request, workerInfra.apiOrigin);
     await enterSelectionMode(authedPage);
     await rowCheckbox(authedPage, 'Corner Store').click();
-    await authedPage.getByRole('button', { name: 'Edit 1', exact: true }).click();
+    await authedPage
+      .getByRole('button', { name: 'Edit 1', exact: true })
+      .click();
 
     const dialog = authedPage.getByRole('dialog', {
       name: 'Edit 1 transaction',
@@ -1194,7 +1220,9 @@ test.describe('edit multiple transactions', () => {
     await seedTwo(context.request, workerInfra.apiOrigin);
     await enterSelectionMode(authedPage);
     await rowCheckbox(authedPage, 'Corner Store').click();
-    await authedPage.getByRole('button', { name: 'Edit 1', exact: true }).click();
+    await authedPage
+      .getByRole('button', { name: 'Edit 1', exact: true })
+      .click();
 
     const dialog = authedPage.getByRole('dialog', {
       name: 'Edit 1 transaction',
@@ -1227,7 +1255,9 @@ test.describe('edit multiple transactions', () => {
     await enterSelectionMode(authedPage);
     await rowCheckbox(authedPage, 'Corner Store').click();
     await rowCheckbox(authedPage, 'Downtown Store').click();
-    await authedPage.getByRole('button', { name: 'Edit 2', exact: true }).click();
+    await authedPage
+      .getByRole('button', { name: 'Edit 2', exact: true })
+      .click();
 
     const dialog = authedPage.getByRole('dialog', {
       name: 'Edit 2 transactions',
@@ -1267,7 +1297,9 @@ test.describe('edit multiple transactions', () => {
     await seedTwo(context.request, workerInfra.apiOrigin);
     await enterSelectionMode(authedPage);
     await rowCheckbox(authedPage, 'Corner Store').click();
-    await authedPage.getByRole('button', { name: 'Edit 1', exact: true }).click();
+    await authedPage
+      .getByRole('button', { name: 'Edit 1', exact: true })
+      .click();
 
     const dialog = authedPage.getByRole('dialog', {
       name: 'Edit 1 transaction',
@@ -1873,7 +1905,7 @@ test.describe('filters', () => {
     await expect(popover(authedPage)).not.toBeVisible();
   });
 
-  test('offers only the Categories, Merchants, Accounts, Tags, and Amount sections', async ({
+  test('offers only the Categories, Merchants, Accounts, Owners, Tags, and Amount sections', async ({
     authedPage,
   }) => {
     await authedPage.goto('/transactions');
@@ -1881,7 +1913,14 @@ test.describe('filters', () => {
 
     await expect(
       popover(authedPage).locator('.filters-popover-nav-item'),
-    ).toHaveText(['Categories', 'Merchants', 'Accounts', 'Tags', 'Amount']);
+    ).toHaveText([
+      'Categories',
+      'Merchants',
+      'Accounts',
+      'Owners',
+      'Tags',
+      'Amount',
+    ]);
   });
 
   test('filters by category, writing the selection to the URL and the trigger', async ({
@@ -2270,7 +2309,10 @@ test.describe('view transactions from a row', () => {
   }) => {
     await authedPage.goto('/transactions');
     const alpha = row(authedPage, 'Alpha Shop');
-    const arrow = alpha.getByRole('link', { name: 'View merchant', exact: true });
+    const arrow = alpha.getByRole('link', {
+      name: 'View merchant',
+      exact: true,
+    });
 
     await alpha.getByRole('button', { name: 'Merchant', exact: true }).focus();
     await expect(arrow).toHaveCSS('opacity', '1');
@@ -2346,7 +2388,11 @@ test.describe('edit 1 field directly', () => {
     workerInfra,
   }) => {
     await seedCornerStore(context.request, workerInfra.apiOrigin);
-    await createMerchant(context.request, workerInfra.apiOrigin, 'Uptown Store');
+    await createMerchant(
+      context.request,
+      workerInfra.apiOrigin,
+      'Uptown Store',
+    );
     await authedPage.goto('/transactions');
 
     const row = authedPage.locator('li.transactions-row', {
@@ -2520,7 +2566,11 @@ test.describe('edit 1 field directly', () => {
       workerInfra,
     }) => {
       await seedCornerStore(context.request, workerInfra.apiOrigin);
-      await createMerchant(context.request, workerInfra.apiOrigin, 'Uptown Store');
+      await createMerchant(
+        context.request,
+        workerInfra.apiOrigin,
+        'Uptown Store',
+      );
       await authedPage.goto('/transactions');
       await routeAllPatchesToFail(authedPage);
 

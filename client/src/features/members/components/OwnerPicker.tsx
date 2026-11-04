@@ -32,7 +32,8 @@ type OwnerPickerProps = {
   ariaLabel?: string;
 };
 
-const SharedIcon = () => (
+/** Stands in for an avatar wherever Shared is a choice. */
+export const SharedIcon = () => (
   <span className="owner-picker-shared-icon" aria-hidden="true">
     <FontAwesomeIcon icon={faLink} />
   </span>

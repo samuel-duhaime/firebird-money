@@ -290,6 +290,84 @@ test.describe('Transaction owners', () => {
   });
 });
 
+test.describe('Filter by owner', () => {
+  test('filters by Shared, by one member, and by both', async ({
+    authedPage,
+    context,
+    playwright,
+    workerInfra,
+  }) => {
+    const { apiOrigin } = workerInfra;
+    const aliceId = await addAlice(
+      context.request,
+      () => playwright.request.newContext(),
+      apiOrigin,
+    );
+    const joint = await ownedAccount(
+      context.request,
+      apiOrigin,
+      'Joint',
+      'shared',
+    );
+    await addTransaction(context.request, apiOrigin, joint, 'Tangerine');
+    // On the Shared account, but Alice's on its own.
+    const desjardins = await addTransaction(
+      context.request,
+      apiOrigin,
+      joint,
+      'Desjardins',
+    );
+    const patched = await context.request.patch(
+      `${apiOrigin}/transactions/${desjardins}`,
+      { data: { owner: aliceId } },
+    );
+    expect(patched.ok()).toBe(true);
+
+    const row = (merchant: string) =>
+      authedPage.locator('li.transactions-row', { hasText: merchant });
+    const popover = authedPage.locator('.filters-popover');
+    const owner = (name: string) =>
+      popover.getByRole('checkbox', { name, exact: true });
+    const openOwners = async () => {
+      await authedPage.getByRole('button', { name: /^Filters/ }).click();
+      await popover
+        .getByRole('button', { name: 'Owners', exact: true })
+        .click();
+    };
+    const apply = () =>
+      popover.getByRole('button', { name: 'Apply', exact: true }).click();
+    const searchParam = (key: string) =>
+      new URL(authedPage.url()).searchParams.get(key);
+
+    await authedPage.goto('/transactions');
+
+    await openOwners();
+    await owner('Shared').check();
+    await apply();
+    await expect(row('Tangerine')).toBeVisible();
+    await expect(row('Desjardins')).not.toBeVisible();
+    expect(searchParam('shared_owner')).toBe('true');
+
+    await openOwners();
+    await owner('Shared').uncheck();
+    await owner('Alice Gaudreau').check();
+    await apply();
+    await expect(row('Desjardins')).toBeVisible();
+    await expect(row('Tangerine')).not.toBeVisible();
+    expect(searchParam('owner_ids')).toBe(String(aliceId));
+    expect(searchParam('shared_owner')).toBeNull();
+
+    await openOwners();
+    await owner('Shared').check();
+    await apply();
+    await expect(row('Desjardins')).toBeVisible();
+    await expect(row('Tangerine')).toBeVisible();
+    await expect(
+      authedPage.getByRole('button', { name: 'Filters (2)' }),
+    ).toBeVisible();
+  });
+});
+
 test.describe('Edit account owners', () => {
   test('sets many accounts at once, and their transactions follow', async ({
     authedPage,
