@@ -126,7 +126,7 @@ To update:
 
 ```bash
 git pull
-./scripts/update.sh
+npm run docker:update # or ./scripts/update.sh
 ```
 
 Your data stays in the `firebird-money-db-data` volume through updates. A backup goes to `backups/` daily and before each update, kept for 30 days, and one per month is kept for good in `backups/monthly/`. To make one now: `./scripts/backup.sh`, or `npm run backup` if you have Node. Save a copy somewhere else too, like Google Drive, in case this computer's disk dies. To restore one: `./scripts/restore.sh backups/<file>.dump`.
