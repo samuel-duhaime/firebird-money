@@ -73,7 +73,7 @@ export const en = {
     household: {
       members: 'Members',
       preferences: 'Preferences',
-      institutions: 'Institutions',
+      accounts: 'Accounts',
       categories: 'Categories',
       merchants: 'Merchants',
       rules: 'Rules',
@@ -133,7 +133,7 @@ export const en = {
       },
     },
     institutions: {
-      heading: 'Institutions',
+      heading: 'Accounts',
       description:
         'The banks, credit unions, and brokerages your household uses, and the accounts you hold at each one. Every transaction belongs to one of these accounts.',
       addAccount: 'Add account',

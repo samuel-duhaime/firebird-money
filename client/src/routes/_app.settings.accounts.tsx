@@ -14,7 +14,7 @@ type ModalState =
   | { kind: 'editInstitution'; institution: Institution }
   | null;
 
-const InstitutionsPage = () => {
+const AccountsPage = () => {
   const { t } = useTranslation();
   const [modal, setModal] = useState<ModalState>(null);
   const closeModal = () => setModal(null);
@@ -64,6 +64,6 @@ const InstitutionsPage = () => {
   );
 };
 
-export const Route = createFileRoute('/_app/settings/institutions')({
-  component: InstitutionsPage,
+export const Route = createFileRoute('/_app/settings/accounts')({
+  component: AccountsPage,
 });

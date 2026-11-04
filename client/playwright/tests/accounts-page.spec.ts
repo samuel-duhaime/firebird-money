@@ -19,26 +19,26 @@ const pickOwner = async (page: Page, form: Locator, owner: string) => {
 const card = (page: Page, institution: string) =>
   page.locator('section.institutions-list-card', { hasText: institution });
 
-test.describe('Household > Institutions settings', () => {
-  test('left nav lands on the Institutions page', async ({ authedPage }) => {
+test.describe('Household > Accounts settings', () => {
+  test('left nav lands on the Accounts page', async ({ authedPage }) => {
     await authedPage.goto('/settings/members');
     await authedPage
-      .getByRole('link', { name: 'Institutions', exact: true })
+      .getByRole('link', { name: 'Accounts', exact: true })
       .click();
 
-    await expect(authedPage).toHaveURL('/settings/institutions');
+    await expect(authedPage).toHaveURL('/settings/accounts');
     await expect(
-      authedPage.getByRole('heading', { name: 'Institutions', exact: true }),
+      authedPage.getByRole('heading', { name: 'Accounts', exact: true }),
     ).toBeVisible();
     await expect(
-      authedPage.getByRole('link', { name: 'Institutions', exact: true }),
+      authedPage.getByRole('link', { name: 'Accounts', exact: true }),
     ).toHaveClass(/settings-nav-link--active/);
   });
 
   test('shows an empty state for a household with no accounts', async ({
     authedPage,
   }) => {
-    await authedPage.goto('/settings/institutions');
+    await authedPage.goto('/settings/accounts');
 
     await expect(authedPage.getByText('No accounts yet.')).toBeVisible();
     // Common institutions only show up once the household holds an account there.
@@ -50,7 +50,7 @@ test.describe('Household > Institutions settings', () => {
   test('adds an account at a common institution, found by one of its aliases', async ({
     authedPage,
   }) => {
-    await authedPage.goto('/settings/institutions');
+    await authedPage.goto('/settings/accounts');
     await openAddAccount(authedPage);
 
     const picker = authedPage.getByRole('dialog', {
@@ -91,7 +91,7 @@ test.describe('Household > Institutions settings', () => {
   test('requires an account name and an owner, and rejects a bad last four', async ({
     authedPage,
   }) => {
-    await authedPage.goto('/settings/institutions');
+    await authedPage.goto('/settings/accounts');
     await openAddAccount(authedPage);
     await authedPage
       .getByRole('dialog', { name: 'Choose an institution' })
@@ -125,7 +125,7 @@ test.describe('Household > Institutions settings', () => {
   test('adds a custom institution, then an account in it', async ({
     authedPage,
   }) => {
-    await authedPage.goto('/settings/institutions');
+    await authedPage.goto('/settings/accounts');
     await openAddAccount(authedPage);
 
     const picker = authedPage.getByRole('dialog', {
@@ -169,7 +169,7 @@ test.describe('Household > Institutions settings', () => {
     workerInfra,
   }) => {
     await ensureAccount(context.request, workerInfra.apiOrigin, 'Chequing');
-    await authedPage.goto('/settings/institutions');
+    await authedPage.goto('/settings/accounts');
 
     await card(authedPage, 'Seed Bank')
       .getByRole('button', { name: 'Add account', exact: true })
@@ -192,7 +192,7 @@ test.describe('Household > Institutions settings', () => {
     workerInfra,
   }) => {
     await ensureAccount(context.request, workerInfra.apiOrigin, 'Chequing');
-    await authedPage.goto('/settings/institutions');
+    await authedPage.goto('/settings/accounts');
 
     const row = authedPage.locator('li.institutions-list-row', {
       hasText: 'Chequing',
@@ -270,7 +270,7 @@ test.describe('Household > Institutions settings', () => {
     workerInfra,
   }) => {
     await ensureAccount(context.request, workerInfra.apiOrigin, 'Chequing');
-    await authedPage.goto('/settings/institutions');
+    await authedPage.goto('/settings/accounts');
 
     const row = authedPage.locator('li.institutions-list-row', {
       hasText: 'Chequing',
@@ -302,7 +302,7 @@ test.describe('Household > Institutions settings', () => {
       categoryId,
       account: 'Chequing',
     });
-    await authedPage.goto('/settings/institutions');
+    await authedPage.goto('/settings/accounts');
 
     const row = authedPage.locator('li.institutions-list-row', {
       hasText: 'Chequing',
@@ -325,7 +325,7 @@ test.describe('Household > Institutions settings', () => {
     workerInfra,
   }) => {
     await ensureAccount(context.request, workerInfra.apiOrigin, 'Chequing');
-    await authedPage.goto('/settings/institutions');
+    await authedPage.goto('/settings/accounts');
 
     const header = card(authedPage, 'Seed Bank').locator(
       '.institutions-list-card-header',
@@ -380,7 +380,7 @@ test.describe('Household > Institutions settings', () => {
       account: 'Savings Jar',
     });
     const jointId = await ensureAccount(request, api, 'Joint Account');
-    await authedPage.goto('/settings/institutions');
+    await authedPage.goto('/settings/accounts');
 
     await authedPage
       // Not `hasText` — every seeded account's type label reads "Chequing" too.

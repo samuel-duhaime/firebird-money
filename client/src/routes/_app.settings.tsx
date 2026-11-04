@@ -10,7 +10,7 @@ type HouseholdNavItem =
       labelKey: string;
       to:
         | '/settings/members'
-        | '/settings/institutions'
+        | '/settings/accounts'
         | '/settings/tags'
         | '/settings/categories'
         | '/settings/merchants';
@@ -24,9 +24,9 @@ const HOUSEHOLD_NAV_ITEMS: HouseholdNavItem[] = [
   },
   { key: 'preferences', labelKey: 'settings.household.preferences' },
   {
-    key: 'institutions',
-    labelKey: 'settings.household.institutions',
-    to: '/settings/institutions',
+    key: 'accounts',
+    labelKey: 'settings.household.accounts',
+    to: '/settings/accounts',
   },
   {
     key: 'categories',

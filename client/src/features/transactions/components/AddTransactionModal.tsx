@@ -286,7 +286,7 @@ export const AddTransactionModal = ({ onClose }: AddTransactionModalProps) => {
           {hasNoAccounts ? (
             <p className="modal-hint">
               {t('transactions.add.noAccounts')}{' '}
-              <Link to="/settings/institutions" onClick={onClose}>
+              <Link to="/settings/accounts" onClick={onClose}>
                 {t('transactions.add.noAccountsLink')}
               </Link>
             </p>

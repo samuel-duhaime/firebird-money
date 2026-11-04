@@ -75,7 +75,7 @@ export const fr: typeof en = {
     household: {
       members: 'Membres',
       preferences: 'Préférences',
-      institutions: 'Institutions',
+      accounts: 'Comptes',
       categories: 'Catégories',
       merchants: 'Marchands',
       rules: 'Règles',
@@ -135,7 +135,7 @@ export const fr: typeof en = {
       },
     },
     institutions: {
-      heading: 'Institutions',
+      heading: 'Comptes',
       description:
         'Les banques, caisses et courtiers que ton ménage utilise, et les comptes que tu as chez chacun. Chaque transaction appartient à un de ces comptes.',
       addAccount: 'Ajouter un compte',
