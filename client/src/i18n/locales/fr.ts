@@ -96,6 +96,7 @@ export const fr: typeof en = {
       owner: {
         shared: 'Partagé',
         unavailable: 'Propriétaire indisponible',
+        default: '(par défaut)',
       },
       status: {
         verified: 'Vérifié',
@@ -140,6 +141,7 @@ export const fr: typeof en = {
       description:
         'Les banques, caisses et courtiers que ton ménage utilise, et les comptes que tu as chez chacun. Chaque transaction appartient à un de ces comptes.',
       addAccount: 'Ajouter un compte',
+      editOwners: 'Modifier les propriétaires',
       addHere: 'Ajouter un compte',
       edit: 'Modifier',
       delete: 'Supprimer',
@@ -154,6 +156,15 @@ export const fr: typeof en = {
       deleteAccountConfirm: 'Supprimer le compte « {{name}} »?',
       deleteInstitutionConfirm: 'Supprimer l’institution « {{name}} »?',
       deleteConfirmButton: 'Supprimer',
+      owners: {
+        title: 'Modifier les propriétaires des comptes',
+        description:
+          'Choisis à qui appartient chaque compte, pour voir tes comptes, les comptes partagés ou tout ensemble. Ses transactions prennent le même propriétaire, mais chacune peut quand même être changée individuellement.',
+        owner: 'Propriétaire',
+        save: 'Enregistrer',
+        cancel: 'Annuler',
+        close: 'Fermer',
+      },
       types: {
         checking: 'Compte chèques',
         savings: 'Épargne',
@@ -300,6 +311,8 @@ export const fr: typeof en = {
       selectCategory: 'Sélectionnez une catégorie',
       selectMerchant: 'Sélectionnez un marchand',
       selectAccount: 'Sélectionne un compte',
+      owner: 'Propriétaire',
+      ownerNeedsAccount: 'Sélectionne d’abord un compte',
       noAccounts: 'Ajoute d’abord un compte, dans Paramètres → Comptes.',
       noAccountsLink: 'Ajouter un compte',
       selectTags: 'Ajouter des étiquettes',
@@ -339,6 +352,7 @@ export const fr: typeof en = {
         tags: 'Étiquettes',
         category: 'Catégorie',
         account: 'Compte',
+        owner: 'Propriétaire',
       },
     },
     search: {
@@ -599,5 +613,8 @@ export const fr: typeof en = {
     copyInviteCodeFailed: 'Impossible de copier le code d’invitation.',
     downloadFailed: 'Échec du téléchargement des transactions.',
     addTransactionSucceeded: 'Transaction ajoutée.',
+    updateAccountOwnersSucceeded: 'Propriétaires des comptes enregistrés.',
+    updateAccountOwnersFailed:
+      'Impossible d’enregistrer les propriétaires des comptes. Réessaie.',
   },
 };

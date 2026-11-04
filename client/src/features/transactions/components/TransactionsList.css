@@ -143,6 +143,12 @@
   color: var(--color-lightest);
 }
 
+.transactions-row-owner {
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+}
+
 .transactions-row-tags {
   display: flex;
   align-items: center;

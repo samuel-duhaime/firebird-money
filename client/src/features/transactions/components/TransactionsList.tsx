@@ -6,6 +6,8 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faChevronRight } from '@fortawesome/free-solid-svg-icons';
 import { useAccounts } from '../../accounts/hooks/use-accounts';
 import { accountLabel } from '../../accounts/utils/format';
+import { toOwner } from '../../accounts/utils/api';
+import { OwnerAvatar, OwnerPicker } from '../../members/components/OwnerPicker';
 import { useTransactions } from '../hooks/use-transactions';
 import { useUpdateTransaction } from '../hooks/use-update-transaction';
 import { useSettings } from '../../settings/hooks/use-settings';
@@ -138,6 +140,10 @@ const TransactionRow = ({
     if (accountId !== transaction.account_id) save({ account_id: accountId });
   };
 
+  const handleOwnerChange = (owner: number | null) => {
+    if (owner !== transaction.owner_user_id) save({ owner: toOwner(owner) });
+  };
+
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Enter') {
       event.preventDefault();
@@ -214,6 +220,11 @@ const TransactionRow = ({
         {columnVisibility.account && (
           <span className="transactions-row-cell transactions-row-account">
             {transaction.account_name}
+          </span>
+        )}
+        {columnVisibility.owner && (
+          <span className="transactions-row-cell transactions-row-owner">
+            <OwnerAvatar owner={transaction.owner_user_id} />
           </span>
         )}
         <span
@@ -306,6 +317,21 @@ const TransactionRow = ({
             filter="account_ids"
             id={transaction.account_id}
             label={t('transactions.view.account')}
+          />
+        </div>
+      )}
+
+      {columnVisibility.owner && (
+        <div className="transactions-row-owner">
+          <OwnerPicker
+            variant="cell"
+            value={transaction.owner_user_id}
+            defaultOwner={
+              accounts?.find((a) => a.id === transaction.account_id)
+                ?.owner_user_id
+            }
+            onChange={handleOwnerChange}
+            ariaLabel={t('transactions.add.owner')}
           />
         </div>
       )}

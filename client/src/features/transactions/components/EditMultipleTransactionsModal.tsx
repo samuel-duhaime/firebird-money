@@ -3,6 +3,8 @@ import type { ChangeEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAccounts } from '../../accounts/hooks/use-accounts';
 import { accountLabel } from '../../accounts/utils/format';
+import { toOwner } from '../../accounts/utils/api';
+import { OwnerPicker } from '../../members/components/OwnerPicker';
 import { useCategories } from '../../categories/hooks/use-categories';
 import { useMerchants } from '../../merchants/hooks/use-merchants';
 import { TagPicker } from '../../tags/components/TagPicker';
@@ -53,6 +55,9 @@ export const EditMultipleTransactionsModal = ({
   const [date, setDate] = useState('');
   const [categoryId, setCategoryId] = useState<number | undefined>(undefined);
   const [accountId, setAccountId] = useState<number | undefined>(undefined);
+  // `undefined` for no change. Without one, moving to another account still gives each
+  // transaction that had its old account's owner the new account's.
+  const [owner, setOwner] = useState<number | null | undefined>(undefined);
   // Picking a tag here only ever *adds* it to each selected transaction's existing tags (see
   // `BulkTransactionPatch.tag_ids`) — there's no "no change" vs "clear" distinction to track like
   // the other fields, so a plain array (empty = nothing picked yet) is enough.
@@ -152,6 +157,7 @@ export const EditMultipleTransactionsModal = ({
     if (dateHasValue) patch.date = date;
     if (categoryId !== undefined) patch.category_id = categoryId;
     if (accountId !== undefined) patch.account_id = accountId;
+    if (owner !== undefined) patch.owner = toOwner(owner);
     if (tagIds.length > 0) patch.tag_ids = tagIds;
 
     if (Object.keys(patch).length === 0) {
@@ -322,6 +328,33 @@ export const EditMultipleTransactionsModal = ({
                 </option>
               ))}
             </Select>
+          </div>
+
+          <div className="edit-transaction-field">
+            <label htmlFor="bulk-edit-owner">
+              {t('transactions.add.owner')}
+            </label>
+            <div className="edit-multiple-field-control">
+              <OwnerPicker
+                id="bulk-edit-owner"
+                value={owner}
+                defaultOwner={
+                  accounts?.find((a) => a.id === accountId)?.owner_user_id
+                }
+                placeholder={t('transactions.editMultiple.noChange')}
+                onChange={setOwner}
+              />
+              {owner !== undefined && (
+                <button
+                  type="button"
+                  className="edit-multiple-field-clear"
+                  onClick={() => setOwner(undefined)}
+                  aria-label={t('transactions.editMultiple.noChange')}
+                >
+                  ×
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="edit-transaction-field">

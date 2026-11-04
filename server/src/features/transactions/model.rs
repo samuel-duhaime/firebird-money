@@ -3,6 +3,8 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
+use crate::features::accounts::Owner;
+
 /// A tag attached to a transaction, as embedded in `Transaction::tags` — just enough to render it
 /// (name, color), not the full `tags::model::Tag` row (household id, created_at, ... are noise
 /// here).
@@ -37,6 +39,9 @@ pub struct Transaction {
     /// The household's account (see `accounts`) this transaction is in.
     pub account_id: i32,
     pub account_name: String,
+    /// The member it belongs to, or `None` when it's Shared. Starts as its account's owner and
+    /// follows it, unless it was changed on its own — see `accounts::repository::set_owners`.
+    pub owner_user_id: Option<i32>,
     pub reviewed: bool,
     pub source: TransactionSource,
     pub created_at: DateTime<Utc>,
@@ -71,6 +76,8 @@ pub struct NewTransaction {
     /// Must be one of the caller's own household's accounts (enforced by the composite
     /// `transactions_household_account_fkey`).
     pub account_id: i32,
+    /// Defaults to the account's owner when absent.
+    pub owner: Option<Owner>,
     pub reviewed: Option<bool>,
     /// Optional; absent or `[]` means no tags. Ids outside the caller's own household are
     /// silently dropped rather than rejected, same as `BulkUpdateRequest`'s `ids`.
@@ -295,6 +302,9 @@ pub struct TransactionPatch {
     pub amount: Option<Decimal>,
     pub category_id: Option<i32>,
     pub account_id: Option<i32>,
+    /// `None` leaves it as is, or moves it to the new account's owner when `account_id` changes
+    /// and it had the old account's owner.
+    pub owner: Option<Owner>,
     /// `None` leaves tags unchanged. `Some(ids)` *replaces* the full tag set with exactly `ids`
     /// (so `Some([])` clears every tag) — unlike `BulkTransactionPatch::tag_ids`, which only adds.
     /// Ids outside the caller's own household are silently dropped.
@@ -310,6 +320,8 @@ pub struct BulkTransactionPatch {
     pub merchant_id: Option<i32>,
     pub category_id: Option<i32>,
     pub account_id: Option<i32>,
+    /// Same as `TransactionPatch::owner`.
+    pub owner: Option<Owner>,
     /// `None` (or `Some([])`) leaves tags unchanged. `Some(ids)` *adds* `ids` to each selected
     /// transaction's existing tags — unlike `TransactionPatch::tag_ids`, nothing already on a
     /// transaction is ever removed this way. Ids outside the caller's own household are silently

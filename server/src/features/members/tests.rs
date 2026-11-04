@@ -902,3 +902,44 @@ async fn patching_a_user_can_no_longer_set_a_picture(pool: PgPool) {
     assert!(user["picture_url"].is_null());
     assert!(user.get("avatar_url").is_none());
 }
+
+#[sqlx::test]
+async fn delete_member_makes_the_transactions_they_own_shared(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = onboard(&app, "sam@example.com", None).await;
+    let (_, jane_id) = join(&app, &cookie, "jane@example.com").await;
+    let account_id = create_owned_account(&app, &cookie, jane_id).await;
+
+    let categories_req = test::TestRequest::get()
+        .uri("/categories")
+        .insert_header(("Cookie", cookie.clone()))
+        .to_request();
+    let categories: serde_json::Value = test::call_and_read_body_json(&app, categories_req).await;
+    // Sam adds it, so it's Jane's only through her account.
+    let transaction_req = test::TestRequest::post()
+        .uri("/transactions")
+        .insert_header(("Cookie", cookie.clone()))
+        .set_json(serde_json::json!({
+            "date": "2026-10-15",
+            "original_statement": "STARBUCKS",
+            "amount": "4.50",
+            "category_id": categories[0]["id"],
+            "account_id": account_id,
+        }))
+        .to_request();
+    let transaction: serde_json::Value = test::call_and_read_body_json(&app, transaction_req).await;
+    assert_eq!(transaction["owner_user_id"], jane_id);
+
+    let delete_req = test::TestRequest::delete()
+        .uri(&format!("/members/{jane_id}"))
+        .insert_header(("Cookie", cookie.clone()))
+        .to_request();
+    assert_eq!(test::call_service(&app, delete_req).await.status(), 204);
+
+    let get_req = test::TestRequest::get()
+        .uri(&format!("/transactions/{}", transaction["id"]))
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    let transaction: serde_json::Value = test::call_and_read_body_json(&app, get_req).await;
+    assert!(transaction["owner_user_id"].is_null());
+}

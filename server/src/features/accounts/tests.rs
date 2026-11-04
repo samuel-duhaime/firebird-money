@@ -630,3 +630,444 @@ async fn update_account_changes_the_owner_and_back_to_shared(pool: PgPool) {
     assert_eq!(status, 200, "{body}");
     assert_eq!(body["owner_user_id"], serde_json::Value::Null);
 }
+
+// --- Owners: transactions follow their account's, unless changed on their own ---
+
+/// Signs a new user in and joins them to the household of `manager_cookie`; returns their cookie
+/// and id.
+async fn join_household<S, B>(app: &S, manager_cookie: &str, email: &str) -> (String, i64)
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let (_, me) = call(
+        app,
+        manager_cookie,
+        test::TestRequest::get().uri("/auth/me"),
+        None,
+    )
+    .await;
+    let join_code = me["household"]["join_code"].as_str().unwrap().to_string();
+
+    let req = test::TestRequest::post()
+        .uri("/auth/request-login")
+        .set_json(serde_json::json!({ "email": email }))
+        .to_request();
+    let resp = test::call_service(app, req).await;
+    let cookie = resp
+        .response()
+        .cookies()
+        .find(|cookie| cookie.name() == SESSION_COOKIE_NAME)
+        .unwrap();
+    let cookie = format!("{}={}", cookie.name(), cookie.value());
+
+    let (status, body) = call(
+        app,
+        &cookie,
+        test::TestRequest::post().uri("/auth/onboarding"),
+        Some(serde_json::json!({
+            "first_name": "Alice",
+            "last_name": "Gaudreau",
+            "join_code": join_code,
+        })),
+    )
+    .await;
+    assert_eq!(status, 201, "{body}");
+    let id = my_id(app, &cookie).await;
+    (cookie, id)
+}
+
+/// A household of two (Sam and Alice), with one account owned by each; returns Sam's cookie, both
+/// ids, and the two accounts (Sam's, Alice's).
+async fn two_member_household<S, B>(app: &S) -> (String, i64, i64, i64, i64)
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let cookie = sign_in_with_household(app, "sam@example.com").await;
+    let sam_id = my_id(app, &cookie).await;
+    let (_, alice_id) = join_household(app, &cookie, "alice@example.com").await;
+    let institution_id = create_institution(app, &cookie, "Caisse du coin").await;
+    let sams = create_account(app, &cookie, institution_id, "Chèques Sam").await;
+    let alices = create_account(app, &cookie, institution_id, "Chèques Alice").await;
+    for (account_id, owner) in [(sams, sam_id), (alices, alice_id)] {
+        let (status, body) = call(
+            app,
+            &cookie,
+            test::TestRequest::patch().uri(&format!("/accounts/{account_id}")),
+            Some(serde_json::json!({ "owner": owner })),
+        )
+        .await;
+        assert_eq!(status, 200, "{body}");
+    }
+    (cookie, sam_id, alice_id, sams, alices)
+}
+
+/// The household's first seeded category, for a transaction in `account_id`.
+async fn some_category_id(pool: &PgPool, account_id: i64) -> i32 {
+    let (category_id,): (i32,) = sqlx::query_as(
+        "SELECT c.id FROM categories c
+         JOIN accounts a ON a.household_id = c.household_id
+         WHERE a.id = $1 LIMIT 1",
+    )
+    .bind(account_id as i32)
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    category_id
+}
+
+/// Adds a transaction through the API, with `extra` merged into the body; returns it.
+async fn add_transaction<S, B>(
+    app: &S,
+    cookie: &str,
+    pool: &PgPool,
+    account_id: i64,
+    extra: serde_json::Value,
+) -> serde_json::Value
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let mut body = serde_json::json!({
+        "date": "2026-10-01",
+        "original_statement": "STARBUCKS",
+        "amount": "5.00",
+        "category_id": some_category_id(pool, account_id).await,
+        "account_id": account_id,
+    });
+    body.as_object_mut()
+        .unwrap()
+        .extend(extra.as_object().unwrap().clone());
+    let (status, body) = call(
+        app,
+        cookie,
+        test::TestRequest::post().uri("/transactions"),
+        Some(body),
+    )
+    .await;
+    assert_eq!(status, 201, "{body}");
+    body
+}
+
+/// A transaction's current owner.
+async fn transaction_owner<S, B>(app: &S, cookie: &str, id: &serde_json::Value) -> serde_json::Value
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let (status, body) = call(
+        app,
+        cookie,
+        test::TestRequest::get().uri(&format!("/transactions/{id}")),
+        None,
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    body["owner_user_id"].clone()
+}
+
+#[sqlx::test]
+async fn a_new_transaction_takes_its_accounts_owner_unless_given_one(pool: PgPool) {
+    let app = test::init_service(app_with(pool.clone())).await;
+    let (cookie, sam_id, alice_id, sams, _) = two_member_household(&app).await;
+
+    let plain = add_transaction(&app, &cookie, &pool, sams, serde_json::json!({})).await;
+    assert_eq!(plain["owner_user_id"], sam_id);
+
+    let given = add_transaction(
+        &app,
+        &cookie,
+        &pool,
+        sams,
+        serde_json::json!({ "owner": alice_id }),
+    )
+    .await;
+    assert_eq!(given["owner_user_id"], alice_id);
+
+    let shared = add_transaction(
+        &app,
+        &cookie,
+        &pool,
+        sams,
+        serde_json::json!({ "owner": "shared" }),
+    )
+    .await;
+    assert_eq!(shared["owner_user_id"], serde_json::Value::Null);
+}
+
+#[sqlx::test]
+async fn an_imported_transaction_takes_its_accounts_owner(pool: PgPool) {
+    let app = test::init_service(app_with(pool.clone())).await;
+    let (cookie, _, alice_id, _, alices) = two_member_household(&app).await;
+
+    let (status, body) = call(
+        &app,
+        &cookie,
+        test::TestRequest::post().uri("/transactions/import"),
+        Some(serde_json::json!({ "transactions": [{
+            "date": "2026-10-02",
+            "original_statement": "IGA",
+            "amount": "40.00",
+            "new_merchant_name": "IGA",
+            "category_id": some_category_id(&pool, alices).await,
+            "account_id": alices,
+        }] })),
+    )
+    .await;
+    assert_eq!(status, 201, "{body}");
+
+    let owners: Vec<(Option<i32>,)> =
+        sqlx::query_as("SELECT owner_user_id FROM transactions WHERE account_id = $1")
+            .bind(alices as i32)
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert_eq!(owners, vec![(Some(alice_id as i32),)]);
+}
+
+#[sqlx::test]
+async fn changing_an_accounts_owner_moves_its_transactions_but_not_overrides(pool: PgPool) {
+    let app = test::init_service(app_with(pool.clone())).await;
+    let (cookie, _, alice_id, sams, _) = two_member_household(&app).await;
+    let following = add_transaction(&app, &cookie, &pool, sams, serde_json::json!({})).await;
+    let overridden = add_transaction(
+        &app,
+        &cookie,
+        &pool,
+        sams,
+        serde_json::json!({ "owner": "shared" }),
+    )
+    .await;
+
+    let (status, body) = call(
+        &app,
+        &cookie,
+        test::TestRequest::patch().uri(&format!("/accounts/{sams}")),
+        Some(serde_json::json!({ "owner": alice_id })),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+
+    assert_eq!(
+        transaction_owner(&app, &cookie, &following["id"]).await,
+        alice_id
+    );
+    assert_eq!(
+        transaction_owner(&app, &cookie, &overridden["id"]).await,
+        serde_json::Value::Null
+    );
+}
+
+#[sqlx::test]
+async fn moving_a_transaction_to_another_account_takes_its_owner_unless_overridden(pool: PgPool) {
+    let app = test::init_service(app_with(pool.clone())).await;
+    let (cookie, _, alice_id, sams, alices) = two_member_household(&app).await;
+    let following = add_transaction(&app, &cookie, &pool, sams, serde_json::json!({})).await;
+    let overridden = add_transaction(
+        &app,
+        &cookie,
+        &pool,
+        sams,
+        serde_json::json!({ "owner": "shared" }),
+    )
+    .await;
+
+    let (status, body) = call(
+        &app,
+        &cookie,
+        test::TestRequest::patch().uri(&format!("/transactions/{}", following["id"])),
+        Some(serde_json::json!({ "account_id": alices })),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["owner_user_id"], alice_id);
+
+    let (status, body) = call(
+        &app,
+        &cookie,
+        test::TestRequest::patch().uri("/transactions/bulk"),
+        Some(serde_json::json!({ "ids": [overridden["id"]], "patch": { "account_id": alices } })),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body[0]["owner_user_id"], serde_json::Value::Null);
+
+    // An owner given along with the move wins.
+    let (_, body) = call(
+        &app,
+        &cookie,
+        test::TestRequest::patch().uri(&format!("/transactions/{}", following["id"])),
+        Some(serde_json::json!({ "account_id": sams, "owner": alice_id })),
+    )
+    .await;
+    assert_eq!(body["owner_user_id"], alice_id);
+}
+
+#[sqlx::test]
+async fn patching_a_transactions_owner_sets_it_and_rejects_outsiders(pool: PgPool) {
+    let app = test::init_service(app_with(pool.clone())).await;
+    let (cookie, _, alice_id, sams, _) = two_member_household(&app).await;
+    let outsider_cookie = sign_in_with_household(&app, "other@example.com").await;
+    let outsider_id = my_id(&app, &outsider_cookie).await;
+    let first = add_transaction(&app, &cookie, &pool, sams, serde_json::json!({})).await;
+    let second = add_transaction(&app, &cookie, &pool, sams, serde_json::json!({})).await;
+
+    let (status, body) = call(
+        &app,
+        &cookie,
+        test::TestRequest::patch().uri(&format!("/transactions/{}", first["id"])),
+        Some(serde_json::json!({ "owner": "shared" })),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["owner_user_id"], serde_json::Value::Null);
+
+    let (status, body) = call(
+        &app,
+        &cookie,
+        test::TestRequest::patch().uri("/transactions/bulk"),
+        Some(serde_json::json!({ "ids": [first["id"], second["id"]], "patch": { "owner": alice_id } })),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert!(body
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|t| t["owner_user_id"] == alice_id));
+
+    for (uri, body) in [
+        (
+            format!("/transactions/{}", first["id"]),
+            serde_json::json!({ "owner": outsider_id }),
+        ),
+        (
+            "/transactions/bulk".to_string(),
+            serde_json::json!({ "ids": [first["id"]], "patch": { "owner": outsider_id } }),
+        ),
+        (
+            "/transactions".to_string(),
+            serde_json::json!({
+                "date": "2026-10-01",
+                "original_statement": "STARBUCKS",
+                "amount": "5.00",
+                "category_id": some_category_id(&pool, sams).await,
+                "account_id": sams,
+                "owner": outsider_id,
+            }),
+        ),
+    ] {
+        let req = if uri == "/transactions" {
+            test::TestRequest::post().uri(&uri)
+        } else {
+            test::TestRequest::patch().uri(&uri)
+        };
+        let (status, body) = call(&app, &cookie, req, Some(body)).await;
+        assert_eq!(status, 400, "{uri}: {body}");
+    }
+    assert_eq!(
+        transaction_owner(&app, &cookie, &first["id"]).await,
+        alice_id
+    );
+}
+
+#[sqlx::test]
+async fn update_account_owners_changes_many_and_their_transactions(pool: PgPool) {
+    let app = test::init_service(app_with(pool.clone())).await;
+    let (cookie, sam_id, _, sams, alices) = two_member_household(&app).await;
+    let in_sams = add_transaction(&app, &cookie, &pool, sams, serde_json::json!({})).await;
+    let in_alices = add_transaction(&app, &cookie, &pool, alices, serde_json::json!({})).await;
+
+    let (status, body) = call(
+        &app,
+        &cookie,
+        test::TestRequest::patch().uri("/accounts/owners"),
+        Some(serde_json::json!({ "owners": [
+            { "account_id": sams, "owner": "shared" },
+            { "account_id": alices, "owner": sam_id },
+        ] })),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    let owner_of = |id: i64| {
+        body.as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["id"] == id)
+            .unwrap()["owner_user_id"]
+            .clone()
+    };
+    assert_eq!(owner_of(sams), serde_json::Value::Null);
+    assert_eq!(owner_of(alices), sam_id);
+    assert_eq!(
+        transaction_owner(&app, &cookie, &in_sams["id"]).await,
+        serde_json::Value::Null
+    );
+    assert_eq!(
+        transaction_owner(&app, &cookie, &in_alices["id"]).await,
+        sam_id
+    );
+}
+
+#[sqlx::test]
+async fn update_account_owners_is_all_or_nothing(pool: PgPool) {
+    let app = test::init_service(app_with(pool.clone())).await;
+    let (cookie, sam_id, alice_id, sams, alices) = two_member_household(&app).await;
+    let following = add_transaction(&app, &cookie, &pool, sams, serde_json::json!({})).await;
+    let outsider_cookie = sign_in_with_household(&app, "other@example.com").await;
+    let outsider_id = my_id(&app, &outsider_cookie).await;
+    let outsider_institution = create_institution(&app, &outsider_cookie, "Autre caisse").await;
+    let outsider_account =
+        create_account(&app, &outsider_cookie, outsider_institution, "Leur compte").await;
+
+    for owners in [
+        // Another household's account.
+        serde_json::json!([
+            { "account_id": sams, "owner": "shared" },
+            { "account_id": outsider_account, "owner": "shared" },
+        ]),
+        // A member outside the household.
+        serde_json::json!([
+            { "account_id": sams, "owner": "shared" },
+            { "account_id": alices, "owner": outsider_id },
+        ]),
+        // The same account twice.
+        serde_json::json!([
+            { "account_id": sams, "owner": "shared" },
+            { "account_id": sams, "owner": alice_id },
+        ]),
+    ] {
+        let (status, body) = call(
+            &app,
+            &cookie,
+            test::TestRequest::patch().uri("/accounts/owners"),
+            Some(serde_json::json!({ "owners": owners })),
+        )
+        .await;
+        assert_eq!(status, 400, "{owners}: {body}");
+    }
+
+    let (_, account) = call(
+        &app,
+        &cookie,
+        test::TestRequest::get().uri(&format!("/accounts/{sams}")),
+        None,
+    )
+    .await;
+    assert_eq!(account["owner_user_id"], sam_id);
+    assert_eq!(
+        transaction_owner(&app, &cookie, &following["id"]).await,
+        sam_id
+    );
+}
+
+#[sqlx::test]
+async fn update_account_owners_requires_a_session(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let req = test::TestRequest::patch()
+        .uri("/accounts/owners")
+        .set_json(serde_json::json!({ "owners": [] }))
+        .to_request();
+    assert_eq!(test::call_service(&app, req).await.status(), 401);
+}

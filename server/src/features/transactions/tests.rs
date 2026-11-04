@@ -1326,15 +1326,15 @@ async fn download_transactions_csv_contains_header_and_rows(pool: PgPool) {
     let mut lines = csv.lines();
     assert_eq!(
         lines.next().unwrap(),
-        "Date,Merchant,Category,Tags,Account,Amount"
+        "Date,Merchant,Category,Tags,Account,Owner,Amount"
     );
     assert_eq!(
         lines.next().unwrap(),
-        "2024-01-16,IGA,Other,,Test Account,56.78"
+        "2024-01-16,IGA,Other,,Test Account,Shared,56.78"
     );
     assert_eq!(
         lines.next().unwrap(),
-        "2024-01-15,STARBUCKS,Other,,Test Account,12.34"
+        "2024-01-15,STARBUCKS,Other,,Test Account,Shared,12.34"
     );
 }
 
@@ -1372,7 +1372,7 @@ async fn download_transactions_includes_tags_column(pool: PgPool) {
     let csv = String::from_utf8(body.to_vec()).unwrap();
     assert_eq!(
         csv.lines().nth(1).unwrap(),
-        "2024-01-15,STARBUCKS,Other,\"Test Tag A, Test Tag B\",Test Account,12.34"
+        "2024-01-15,STARBUCKS,Other,\"Test Tag A, Test Tag B\",Test Account,Shared,12.34"
     );
 }
 
@@ -1459,10 +1459,19 @@ async fn download_transactions_csv_escapes_formula_like_merchant(pool: PgPool) {
     let body = test::read_body(resp).await;
     let csv = String::from_utf8(body.to_vec()).unwrap();
     let rows: Vec<&str> = csv.lines().skip(1).collect();
-    assert_eq!(rows[0], "2024-01-15,'=SUM(A1:A2),Other,,Test Account,12.34");
-    assert_eq!(rows[1], "2024-01-16,'+1234567890,Other,,Test Account,20.00");
-    assert_eq!(rows[2], "2024-01-17,'-2+3,Other,,Test Account,30.00");
-    assert_eq!(rows[3], "2024-01-18,'@SUM(A1),Other,,Test Account,40.00");
+    assert_eq!(
+        rows[0],
+        "2024-01-15,'=SUM(A1:A2),Other,,Test Account,Shared,12.34"
+    );
+    assert_eq!(
+        rows[1],
+        "2024-01-16,'+1234567890,Other,,Test Account,Shared,20.00"
+    );
+    assert_eq!(rows[2], "2024-01-17,'-2+3,Other,,Test Account,Shared,30.00");
+    assert_eq!(
+        rows[3],
+        "2024-01-18,'@SUM(A1),Other,,Test Account,Shared,40.00"
+    );
 }
 
 #[sqlx::test]
@@ -1499,7 +1508,7 @@ async fn download_transactions_csv_escapes_formula_like_category(pool: PgPool) {
     let csv = String::from_utf8(body.to_vec()).unwrap();
     assert_eq!(
         csv.lines().nth(1).unwrap(),
-        "2024-01-15,STARBUCKS,'=cmd,,Test Account,12.34"
+        "2024-01-15,STARBUCKS,'=cmd,,Test Account,Shared,12.34"
     );
 }
 
@@ -1647,11 +1656,11 @@ async fn download_transactions_respects_search_filter(pool: PgPool) {
     let mut lines = csv.lines();
     assert_eq!(
         lines.next().unwrap(),
-        "Date,Merchant,Category,Tags,Account,Amount"
+        "Date,Merchant,Category,Tags,Account,Owner,Amount"
     );
     assert_eq!(
         lines.next().unwrap(),
-        "2024-01-15,STARBUCKS,Other,,Test Account,12.34"
+        "2024-01-15,STARBUCKS,Other,,Test Account,Shared,12.34"
     );
     assert!(lines.next().is_none());
 }
@@ -1684,11 +1693,11 @@ async fn download_transactions_respects_order(pool: PgPool) {
     let mut lines = csv.lines().skip(1);
     assert_eq!(
         lines.next().unwrap(),
-        "2024-01-15,STARBUCKS,Other,,Test Account,12.34"
+        "2024-01-15,STARBUCKS,Other,,Test Account,Shared,12.34"
     );
     assert_eq!(
         lines.next().unwrap(),
-        "2024-01-16,IGA,Other,,Test Account,56.78"
+        "2024-01-16,IGA,Other,,Test Account,Shared,56.78"
     );
 }
 

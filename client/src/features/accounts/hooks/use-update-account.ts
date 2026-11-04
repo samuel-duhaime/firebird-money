@@ -11,7 +11,8 @@ export const useUpdateAccount = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['accounts'] });
       queryClient.invalidateQueries({ queryKey: ['institutions'] });
-      // A transaction's joined `account_name` goes stale after a rename here.
+      // A transaction's joined `account_name` goes stale after a rename here, and its owner after
+      // an owner change.
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
     },
   });

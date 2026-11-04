@@ -1,6 +1,6 @@
 use sqlx::{PgConnection, PgPool};
 
-use super::model::{Account, AccountPatch, NewAccount};
+use super::model::{Account, AccountOwner, AccountPatch, NewAccount};
 use crate::features::institutions::repository as institutions_repository;
 
 /// Every column of an `Account`, selected from a row aliased `a` joined to its institution `i`.
@@ -89,7 +89,8 @@ pub async fn create(
 /// `None` leaves it unchanged, `Some("")` clears it, anything else sets it. Returns `Ok(None)` for
 /// an unknown id, and `Err(sqlx::Error::RowNotFound)` when `patch.institution_id` isn't visible to
 /// the household — same split as `create`. `owner: Some(Owner::Shared)` clears the owner, unlike
-/// the other fields where `None` and "clear" can't be told apart.
+/// the other fields where `None` and "clear" can't be told apart; a new owner goes through
+/// `set_owners`, so the account's transactions follow it.
 pub async fn update(
     pool: &PgPool,
     household_id: i32,
@@ -104,15 +105,26 @@ pub async fn update(
         }
     }
 
-    sqlx::query_as::<_, Account>(&format!(
+    let mut tx = pool.begin().await?;
+
+    if let Some(owner) = patch.owner {
+        let owners = [AccountOwner {
+            account_id: id,
+            owner,
+        }];
+        if !set_owners(&mut tx, household_id, &owners).await? {
+            return Ok(None);
+        }
+    }
+
+    let account = sqlx::query_as::<_, Account>(&format!(
         "WITH updated AS (
             UPDATE accounts
             SET institution_id = COALESCE($3, institution_id),
                 name = COALESCE($4, name),
                 type = COALESCE($5, type),
                 last_four = CASE WHEN $6::text IS NULL THEN last_four ELSE NULLIF($6, '') END,
-                currency = COALESCE($7, currency),
-                owner_user_id = CASE WHEN $8 THEN $9 ELSE owner_user_id END
+                currency = COALESCE($7, currency)
             WHERE id = $1 AND household_id = $2
             RETURNING *
          )
@@ -127,10 +139,91 @@ pub async fn update(
     .bind(&patch.r#type)
     .bind(&patch.last_four)
     .bind(&patch.currency)
-    .bind(patch.owner.is_some())
-    .bind(patch.owner.and_then(|owner| owner.user_id()))
-    .fetch_optional(pool)
-    .await
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+    Ok(account)
+}
+
+/// Gives each account in `owners` its new owner, scoped to `household_id`, and moves along every
+/// transaction of that account that had the old owner. A transaction with another owner was
+/// changed on its own, so it keeps it. The one place an account's owner is written after it's
+/// created, so the two never drift apart.
+///
+/// Returns `false`, having changed nothing the caller commits, when an account isn't the
+/// household's. An owner outside the household fails with a foreign-key violation on
+/// `accounts_household_owner_fkey`. `owners` must not name an account twice.
+pub async fn set_owners(
+    conn: &mut PgConnection,
+    household_id: i32,
+    owners: &[AccountOwner],
+) -> Result<bool, sqlx::Error> {
+    let account_ids: Vec<i32> = owners.iter().map(|o| o.account_id).collect();
+    let new_owners: Vec<Option<i32>> = owners.iter().map(|o| o.owner.user_id()).collect();
+
+    // Locked, so a transaction added to one of them meanwhile waits and then takes the new owner.
+    let old_owners: Vec<(i32, Option<i32>)> = sqlx::query_as(
+        "SELECT id, owner_user_id FROM accounts
+         WHERE household_id = $1 AND id = ANY($2)
+         FOR UPDATE",
+    )
+    .bind(household_id)
+    .bind(&account_ids)
+    .fetch_all(&mut *conn)
+    .await?;
+    if old_owners.len() != account_ids.len() {
+        return Ok(false);
+    }
+
+    // Accounts first, so an owner outside the household is reported on the account's foreign key.
+    sqlx::query(
+        "UPDATE accounts a
+         SET owner_user_id = n.owner_user_id
+         FROM UNNEST($2::integer[], $3::integer[]) AS n (account_id, owner_user_id)
+         WHERE a.household_id = $1 AND a.id = n.account_id",
+    )
+    .bind(household_id)
+    .bind(&account_ids)
+    .bind(&new_owners)
+    .execute(&mut *conn)
+    .await?;
+
+    let (old_ids, old_owner_ids): (Vec<i32>, Vec<Option<i32>>) = old_owners.into_iter().unzip();
+    sqlx::query(
+        "UPDATE transactions t
+         SET owner_user_id = n.owner_user_id
+         FROM UNNEST($2::integer[], $3::integer[]) AS n (account_id, owner_user_id),
+              UNNEST($4::integer[], $5::integer[]) AS o (account_id, owner_user_id)
+         WHERE t.household_id = $1
+           AND t.account_id = n.account_id
+           AND o.account_id = n.account_id
+           AND t.owner_user_id IS NOT DISTINCT FROM o.owner_user_id",
+    )
+    .bind(household_id)
+    .bind(&account_ids)
+    .bind(&new_owners)
+    .bind(&old_ids)
+    .bind(&old_owner_ids)
+    .execute(&mut *conn)
+    .await?;
+
+    Ok(true)
+}
+
+/// `set_owners` on its own, for `PATCH /accounts/owners`: all or nothing, committed only when
+/// every account is the household's.
+pub async fn update_owners(
+    pool: &PgPool,
+    household_id: i32,
+    owners: &[AccountOwner],
+) -> Result<bool, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    if !set_owners(&mut tx, household_id, owners).await? {
+        return Ok(false);
+    }
+    tx.commit().await?;
+    Ok(true)
 }
 
 /// Deletes an account, scoped to `household_id`. Returns `false` if the id didn't exist (including

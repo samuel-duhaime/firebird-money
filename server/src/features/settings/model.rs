@@ -9,6 +9,7 @@ pub struct Settings {
     pub show_category_column: bool,
     pub show_tags_column: bool,
     pub show_account_column: bool,
+    pub show_owner_column: bool,
     /// `None` until the user picks a language.
     pub language: Option<Language>,
 }
@@ -31,6 +32,7 @@ impl Settings {
             show_category_column: true,
             show_tags_column: true,
             show_account_column: true,
+            show_owner_column: true,
             language: None,
         }
     }
@@ -42,5 +44,6 @@ pub struct SettingsPatch {
     pub show_category_column: Option<bool>,
     pub show_tags_column: Option<bool>,
     pub show_account_column: Option<bool>,
+    pub show_owner_column: Option<bool>,
     pub language: Option<Language>,
 }

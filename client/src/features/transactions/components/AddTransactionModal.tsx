@@ -4,6 +4,8 @@ import { Link } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { useAccounts } from '../../accounts/hooks/use-accounts';
 import { accountLabel } from '../../accounts/utils/format';
+import { toOwner } from '../../accounts/utils/api';
+import { OwnerPicker } from '../../members/components/OwnerPicker';
 import { useCategories } from '../../categories/hooks/use-categories';
 import { useMerchants } from '../../merchants/hooks/use-merchants';
 import { TagPicker } from '../../tags/components/TagPicker';
@@ -30,6 +32,10 @@ export const AddTransactionModal = ({ onClose }: AddTransactionModalProps) => {
   // `null` until picked — except a household with a single account, which gets it preselected (see
   // `effectiveAccountId`), since there's nothing to choose between.
   const [accountId, setAccountId] = useState<number | null>(null);
+  // `undefined` until someone picks an owner: the transaction then takes its account's.
+  const [ownerOverride, setOwnerOverride] = useState<number | null | undefined>(
+    undefined,
+  );
   const [merchantId, setMerchantId] = useState<number | null>(null);
   const [date, setDate] = useState('');
   const [categoryId, setCategoryId] = useState<number | null>(null);
@@ -126,6 +132,14 @@ export const AddTransactionModal = ({ onClose }: AddTransactionModalProps) => {
   const effectiveAccountId =
     accountId ?? (accounts?.length === 1 ? accounts[0].id : null);
   const hasNoAccounts = accounts !== undefined && accounts.length === 0;
+  const effectiveAccount = accounts?.find((a) => a.id === effectiveAccountId);
+  // Nothing to show until an account is picked, then its owner unless another was picked.
+  const owner =
+    effectiveAccount === undefined
+      ? undefined
+      : ownerOverride === undefined
+        ? effectiveAccount.owner_user_id
+        : ownerOverride;
 
   const handleSubmit = () => {
     if (
@@ -163,6 +177,7 @@ export const AddTransactionModal = ({ onClose }: AddTransactionModalProps) => {
         amount: amountResult.value,
         category_id: categoryId,
         account_id: effectiveAccountId,
+        ...(ownerOverride !== undefined && { owner: toOwner(ownerOverride) }),
         tag_ids: tagIds,
       },
       {
@@ -172,6 +187,7 @@ export const AddTransactionModal = ({ onClose }: AddTransactionModalProps) => {
           setDate('');
           setCategoryId(null);
           setAccountId(null);
+          setOwnerOverride(undefined);
           setTagIds([]);
           onClose();
         },
@@ -298,6 +314,8 @@ export const AddTransactionModal = ({ onClose }: AddTransactionModalProps) => {
               onChange={(e) => {
                 setError('');
                 setAccountId(Number(e.target.value));
+                // Another account brings its own owner.
+                setOwnerOverride(undefined);
               }}
             >
               {effectiveAccountId === null && (
@@ -312,6 +330,16 @@ export const AddTransactionModal = ({ onClose }: AddTransactionModalProps) => {
               ))}
             </Select>
           )}
+
+          <label htmlFor="owner">{t('transactions.add.owner')}</label>
+          <OwnerPicker
+            id="owner"
+            value={owner}
+            defaultOwner={effectiveAccount?.owner_user_id}
+            disabled={effectiveAccount === undefined}
+            placeholder={t('transactions.add.ownerNeedsAccount')}
+            onChange={setOwnerOverride}
+          />
 
           <label>{t('transactions.add.tags')}</label>
           <TagPicker

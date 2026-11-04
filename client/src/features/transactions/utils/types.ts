@@ -25,6 +25,9 @@ export interface Transaction {
   /** The household account (see Settings → Accounts) it's in. */
   account_id: number;
   account_name: string;
+  /** The member it belongs to, or `null` when it's Shared. Starts as its account's owner and
+   * follows it, unless it was changed on its own. */
+  owner_user_id: number | null;
   reviewed: boolean;
   /** `import` when added from a bank statement, else `manual`. */
   source: 'manual' | 'import';

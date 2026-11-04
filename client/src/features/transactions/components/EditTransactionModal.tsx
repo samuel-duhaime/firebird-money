@@ -3,6 +3,8 @@ import type { ChangeEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAccounts } from '../../accounts/hooks/use-accounts';
 import { accountLabel } from '../../accounts/utils/format';
+import { toOwner } from '../../accounts/utils/api';
+import { OwnerPicker } from '../../members/components/OwnerPicker';
 import { useCategories } from '../../categories/hooks/use-categories';
 import { useMerchants } from '../../merchants/hooks/use-merchants';
 import { TagPicker } from '../../tags/components/TagPicker';
@@ -195,6 +197,12 @@ export const EditTransactionModal = ({
     }
   };
 
+  const handleOwnerChange = (owner: number | null) => {
+    if (transaction && owner !== transaction.owner_user_id) {
+      save({ owner: toOwner(owner) });
+    }
+  };
+
   const handleDateChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (!transaction) return;
     const value = e.target.value;
@@ -252,6 +260,7 @@ export const EditTransactionModal = ({
   const selectedMerchant = merchants?.find(
     (m) => m.id === transaction?.merchant_id,
   );
+  const account = accounts?.find((a) => a.id === transaction?.account_id);
   const merchantLabel =
     selectedMerchant?.name ?? transaction?.merchant_name ?? '';
 
@@ -370,6 +379,18 @@ export const EditTransactionModal = ({
                     </option>
                   ))}
                 </Select>
+              </div>
+
+              <div className="edit-transaction-field">
+                <label htmlFor="edit-owner">
+                  {t('transactions.add.owner')}
+                </label>
+                <OwnerPicker
+                  id="edit-owner"
+                  value={transaction.owner_user_id}
+                  defaultOwner={account?.owner_user_id}
+                  onChange={handleOwnerChange}
+                />
               </div>
 
               <div className="edit-transaction-field">

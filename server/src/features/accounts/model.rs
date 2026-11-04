@@ -46,7 +46,7 @@ pub enum Owner {
 }
 
 impl Owner {
-    /// The `accounts.owner_user_id` it's stored as.
+    /// The `owner_user_id` it's stored as, on accounts and transactions alike.
     pub fn user_id(self) -> Option<i32> {
         match self {
             Owner::Shared => None,
@@ -96,4 +96,17 @@ pub struct AccountPatch {
     pub last_four: Option<String>,
     pub currency: Option<String>,
     pub owner: Option<Owner>,
+}
+
+/// One account's new owner in `PATCH /accounts/owners`.
+#[derive(Debug, Deserialize)]
+pub struct AccountOwner {
+    pub account_id: i32,
+    pub owner: Owner,
+}
+
+/// Body for `PATCH /accounts/owners`.
+#[derive(Debug, Deserialize)]
+pub struct AccountOwnersRequest {
+    pub owners: Vec<AccountOwner>,
 }

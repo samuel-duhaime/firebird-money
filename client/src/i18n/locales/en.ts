@@ -94,6 +94,7 @@ export const en = {
       owner: {
         shared: 'Shared',
         unavailable: 'Owner unavailable',
+        default: '(default)',
       },
       status: {
         verified: 'Verified',
@@ -138,6 +139,7 @@ export const en = {
       description:
         'The banks, credit unions, and brokerages your household uses, and the accounts you hold at each one. Every transaction belongs to one of these accounts.',
       addAccount: 'Add account',
+      editOwners: 'Edit owners',
       addHere: 'Add account',
       edit: 'Edit',
       delete: 'Delete',
@@ -152,6 +154,15 @@ export const en = {
       deleteAccountConfirm: 'Delete the "{{name}}" account?',
       deleteInstitutionConfirm: 'Delete the "{{name}}" institution?',
       deleteConfirmButton: 'Delete',
+      owners: {
+        title: 'Edit account owners',
+        description:
+          'Choose who each account belongs to, so you can see your own accounts, the shared ones, or everything together. Its transactions take the same owner, but each one can still be changed on its own.',
+        owner: 'Owner',
+        save: 'Save',
+        cancel: 'Cancel',
+        close: 'Close',
+      },
       types: {
         checking: 'Chequing',
         savings: 'Savings',
@@ -299,6 +310,8 @@ export const en = {
       selectCategory: 'Select category',
       selectMerchant: 'Select merchant',
       selectAccount: 'Select account',
+      owner: 'Owner',
+      ownerNeedsAccount: 'Select an account first',
       noAccounts: 'Add an account first, under Settings → Accounts.',
       noAccountsLink: 'Add an account',
       selectTags: 'Add tags',
@@ -338,6 +351,7 @@ export const en = {
         tags: 'Tags',
         category: 'Category',
         account: 'Account',
+        owner: 'Owner',
       },
     },
     search: {
@@ -594,5 +608,8 @@ export const en = {
     copyInviteCodeFailed: 'Could not copy the invite code.',
     downloadFailed: 'Failed to download transactions.',
     addTransactionSucceeded: 'Transaction added.',
+    updateAccountOwnersSucceeded: 'Account owners saved.',
+    updateAccountOwnersFailed:
+      'Failed to save the account owners. Please try again.',
   },
 };
