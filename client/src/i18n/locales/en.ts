@@ -299,7 +299,7 @@ export const en = {
       selectCategory: 'Select category',
       selectMerchant: 'Select merchant',
       selectAccount: 'Select account',
-      noAccounts: 'Add an account first, under Settings → Institutions.',
+      noAccounts: 'Add an account first, under Settings → Accounts.',
       noAccountsLink: 'Add an account',
       selectTags: 'Add tags',
       noTagsFound: 'No tags found.',

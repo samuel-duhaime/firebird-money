@@ -300,7 +300,7 @@ export const fr: typeof en = {
       selectCategory: 'Sélectionnez une catégorie',
       selectMerchant: 'Sélectionnez un marchand',
       selectAccount: 'Sélectionne un compte',
-      noAccounts: 'Ajoute d’abord un compte, dans Paramètres → Institutions.',
+      noAccounts: 'Ajoute d’abord un compte, dans Paramètres → Comptes.',
       noAccountsLink: 'Ajouter un compte',
       selectTags: 'Ajouter des étiquettes',
       noTagsFound: 'Aucune étiquette trouvée.',
