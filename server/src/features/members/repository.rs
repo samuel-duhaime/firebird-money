@@ -57,20 +57,42 @@ pub async fn update(
 /// different household). The accounts they own become Shared. Fails with a foreign-key violation
 /// while they still have transactions in the household.
 pub async fn remove(pool: &PgPool, household_id: i32, id: i32) -> Result<bool, sqlx::Error> {
-    // One statement, so a removal refused over transactions leaves their accounts' owner as it was.
-    let result = sqlx::query(
-        "WITH unowned AS (
-            UPDATE accounts SET owner_user_id = NULL
-            WHERE owner_user_id = $1 AND household_id = $2
-         )
-         UPDATE users SET household_id = NULL, household_role = NULL
+    let mut tx = pool.begin().await?;
+
+    // Locks the member first: giving them an account takes a lock on this row (through the owner
+    // foreign key) that this one waits for, and the other way around. Without it, an account given
+    // to them after the update below reads `accounts` would fail the removal as if it were a
+    // transaction.
+    let found: Option<i32> =
+        sqlx::query_scalar("SELECT id FROM users WHERE id = $1 AND household_id = $2 FOR UPDATE")
+            .bind(id)
+            .bind(household_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+    if found.is_none() {
+        return Ok(false);
+    }
+
+    sqlx::query(
+        "UPDATE accounts SET owner_user_id = NULL WHERE owner_user_id = $1 AND household_id = $2",
+    )
+    .bind(id)
+    .bind(household_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        "UPDATE users SET household_id = NULL, household_role = NULL
          WHERE id = $1 AND household_id = $2",
     )
     .bind(id)
     .bind(household_id)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
-    Ok(result.rows_affected() > 0)
+
+    // Not reached when the update above is refused over transactions, so their accounts' owner
+    // stays as it was.
+    tx.commit().await?;
+    Ok(true)
 }
 
 /// Fetches a member's picture, scoped to `household_id`, or `None` if they have none (or don't
