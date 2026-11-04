@@ -228,6 +228,12 @@ pub struct TransactionFilter {
     pub tag_ids: Option<Vec<i32>>,
     /// `true` also matches transactions without any tag (OR-ed with `tag_ids` when both are set).
     pub untagged: Option<bool>,
+    /// Comma-separated member ids — matches transactions any of them owns (`owner_user_id`, so a
+    /// transaction whose owner was changed on its own counts under its own owner, not its account's).
+    #[serde(default, deserialize_with = "deserialize_id_list")]
+    pub owner_ids: Option<Vec<i32>>,
+    /// `true` also matches Shared transactions (OR-ed with `owner_ids` when both are set).
+    pub shared_owner: Option<bool>,
     /// How `amount` (and, for `Between`, `amount_max`) narrow the list. Ignored without `amount`.
     pub amount_op: Option<AmountOp>,
     pub amount: Option<Decimal>,

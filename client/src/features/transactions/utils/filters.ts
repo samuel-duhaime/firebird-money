@@ -18,6 +18,9 @@ export type TransactionFilters = {
   tag_ids?: number[];
   /** Also match transactions without any tag (OR-ed with `tag_ids`). */
   untagged?: boolean;
+  owner_ids?: number[];
+  /** Also match Shared transactions (OR-ed with `owner_ids`). */
+  shared_owner?: boolean;
   amount_op?: AmountOp;
   amount?: number;
   /** Upper bound, only meaningful when `amount_op` is `between`. */
@@ -38,6 +41,8 @@ export const FILTER_KEYS = [
   'account_ids',
   'tag_ids',
   'untagged',
+  'owner_ids',
+  'shared_owner',
   'amount_op',
   'amount',
   'amount_max',
@@ -48,13 +53,16 @@ export const EMPTY_FILTERS: TransactionFilters = Object.fromEntries(
   FILTER_KEYS.map((key) => [key, undefined]),
 );
 
-/** How many filters are active — one per selected id, plus one each for "untagged" and amount. */
+/** How many filters are active — one per selected id, plus one each for "untagged", "Shared" and
+ * amount. */
 export const countFilters = (filters: TransactionFilters): number =>
   (filters.category_ids?.length ?? 0) +
   (filters.merchant_ids?.length ?? 0) +
   (filters.account_ids?.length ?? 0) +
   (filters.tag_ids?.length ?? 0) +
   (filters.untagged ? 1 : 0) +
+  (filters.owner_ids?.length ?? 0) +
+  (filters.shared_owner ? 1 : 0) +
   (filters.amount_op && filters.amount !== undefined ? 1 : 0);
 
 // Each parser takes both shapes a value can arrive in: text read back from the URL (see
@@ -75,6 +83,9 @@ const parseIdList = (value: unknown): number[] | undefined => {
     );
   return ids.length > 0 ? ids : undefined;
 };
+
+const parseFlag = (value: unknown): true | undefined =>
+  value === true || value === 'true' ? true : undefined;
 
 const parseAmount = (value: unknown): number | undefined => {
   const amount =
@@ -100,8 +111,9 @@ export const parseFilters = (
     merchant_ids: parseIdList(search.merchant_ids),
     account_ids: parseIdList(search.account_ids),
     tag_ids: parseIdList(search.tag_ids),
-    untagged:
-      search.untagged === true || search.untagged === 'true' ? true : undefined,
+    untagged: parseFlag(search.untagged),
+    owner_ids: parseIdList(search.owner_ids),
+    shared_owner: parseFlag(search.shared_owner),
     amount_op: amount !== undefined ? amountOp : undefined,
     amount,
     amount_max:
@@ -125,11 +137,13 @@ export const transactionsQueryParams = (
     'merchant_ids',
     'account_ids',
     'tag_ids',
+    'owner_ids',
   ] as const) {
     const ids = query[key];
     if (ids?.length) params.set(key, ids.join(','));
   }
   if (query.untagged) params.set('untagged', 'true');
+  if (query.shared_owner) params.set('shared_owner', 'true');
   if (query.amount_op && query.amount !== undefined) {
     params.set('amount_op', query.amount_op);
     params.set('amount', String(query.amount));

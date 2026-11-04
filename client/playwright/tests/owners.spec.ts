@@ -290,6 +290,105 @@ test.describe('Transaction owners', () => {
   });
 });
 
+test.describe('Filter by owner', () => {
+  test('filters by Shared, by one member, and by both', async ({
+    authedPage,
+    context,
+    playwright,
+    workerInfra,
+  }) => {
+    const { apiOrigin } = workerInfra;
+    const aliceId = await addAlice(
+      context.request,
+      () => playwright.request.newContext(),
+      apiOrigin,
+    );
+    const joint = await ownedAccount(
+      context.request,
+      apiOrigin,
+      'Joint',
+      'shared',
+    );
+    await addTransaction(context.request, apiOrigin, joint, 'Tangerine');
+    // On the Shared account, but Alice's on its own.
+    const desjardins = await addTransaction(
+      context.request,
+      apiOrigin,
+      joint,
+      'Desjardins',
+    );
+    const patched = await context.request.patch(
+      `${apiOrigin}/transactions/${desjardins}`,
+      { data: { owner: aliceId } },
+    );
+    expect(patched.ok()).toBe(true);
+    // Test User's, so it's in none of the filters below.
+    const mine = await ownedAccount(
+      context.request,
+      apiOrigin,
+      'Mine',
+      (await (await context.request.get(`${apiOrigin}/auth/me`)).json()).user
+        .id,
+    );
+    await addTransaction(context.request, apiOrigin, mine, 'Koodo');
+
+    const row = (merchant: string) =>
+      authedPage.locator('li.transactions-row', { hasText: merchant });
+    const popover = authedPage.locator('.filters-popover');
+    const owner = (name: string) =>
+      popover.getByRole('checkbox', { name, exact: true });
+    const openOwners = async () => {
+      await authedPage.getByRole('button', { name: /^Filters/ }).click();
+      await popover
+        .getByRole('button', { name: 'Owners', exact: true })
+        .click();
+    };
+    const apply = () =>
+      popover.getByRole('button', { name: 'Apply', exact: true }).click();
+    const searchParam = (key: string) =>
+      new URL(authedPage.url()).searchParams.get(key);
+
+    await authedPage.goto('/transactions');
+    await expect(row('Koodo')).toBeVisible();
+
+    await openOwners();
+    await owner('Shared').check();
+    await apply();
+    await expect(row('Tangerine')).toBeVisible();
+    await expect(row('Desjardins')).not.toBeVisible();
+    await expect(row('Koodo')).not.toBeVisible();
+    expect(searchParam('shared_owner')).toBe('true');
+
+    await openOwners();
+    await owner('Shared').uncheck();
+    await owner('Alice Gaudreau').check();
+    await apply();
+    await expect(row('Desjardins')).toBeVisible();
+    await expect(row('Tangerine')).not.toBeVisible();
+    await expect(row('Koodo')).not.toBeVisible();
+    expect(searchParam('owner_ids')).toBe(String(aliceId));
+    expect(searchParam('shared_owner')).toBeNull();
+
+    await openOwners();
+    await owner('Shared').check();
+    await apply();
+    await expect(row('Desjardins')).toBeVisible();
+    await expect(row('Tangerine')).toBeVisible();
+    await expect(row('Koodo')).not.toBeVisible();
+    await expect(
+      authedPage.getByRole('button', { name: 'Filters (2)' }),
+    ).toBeVisible();
+
+    // With only Shared matching the search, Select all follows it alone.
+    await openOwners();
+    await popover.getByRole('textbox', { name: 'Search...' }).fill('Shared');
+    const selectAll = popover.getByRole('checkbox', { name: 'Select all' });
+    await expect(selectAll).toBeChecked();
+    await selectAll.uncheck();
+    await expect(owner('Shared')).not.toBeChecked();
+  });
+});
+
 test.describe('Edit account owners', () => {
   test('sets many accounts at once, and their transactions follow', async ({
     authedPage,

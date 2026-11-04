@@ -371,6 +371,7 @@ export const fr: typeof en = {
         categories: 'Catégories',
         merchants: 'Marchands',
         accounts: 'Comptes',
+        owners: 'Propriétaires',
         tags: 'Étiquettes',
         amount: 'Montant',
       },

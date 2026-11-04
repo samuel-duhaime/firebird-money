@@ -18,6 +18,9 @@ import { useMerchants } from '../../merchants/hooks/use-merchants';
 import { Avatar } from '../../../components/Avatar';
 import { useAccounts } from '../../accounts/hooks/use-accounts';
 import { useTags } from '../../tags/hooks/use-tags';
+import { useMembers } from '../../members/hooks/use-members';
+import { SharedIcon } from '../../members/components/OwnerPicker';
+import { memberDisplayName, pictureSrc } from '../../members/utils/format';
 import { accountLabel } from '../../accounts/utils/format';
 import { ACCOUNT_TYPES } from '../../accounts/utils/types';
 import { toIntlLocale } from '../../../i18n/locale';
@@ -30,17 +33,23 @@ import './FiltersButton.css';
 
 const routeApi = getRouteApi('/_app/transactions');
 
-type Section = 'categories' | 'merchants' | 'accounts' | 'tags' | 'amount';
+type Section =
+  'categories' | 'merchants' | 'accounts' | 'owners' | 'tags' | 'amount';
 
 const SECTIONS: Section[] = [
   'categories',
   'merchants',
   'accounts',
+  'owners',
   'tags',
   'amount',
 ];
 
-type IdListKey = 'category_ids' | 'merchant_ids' | 'account_ids' | 'tag_ids';
+type IdListKey =
+  'category_ids' | 'merchant_ids' | 'account_ids' | 'owner_ids' | 'tag_ids';
+
+/** The checkbox each list can have on top of its ids: "Untagged" for tags, "Shared" for owners. */
+type FlagKey = 'untagged' | 'shared_owner';
 
 /** The popover's in-progress edits, only written to the URL on Apply. Amounts stay as typed text
  * until then, so a half-typed value (e.g. "12,") doesn't get coerced away mid-edit. */
@@ -50,6 +59,8 @@ type Draft = {
   account_ids: number[];
   tag_ids: number[];
   untagged: boolean;
+  owner_ids: number[];
+  shared_owner: boolean;
   amount_op: AmountOp;
   amount: string;
   amount_max: string;
@@ -61,6 +72,8 @@ const toDraft = (filters: TransactionFilters): Draft => ({
   account_ids: filters.account_ids ?? [],
   tag_ids: filters.tag_ids ?? [],
   untagged: filters.untagged ?? false,
+  owner_ids: filters.owner_ids ?? [],
+  shared_owner: filters.shared_owner ?? false,
   amount_op: filters.amount_op ?? 'greater_than',
   amount: filters.amount !== undefined ? String(filters.amount) : '',
   amount_max:
@@ -100,6 +113,8 @@ const toFilters = (draft: Draft): TransactionFilters | null => {
     account_ids: ids(draft.account_ids),
     tag_ids: ids(draft.tag_ids),
     untagged: draft.untagged || undefined,
+    owner_ids: ids(draft.owner_ids),
+    shared_owner: draft.shared_owner || undefined,
     amount_op: hasAmount ? draft.amount_op : undefined,
     amount: hasAmount ? amount : undefined,
     amount_max:
@@ -190,6 +205,7 @@ export const FiltersButton = () => {
   const { data: merchants } = useMerchants();
   const { data: accounts } = useAccounts();
   const { data: tags } = useTags();
+  const { data: members } = useMembers();
 
   const [section, setSection] = useState<Section>('categories');
   const [search, setSearch] = useState('');
@@ -246,11 +262,20 @@ export const FiltersButton = () => {
   const showUntagged = matches(untaggedLabel);
   const visibleTags = (tags ?? []).filter((tag) => matches(tag.name));
 
+  const sharedLabel = t('settings.members.owner.shared');
+  const showShared = matches(sharedLabel);
+  const visibleMembers = (members ?? []).filter((member) =>
+    matches(memberDisplayName(member), member.email),
+  );
+
   const toggleIds = (key: IdListKey, ids: number[], checked: boolean) =>
     setDraft((previous) => ({
       ...previous,
       [key]: setIds(previous[key], ids, checked),
     }));
+
+  const setFlag = (key: FlagKey, checked: boolean) =>
+    setDraft((previous) => ({ ...previous, [key]: checked }));
 
   const { isAmountValid, isAmountMaxValid } = amountValidity(draft);
   const draftFilters = toFilters(draft);
@@ -263,6 +288,8 @@ export const FiltersButton = () => {
     draft.account_ids.length > 0 ||
     draft.tag_ids.length > 0 ||
     draft.untagged ||
+    draft.owner_ids.length > 0 ||
+    draft.shared_owner ||
     draft.amount !== '' ||
     draft.amount_max !== '';
 
@@ -298,11 +325,22 @@ export const FiltersButton = () => {
     setSearch('');
   };
 
-  const renderSelectAll = (key: IdListKey, ids: number[], extra?: boolean) => {
+  const renderSelectAll = (
+    key: IdListKey,
+    ids: number[],
+    flagKey?: FlagKey,
+  ) => {
     const state = groupState(ids, draft[key]);
-    // Tags' "Select all" also covers "Untagged" (`extra`), when it's visible.
+    // Tags' and owners' "Select all" also covers "Untagged" or "Shared" (`flagKey`), when it's
+    // visible.
+    const extra = flagKey === undefined ? undefined : draft[flagKey];
+    // With no ids visible (the search only matches "Untagged" or "Shared"), it alone decides.
     const checked =
-      extra === undefined ? state.checked : state.checked && extra;
+      extra === undefined
+        ? state.checked
+        : ids.length === 0
+          ? extra
+          : state.checked && extra;
     const indeterminate =
       extra === undefined
         ? state.indeterminate
@@ -314,9 +352,7 @@ export const FiltersButton = () => {
         indeterminate={indeterminate}
         onChange={(isChecked) => {
           toggleIds(key, ids, isChecked);
-          if (extra !== undefined) {
-            setDraft((previous) => ({ ...previous, untagged: isChecked }));
-          }
+          if (flagKey !== undefined) setFlag(flagKey, isChecked);
         }}
       >
         <span>{t('transactions.filters.selectAll')}</span>
@@ -441,6 +477,48 @@ export const FiltersButton = () => {
           </>
         );
       }
+      case 'owners': {
+        if (!showShared && visibleMembers.length === 0) return renderEmpty();
+        const ids = visibleMembers.map((member) => member.id);
+        return (
+          <>
+            {renderSelectAll(
+              'owner_ids',
+              ids,
+              showShared ? 'shared_owner' : undefined,
+            )}
+            {showShared && (
+              <CheckboxRow
+                checked={draft.shared_owner}
+                onChange={(checked) => setFlag('shared_owner', checked)}
+              >
+                <SharedIcon />
+                <span className="filters-popover-row-label">{sharedLabel}</span>
+              </CheckboxRow>
+            )}
+            {visibleMembers.map((member) => (
+              <CheckboxRow
+                key={member.id}
+                checked={draft.owner_ids.includes(member.id)}
+                onChange={(checked) =>
+                  toggleIds('owner_ids', [member.id], checked)
+                }
+              >
+                <Avatar
+                  name={memberDisplayName(member)}
+                  src={pictureSrc(member.picture_url)}
+                />
+                <span
+                  className="filters-popover-row-label"
+                  title={member.email}
+                >
+                  {memberDisplayName(member)}
+                </span>
+              </CheckboxRow>
+            ))}
+          </>
+        );
+      }
       case 'tags': {
         if (!showUntagged && visibleTags.length === 0) return renderEmpty();
         const ids = visibleTags.map((tag) => tag.id);
@@ -449,14 +527,12 @@ export const FiltersButton = () => {
             {renderSelectAll(
               'tag_ids',
               ids,
-              showUntagged ? draft.untagged : undefined,
+              showUntagged ? 'untagged' : undefined,
             )}
             {showUntagged && (
               <CheckboxRow
                 checked={draft.untagged}
-                onChange={(checked) =>
-                  setDraft((previous) => ({ ...previous, untagged: checked }))
-                }
+                onChange={(checked) => setFlag('untagged', checked)}
               >
                 <span className="filters-popover-row-label">
                   {untaggedLabel}
@@ -588,9 +664,7 @@ export const FiltersButton = () => {
       ? [
           {
             key: `m${id}`,
-            icon: (
-              <Avatar name={merchant.name} src={merchant.logo_url} />
-            ),
+            icon: <Avatar name={merchant.name} src={merchant.logo_url} />,
             label: merchant.name,
             onRemove: removeId('merchant_ids', id),
           },
@@ -627,14 +701,53 @@ export const FiltersButton = () => {
     });
   }
 
+  const memberById = new Map((members ?? []).map((m) => [m.id, m]));
+  const ownerItems: SummaryItem[] = [];
+  if (draft.shared_owner) {
+    ownerItems.push({
+      key: 'shared',
+      icon: <SharedIcon />,
+      label: sharedLabel,
+      onRemove: () => setFlag('shared_owner', false),
+    });
+  }
+  for (const id of draft.owner_ids) {
+    const member = memberById.get(id);
+    // A member removed since (still in the URL) keeps a row, so it can be taken off.
+    ownerItems.push({
+      key: `o${id}`,
+      icon: member && (
+        <Avatar
+          name={memberDisplayName(member)}
+          src={pictureSrc(member.picture_url)}
+        />
+      ),
+      label: member
+        ? memberDisplayName(member)
+        : t('settings.members.owner.unavailable'),
+      onRemove: removeId('owner_ids', id),
+    });
+  }
+  if (ownerItems.length > 0) {
+    summary.push({
+      section: 'owners',
+      items: ownerItems,
+      onClear: () =>
+        setDraft((previous) => ({
+          ...previous,
+          owner_ids: [],
+          shared_owner: false,
+        })),
+    });
+  }
+
   const tagById = new Map((tags ?? []).map((tag) => [tag.id, tag]));
   const tagItems: SummaryItem[] = [];
   if (draft.untagged) {
     tagItems.push({
       key: 'untagged',
       label: untaggedLabel,
-      onRemove: () =>
-        setDraft((previous) => ({ ...previous, untagged: false })),
+      onRemove: () => setFlag('untagged', false),
     });
   }
   for (const id of draft.tag_ids) {

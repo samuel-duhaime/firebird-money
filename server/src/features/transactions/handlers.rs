@@ -141,8 +141,9 @@ async fn create_transaction(
 /// `GET /transactions` — list transactions, optionally filtered by `date`, a `start_date`/
 /// `end_date` range, `merchant_id`, `account_id`, a free-text `search` matched against merchant
 /// name, original statement, category, and amount, comma-separated `category_ids`/`merchant_ids`/
-/// `account_ids`/`tag_ids` (plus `untagged=true`), and/or `amount_op` (`greater_than`,
-/// `less_than`, `equal_to`, `between`) with `amount` (and `amount_max` for `between`). Accepts
+/// `account_ids`/`tag_ids` (plus `untagged=true`)/`owner_ids` (plus `shared_owner=true`), and/or
+/// `amount_op` (`greater_than`, `less_than`, `equal_to`, `between`) with `amount` (and
+/// `amount_max` for `between`). Accepts
 /// `order` (`date`, `inverse_date`, `amount`, `inverse_amount`) to control sort order.
 async fn list_transactions(
     filter: web::Query<TransactionFilter>,

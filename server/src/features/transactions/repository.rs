@@ -384,8 +384,8 @@ pub async fn list_on_dates(
 /// Lists a household's transactions, optionally narrowed by an exact date match, a
 /// `start_date`/`end_date` range, an exact `merchant_id` or `account_id`, a free-text search across
 /// merchant name, original statement, category name, and amount, and/or the Filters popover's
-/// multi-select (`category_ids`, `merchant_ids`, `account_ids`, `tag_ids`/`untagged`) and amount
-/// filters.
+/// multi-select (`category_ids`, `merchant_ids`, `account_ids`, `tag_ids`/`untagged`,
+/// `owner_ids`/`shared_owner`) and amount filters.
 /// Sorted per `filter.order` (most recent first by default).
 pub async fn list(
     pool: &PgPool,
@@ -433,6 +433,9 @@ pub async fn list(
            AND ($14::numeric IS NULL OR t.amount < $14)
            AND ($15::numeric IS NULL OR t.amount >= $15)
            AND ($16::numeric IS NULL OR t.amount <= $16)
+           AND (($17::integer[] IS NULL AND NOT $18)
+              OR t.owner_user_id = ANY($17)
+              OR ($18 AND t.owner_user_id IS NULL))
          ORDER BY {order_by}"
     ))
     .bind(household_id)
@@ -451,6 +454,8 @@ pub async fn list(
     .bind(less_than)
     .bind(at_least)
     .bind(at_most)
+    .bind(&filter.owner_ids)
+    .bind(filter.shared_owner.unwrap_or(false))
     .fetch_all(pool)
     .await?;
 

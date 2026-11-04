@@ -370,6 +370,7 @@ export const en = {
         categories: 'Categories',
         merchants: 'Merchants',
         accounts: 'Accounts',
+        owners: 'Owners',
         tags: 'Tags',
         amount: 'Amount',
       },
