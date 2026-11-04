@@ -215,7 +215,8 @@ pub async fn create(
 /// bad id on line 12 doesn't leave lines 1-11 behind. Each row is stored with `source: import` and
 /// `reviewed: true` (the user just reviewed it). A `new_merchant_name` reuses a merchant with that
 /// exact name if one exists by now, else creates it — see `find_or_create_named`. A `new_account`
-/// does the same with its institution and account, so every line naming it lands in one account.
+/// does the same with its institution and account, so every line naming it lands in one account;
+/// an account created this way belongs to `user_id`, the person importing.
 ///
 /// Every `merchant_id` is checked against the caller's household first, on `pool` before `tx`
 /// opens (same reasoning as `create`): `Err(sqlx::Error::RowNotFound)` if any isn't visible. An
@@ -272,6 +273,7 @@ pub async fn create_imported(
                     account.name.trim(),
                     &account.kind,
                     account.last_four.as_deref(),
+                    user_id,
                 )
                 .await?;
                 if created {

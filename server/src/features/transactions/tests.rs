@@ -3626,6 +3626,8 @@ async fn import_transactions_creates_a_new_account_once(pool: PgPool) {
     assert!(transactions
         .iter()
         .all(|t| t["account_id"] == accounts[0]["id"]));
+    // A new account belongs to the person importing.
+    assert_eq!(accounts[0]["owner_user_id"], transactions[0]["user_id"]);
 
     // A second import naming the same account reuses it.
     let resp = import_via_api(&app, &cookie, serde_json::json!([line("C")])).await;
@@ -3681,6 +3683,13 @@ async fn import_transactions_reuses_an_account_saved_without_last_digits(pool: P
     assert_eq!(body["created_account_count"], 0);
     let transactions = list_all(&app, &cookie).await;
     assert_eq!(transactions[0]["account_id"], visa["id"]);
+    // A reused account keeps its owner.
+    let req = test::TestRequest::get()
+        .uri(&format!("/accounts/{}", visa["id"]))
+        .insert_header(("Cookie", cookie.clone()))
+        .to_request();
+    let reused: serde_json::Value = test::call_and_read_body_json(&app, req).await;
+    assert!(reused["owner_user_id"].is_null());
     let req = test::TestRequest::get()
         .uri("/institutions")
         .insert_header(("Cookie", cookie))

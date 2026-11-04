@@ -149,7 +149,7 @@ pub async fn delete(pool: &PgPool, household_id: i32, id: i32) -> Result<bool, s
 /// `last_four`, else the same name and type (ignoring case) when either side has no `last_four`
 /// (it's optional, so a saved account may lack it) — else creates it. Returns
 /// `(id, created)`. Used by statement import, for an account a statement names that's new; one it
-/// creates is Shared until someone gives it an owner.
+/// creates belongs to `owner_user_id`, the person importing, while one it finds keeps its owner.
 pub async fn find_or_create(
     conn: &mut PgConnection,
     household_id: i32,
@@ -157,6 +157,7 @@ pub async fn find_or_create(
     name: &str,
     kind: &str,
     last_four: Option<&str>,
+    owner_user_id: i32,
 ) -> Result<(i32, bool), sqlx::Error> {
     let existing: Option<i32> = sqlx::query_scalar(
         "SELECT id FROM accounts
@@ -180,8 +181,8 @@ pub async fn find_or_create(
     }
 
     let id: i32 = sqlx::query_scalar(
-        "INSERT INTO accounts (household_id, institution_id, name, type, last_four)
-         VALUES ($1, $2, $3, $4, $5)
+        "INSERT INTO accounts (household_id, institution_id, name, type, last_four, owner_user_id)
+         VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING id",
     )
     .bind(household_id)
@@ -189,6 +190,7 @@ pub async fn find_or_create(
     .bind(name)
     .bind(kind)
     .bind(last_four)
+    .bind(owner_user_id)
     .fetch_one(&mut *conn)
     .await?;
     Ok((id, true))
