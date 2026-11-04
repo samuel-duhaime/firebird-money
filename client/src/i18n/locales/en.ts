@@ -93,6 +93,7 @@ export const en = {
       },
       owner: {
         shared: 'Shared',
+        unavailable: 'Owner unavailable',
       },
       status: {
         verified: 'Verified',

@@ -95,6 +95,7 @@ export const fr: typeof en = {
       },
       owner: {
         shared: 'Partagé',
+        unavailable: 'Propriétaire indisponible',
       },
       status: {
         verified: 'Vérifié',

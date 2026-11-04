@@ -42,10 +42,11 @@ const MemberLabel = ({ member }: { member: Member }) => {
 };
 
 /** Who owns something, shown the same way the picker shows it: the Shared icon and label, or the
- * member's avatar and name. Shows nothing until the members have loaded. */
+ * member's avatar and name. Shows nothing while the members load, and says the owner is
+ * unavailable if they fail to (or the owner isn't among them). */
 export const OwnerLabel = ({ owner }: { owner: number | null }) => {
   const { t } = useTranslation();
-  const { data: members } = useMembers();
+  const { data: members, isPending } = useMembers();
 
   if (owner === null) {
     return (
@@ -58,8 +59,17 @@ export const OwnerLabel = ({ owner }: { owner: number | null }) => {
     );
   }
 
+  if (isPending) return null;
+
   const member = members?.find((m) => m.id === owner);
-  return member ? <MemberLabel member={member} /> : null;
+  if (!member) {
+    return (
+      <span className="owner-picker-name owner-picker-name--placeholder">
+        {t('settings.members.owner.unavailable')}
+      </span>
+    );
+  }
+  return <MemberLabel member={member} />;
 };
 
 /** The keys that move through a closed or open list the way they do in a native `<select>`. */
@@ -85,7 +95,9 @@ export const OwnerPicker = ({
   const { isOpen, setIsOpen, position, triggerRef, popoverRef } =
     useAnchoredPopover<HTMLButtonElement>();
   const listboxId = useId();
-  const [highlightedIndex, setHighlightedIndex] = useState(0);
+  // The highlighted choice's owner rather than its position, so it stays on the right person if
+  // the members load while the list is open.
+  const [highlightedOwner, setHighlightedOwner] = useState<number | null>(null);
 
   const selected = members?.find((member) => member.id === value);
   const sharedLabel = t('settings.members.owner.shared');
@@ -100,11 +112,19 @@ export const OwnerPicker = ({
     })),
   ];
   const selectedIndex = options.findIndex((option) => option.owner === value);
+  const highlightedIndex = options.findIndex(
+    (option) => option.owner === highlightedOwner,
+  );
   const optionId = (index: number) => `${listboxId}-option-${index}`;
 
   const open = () => {
-    setHighlightedIndex(Math.max(selectedIndex, 0));
+    setHighlightedOwner(value ?? null);
     setIsOpen(true);
+  };
+
+  const highlight = (index: number) => {
+    const option = options[index];
+    if (option) setHighlightedOwner(option.owner);
   };
 
   const pick = (index: number) => {
@@ -172,7 +192,7 @@ export const OwnerPicker = ({
       (isLetter && !isModified)
     ) {
       event.preventDefault();
-      setHighlightedIndex(target(event.key, highlightedIndex));
+      highlight(target(event.key, highlightedIndex));
     }
   };
 
@@ -197,7 +217,11 @@ export const OwnerPicker = ({
         aria-haspopup="listbox"
         aria-expanded={isOpen}
         aria-controls={isShown ? listboxId : undefined}
-        aria-activedescendant={isShown ? optionId(highlightedIndex) : undefined}
+        aria-activedescendant={
+          isShown && highlightedIndex >= 0
+            ? optionId(highlightedIndex)
+            : undefined
+        }
         aria-label={ariaLabel}
         onClick={() => (isOpen ? setIsOpen(false) : open())}
         onKeyDown={handleKeyDown}
@@ -247,7 +271,7 @@ export const OwnerPicker = ({
                 }
                 // Keeps focus on the trigger, where the keyboard keeps working.
                 onMouseDown={(event) => event.preventDefault()}
-                onMouseEnter={() => setHighlightedIndex(index)}
+                onMouseEnter={() => highlight(index)}
                 onClick={() => pick(index)}
               >
                 {option.member ? (
