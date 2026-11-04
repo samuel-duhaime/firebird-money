@@ -75,7 +75,7 @@ export const fr: typeof en = {
     household: {
       members: 'Membres',
       preferences: 'Préférences',
-      institutions: 'Institutions',
+      accounts: 'Comptes',
       categories: 'Catégories',
       merchants: 'Marchands',
       rules: 'Règles',
@@ -95,6 +95,7 @@ export const fr: typeof en = {
       },
       owner: {
         shared: 'Partagé',
+        unavailable: 'Propriétaire indisponible',
       },
       status: {
         verified: 'Vérifié',
@@ -135,7 +136,7 @@ export const fr: typeof en = {
       },
     },
     institutions: {
-      heading: 'Institutions',
+      heading: 'Comptes',
       description:
         'Les banques, caisses et courtiers que ton ménage utilise, et les comptes que tu as chez chacun. Chaque transaction appartient à un de ces comptes.',
       addAccount: 'Ajouter un compte',
@@ -189,6 +190,9 @@ export const fr: typeof en = {
         save: 'Enregistrer',
         nameRequired: 'Un nom est requis.',
         invalidLastFour: 'Utilise jusqu’à 4 lettres ou chiffres.',
+        owner: 'Propriétaire',
+        ownerPlaceholder: 'Partagé ou un membre',
+        ownerRequired: 'Choisis à qui appartient ce compte.',
         invalidWebsite: 'Le site web doit commencer par http:// ou https://.',
         duplicateInstitution: 'Une institution avec ce nom existe déjà.',
         failed: 'Impossible d’enregistrer. Réessaie.',
@@ -296,7 +300,7 @@ export const fr: typeof en = {
       selectCategory: 'Sélectionnez une catégorie',
       selectMerchant: 'Sélectionnez un marchand',
       selectAccount: 'Sélectionne un compte',
-      noAccounts: 'Ajoute d’abord un compte, dans Paramètres → Institutions.',
+      noAccounts: 'Ajoute d’abord un compte, dans Paramètres → Comptes.',
       noAccountsLink: 'Ajouter un compte',
       selectTags: 'Ajouter des étiquettes',
       noTagsFound: 'Aucune étiquette trouvée.',

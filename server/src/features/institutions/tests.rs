@@ -130,6 +130,7 @@ where
             "institution_id": institution_id,
             "name": name,
             "type": "checking",
+            "owner": "shared",
         })),
     )
     .await;

@@ -13,6 +13,7 @@ import { ACCOUNT_TYPES } from '../utils/types';
 import type { Account, AccountType } from '../utils/types';
 import { InstitutionAvatar } from '../../institutions/components/InstitutionAvatar';
 import { Select } from '../../../components/Select';
+import { OwnerPicker } from '../../members/components/OwnerPicker';
 import '../../transactions/components/AddTransactionModal.css';
 import './AccountModal.css';
 
@@ -70,6 +71,10 @@ export const AccountModal = ({
   const [type, setType] = useState<AccountType>(account?.type ?? 'checking');
   const [lastFour, setLastFour] = useState(account?.last_four ?? '');
   const [currency, setCurrency] = useState(account?.currency ?? 'CAD');
+  // `undefined` until picked: a new account has no default owner, so whoever adds it decides.
+  const [owner, setOwner] = useState<number | null | undefined>(
+    account?.owner_user_id,
+  );
   const [error, setError] = useState('');
   const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -169,6 +174,10 @@ export const AccountModal = ({
       setError(t('settings.institutions.modal.nameRequired'));
       return;
     }
+    if (owner === undefined) {
+      setError(t('settings.institutions.modal.ownerRequired'));
+      return;
+    }
     if (!/^[0-9A-Za-z]{0,4}$/.test(lastFour.trim())) {
       setError(t('settings.institutions.modal.invalidLastFour'));
       return;
@@ -180,6 +189,7 @@ export const AccountModal = ({
       type,
       last_four: lastFour.trim(),
       currency,
+      owner: owner ?? ('shared' as const),
     };
     const onError = () => setError(t('settings.institutions.modal.failed'));
 
@@ -425,6 +435,19 @@ export const AccountModal = ({
                   </option>
                 ))}
               </Select>
+
+              <label htmlFor="account-owner">
+                {t('settings.institutions.modal.owner')}
+              </label>
+              <OwnerPicker
+                id="account-owner"
+                value={owner}
+                onChange={(next) => {
+                  setError('');
+                  setOwner(next);
+                }}
+                placeholder={t('settings.institutions.modal.ownerPlaceholder')}
+              />
 
               <div className="account-modal-row">
                 <div className="account-modal-field">

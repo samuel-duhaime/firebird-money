@@ -73,7 +73,7 @@ export const en = {
     household: {
       members: 'Members',
       preferences: 'Preferences',
-      institutions: 'Institutions',
+      accounts: 'Accounts',
       categories: 'Categories',
       merchants: 'Merchants',
       rules: 'Rules',
@@ -93,6 +93,7 @@ export const en = {
       },
       owner: {
         shared: 'Shared',
+        unavailable: 'Owner unavailable',
       },
       status: {
         verified: 'Verified',
@@ -133,7 +134,7 @@ export const en = {
       },
     },
     institutions: {
-      heading: 'Institutions',
+      heading: 'Accounts',
       description:
         'The banks, credit unions, and brokerages your household uses, and the accounts you hold at each one. Every transaction belongs to one of these accounts.',
       addAccount: 'Add account',
@@ -187,6 +188,9 @@ export const en = {
         save: 'Save',
         nameRequired: 'A name is required.',
         invalidLastFour: 'Use up to 4 letters or digits.',
+        owner: 'Owner',
+        ownerPlaceholder: 'Shared or one member',
+        ownerRequired: 'Choose who owns this account.',
         invalidWebsite: 'The website must start with http:// or https://.',
         duplicateInstitution: 'An institution with this name already exists.',
         failed: 'Failed to save. Please try again.',
@@ -295,7 +299,7 @@ export const en = {
       selectCategory: 'Select category',
       selectMerchant: 'Select merchant',
       selectAccount: 'Select account',
-      noAccounts: 'Add an account first, under Settings → Institutions.',
+      noAccounts: 'Add an account first, under Settings → Accounts.',
       noAccountsLink: 'Add an account',
       selectTags: 'Add tags',
       noTagsFound: 'No tags found.',

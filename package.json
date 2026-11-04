@@ -2,6 +2,7 @@
   "name": "firebird-money",
   "private": true,
   "scripts": {
-    "backup": "./scripts/backup.sh"
+    "backup": "./scripts/backup.sh",
+    "docker:update": "./scripts/update.sh"
   }
 }

@@ -41,6 +41,8 @@ account-name-required = Un nom est requis
 account-invalid-type = type doit être checking, savings, credit_card, investment, loan, mortgage, cash ou other
 account-invalid-last-four = last_four doit contenir de 1 à 4 lettres ou chiffres
 account-invalid-currency = currency doit être un code de 3 lettres, p. ex. CAD
+account-owner-required = owner est requis : "shared" ou l’id d’un membre
+account-owner-not-found = Le propriétaire doit être un membre de ce ménage
 # Courriel de connexion. Le lien est inséré entre les instructions et la signature.
 auth-email-subject = Ton lien de connexion FireBird Money
 auth-email-greeting = Bonjour,

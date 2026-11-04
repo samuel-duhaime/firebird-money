@@ -6,7 +6,7 @@ use crate::features::institutions::repository as institutions_repository;
 /// Every column of an `Account`, selected from a row aliased `a` joined to its institution `i`.
 const SELECT_COLUMNS: &str = "
     a.id, a.household_id, a.institution_id, i.name AS institution_name, a.name, a.type,
-    a.last_four, a.currency, a.created_at,
+    a.last_four, a.currency, a.owner_user_id, a.created_at,
     (SELECT COUNT(*) FROM transactions
      WHERE account_id = a.id AND household_id = a.household_id) AS transaction_count";
 
@@ -45,8 +45,9 @@ pub async fn get(
 
 /// Inserts a new account owned by `household_id` and returns it. `new_account.institution_id` must
 /// be common or this household's own — `Err(sqlx::Error::RowNotFound)` otherwise, which the handler
-/// maps to a 400 (same convention as `transactions::repository::create`'s merchant check).
-/// `new_account` is expected to be already validated/normalized by the handler.
+/// maps to a 400 (same convention as `transactions::repository::create`'s merchant check). An owner
+/// outside the household fails with a foreign-key violation on `accounts_household_owner_fkey`.
+/// `new_account` is expected to be already validated/normalized by the handler, `owner` included.
 pub async fn create(
     pool: &PgPool,
     household_id: i32,
@@ -64,8 +65,9 @@ pub async fn create(
 
     sqlx::query_as::<_, Account>(&format!(
         "WITH inserted AS (
-            INSERT INTO accounts (household_id, institution_id, name, type, last_four, currency)
-            VALUES ($1, $2, $3, $4, $5, COALESCE($6, 'CAD'))
+            INSERT INTO accounts
+                (household_id, institution_id, name, type, last_four, currency, owner_user_id)
+            VALUES ($1, $2, $3, $4, $5, COALESCE($6, 'CAD'), $7)
             RETURNING *
          )
          SELECT {SELECT_COLUMNS}
@@ -78,6 +80,7 @@ pub async fn create(
     .bind(&new_account.r#type)
     .bind(&new_account.last_four)
     .bind(&new_account.currency)
+    .bind(new_account.owner.and_then(|owner| owner.user_id()))
     .fetch_one(pool)
     .await
 }
@@ -85,7 +88,8 @@ pub async fn create(
 /// Applies a partial update, scoped to `household_id`. `last_four` follows a three-state rule:
 /// `None` leaves it unchanged, `Some("")` clears it, anything else sets it. Returns `Ok(None)` for
 /// an unknown id, and `Err(sqlx::Error::RowNotFound)` when `patch.institution_id` isn't visible to
-/// the household — same split as `create`.
+/// the household — same split as `create`. `owner: Some(Owner::Shared)` clears the owner, unlike
+/// the other fields where `None` and "clear" can't be told apart.
 pub async fn update(
     pool: &PgPool,
     household_id: i32,
@@ -107,7 +111,8 @@ pub async fn update(
                 name = COALESCE($4, name),
                 type = COALESCE($5, type),
                 last_four = CASE WHEN $6::text IS NULL THEN last_four ELSE NULLIF($6, '') END,
-                currency = COALESCE($7, currency)
+                currency = COALESCE($7, currency),
+                owner_user_id = CASE WHEN $8 THEN $9 ELSE owner_user_id END
             WHERE id = $1 AND household_id = $2
             RETURNING *
          )
@@ -122,6 +127,8 @@ pub async fn update(
     .bind(&patch.r#type)
     .bind(&patch.last_four)
     .bind(&patch.currency)
+    .bind(patch.owner.is_some())
+    .bind(patch.owner.and_then(|owner| owner.user_id()))
     .fetch_optional(pool)
     .await
 }
@@ -141,7 +148,8 @@ pub async fn delete(pool: &PgPool, household_id: i32, id: i32) -> Result<bool, s
 /// Finds the household's account at `institution_id` that is clearly this one — the same
 /// `last_four`, else the same name and type (ignoring case) when either side has no `last_four`
 /// (it's optional, so a saved account may lack it) — else creates it. Returns
-/// `(id, created)`. Used by statement import, for an account a statement names that's new.
+/// `(id, created)`. Used by statement import, for an account a statement names that's new; one it
+/// creates belongs to `owner_user_id`, the person importing, while one it finds keeps its owner.
 pub async fn find_or_create(
     conn: &mut PgConnection,
     household_id: i32,
@@ -149,6 +157,7 @@ pub async fn find_or_create(
     name: &str,
     kind: &str,
     last_four: Option<&str>,
+    owner_user_id: i32,
 ) -> Result<(i32, bool), sqlx::Error> {
     let existing: Option<i32> = sqlx::query_scalar(
         "SELECT id FROM accounts
@@ -172,8 +181,8 @@ pub async fn find_or_create(
     }
 
     let id: i32 = sqlx::query_scalar(
-        "INSERT INTO accounts (household_id, institution_id, name, type, last_four)
-         VALUES ($1, $2, $3, $4, $5)
+        "INSERT INTO accounts (household_id, institution_id, name, type, last_four, owner_user_id)
+         VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING id",
     )
     .bind(household_id)
@@ -181,6 +190,7 @@ pub async fn find_or_create(
     .bind(name)
     .bind(kind)
     .bind(last_four)
+    .bind(owner_user_id)
     .fetch_one(&mut *conn)
     .await?;
     Ok((id, true))

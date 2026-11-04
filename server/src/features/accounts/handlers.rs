@@ -11,9 +11,12 @@ use super::repository;
 use crate::features::auth::CurrentUser;
 use crate::shared::http_error::{
     error_response, error_response_with_n, internal_error_response, is_foreign_key_violation,
-    not_found_response,
+    is_foreign_key_violation_on, not_found_response,
 };
 use crate::shared::l10n::L10n;
+
+/// The FK that keeps an account's owner in its own household.
+const OWNER_FKEY: &str = "accounts_household_owner_fkey";
 
 /// Account id path (`/accounts/{id}`)
 #[derive(Deserialize)]
@@ -89,6 +92,7 @@ async fn create_account(
             last_four: validate_optional(new_account.last_four.as_deref(), validate_last_four)?
                 .filter(|last_four| !last_four.is_empty()),
             currency: validate_optional(new_account.currency.as_deref(), validate_currency)?,
+            owner: Some(new_account.owner.ok_or("account-owner-required")?),
         })
     })();
     let new_account = match validated {
@@ -108,6 +112,12 @@ async fn create_account(
             StatusCode::BAD_REQUEST,
             "institution-not-found",
             new_account.institution_id as u32,
+        ),
+        Err(e) if is_foreign_key_violation_on(&e, OWNER_FKEY) => error_response(
+            &l10n,
+            &locale,
+            StatusCode::BAD_REQUEST,
+            "account-owner-not-found",
         ),
         Err(e) => {
             error!("failed to create account error={e}");
@@ -183,6 +193,7 @@ async fn update_account(
             r#type: validate_optional(patch.r#type.as_deref(), validate_type)?,
             last_four: validate_optional(patch.last_four.as_deref(), validate_last_four)?,
             currency: validate_optional(patch.currency.as_deref(), validate_currency)?,
+            owner: patch.owner,
         })
     })();
     let patch = match validated {
@@ -201,6 +212,12 @@ async fn update_account(
             StatusCode::BAD_REQUEST,
             "institution-not-found",
             patch.institution_id.unwrap_or_default() as u32,
+        ),
+        Err(e) if is_foreign_key_violation_on(&e, OWNER_FKEY) => error_response(
+            &l10n,
+            &locale,
+            StatusCode::BAD_REQUEST,
+            "account-owner-not-found",
         ),
         Err(e) => {
             error!("failed to update account id={id} error={e}");

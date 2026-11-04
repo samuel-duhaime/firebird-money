@@ -44,6 +44,7 @@ where
             "institution_id": institution_id,
             "name": "Test Account",
             "type": "checking",
+            "owner": "shared",
         }))
         .to_request();
     let account: serde_json::Value = test::call_and_read_body_json(app, req).await;
