@@ -1,4 +1,5 @@
 import { apiFetch } from '../../../lib/api-client';
+import type { Owner } from '../../accounts/utils/api';
 import type { Transaction } from './types';
 
 /** At least one of `merchant_id`/`original_statement` is required (enforced server-side): the
@@ -11,6 +12,8 @@ export interface NewTransaction {
   amount: string;
   category_id: number;
   account_id: number;
+  /** Defaults to the account's owner when absent. */
+  owner?: Owner;
   /** Optional; absent or `[]` means no tags. */
   tag_ids?: number[];
 }
@@ -32,6 +35,9 @@ export interface TransactionPatch {
   amount?: string;
   category_id?: number;
   account_id?: number;
+  /** Absent leaves it as is, or moves it to the new account's owner when `account_id` changes and
+   * it had the old account's owner. */
+  owner?: Owner;
   tag_ids?: number[];
 }
 
@@ -56,7 +62,7 @@ export const deleteTransaction = (id: number): Promise<void> =>
  * existing tags rather than replacing them, unlike `TransactionPatch.tag_ids`. */
 export type BulkTransactionPatch = Pick<
   TransactionPatch,
-  'date' | 'merchant_id' | 'category_id' | 'account_id' | 'tag_ids'
+  'date' | 'merchant_id' | 'category_id' | 'account_id' | 'owner' | 'tag_ids'
 >;
 
 export const bulkUpdateTransactions = (

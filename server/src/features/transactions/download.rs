@@ -1,10 +1,48 @@
 //! Renders transactions as CSV or Excel (`.xlsx`) bytes for `GET /transactions/download`.
 
+use std::collections::HashMap;
+
 use rust_xlsxwriter::{Workbook, XlsxError};
 
 use super::model::{SortOrder, Transaction, TransactionFilter};
+use crate::features::members::model::Member;
 
-const HEADERS: [&str; 6] = ["Date", "Merchant", "Category", "Tags", "Account", "Amount"];
+const HEADERS: [&str; 7] = [
+    "Date", "Merchant", "Category", "Tags", "Account", "Owner", "Amount",
+];
+
+/// What the Owner column says for each member: their full name, else their email, as the app
+/// shows them.
+pub struct OwnerNames(HashMap<i32, String>);
+
+impl OwnerNames {
+    pub fn new(members: Vec<Member>) -> Self {
+        Self(
+            members
+                .into_iter()
+                .map(|member| {
+                    let name = [member.first_name, member.last_name]
+                        .into_iter()
+                        .flatten()
+                        .filter(|part| !part.is_empty())
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    let name = if name.is_empty() { member.email } else { name };
+                    (member.id, name)
+                })
+                .collect(),
+        )
+    }
+
+    /// "Shared" for no owner. An owner no longer in the household can't happen (removing a member
+    /// makes their transactions Shared), but is left blank rather than failing the download.
+    fn cell(&self, owner_user_id: Option<i32>) -> String {
+        match owner_user_id {
+            None => "Shared".to_string(),
+            Some(id) => self.0.get(&id).cloned().unwrap_or_default(),
+        }
+    }
+}
 
 /// Comma-joins a transaction's tag names for a single spreadsheet cell, e.g. "Tax, Reimburse".
 fn tags_cell(transaction: &Transaction) -> String {
@@ -75,7 +113,7 @@ fn escape_formula(value: &str) -> String {
 }
 
 /// Renders transactions as CSV bytes, with a header row.
-pub fn to_csv(transactions: &[Transaction]) -> Result<Vec<u8>, csv::Error> {
+pub fn to_csv(transactions: &[Transaction], owners: &OwnerNames) -> Result<Vec<u8>, csv::Error> {
     let mut writer = csv::Writer::from_writer(Vec::new());
 
     writer.write_record(HEADERS)?;
@@ -86,6 +124,7 @@ pub fn to_csv(transactions: &[Transaction]) -> Result<Vec<u8>, csv::Error> {
             escape_formula(&transaction.category_name_en),
             escape_formula(&tags_cell(transaction)),
             escape_formula(&transaction.account_name),
+            escape_formula(&owners.cell(transaction.owner_user_id)),
             transaction.amount.to_string(),
         ])?;
     }
@@ -94,7 +133,7 @@ pub fn to_csv(transactions: &[Transaction]) -> Result<Vec<u8>, csv::Error> {
 }
 
 /// Renders transactions as `.xlsx` bytes, with a header row.
-pub fn to_xlsx(transactions: &[Transaction]) -> Result<Vec<u8>, XlsxError> {
+pub fn to_xlsx(transactions: &[Transaction], owners: &OwnerNames) -> Result<Vec<u8>, XlsxError> {
     let mut workbook = Workbook::new();
     let worksheet = workbook.add_worksheet();
 
@@ -108,7 +147,8 @@ pub fn to_xlsx(transactions: &[Transaction]) -> Result<Vec<u8>, XlsxError> {
         worksheet.write(row, 2, &transaction.category_name_en)?;
         worksheet.write(row, 3, tags_cell(transaction))?;
         worksheet.write(row, 4, &transaction.account_name)?;
-        worksheet.write(row, 5, transaction.amount)?;
+        worksheet.write(row, 5, owners.cell(transaction.owner_user_id))?;
+        worksheet.write(row, 6, transaction.amount)?;
     }
 
     workbook.save_to_buffer()

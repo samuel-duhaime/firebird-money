@@ -1,0 +1,126 @@
+.account-owners-modal {
+  width: 580px;
+}
+
+.account-owners-modal .modal-body {
+  overflow-y: auto;
+}
+
+.account-owners-group {
+  border: 1px solid var(--color-medium);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.account-owners-group-header {
+  display: flex;
+  justify-content: space-between;
+  padding: var(--spacing-xs) var(--spacing-s);
+  border-bottom: 1px solid var(--color-medium);
+  color: var(--color-lightest);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.account-owners-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.account-owners-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-s);
+}
+
+.account-owners-row + .account-owners-row {
+  border-top: 1px solid var(--color-medium);
+}
+
+.account-owners-account {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.account-owners-account-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-owners-account-meta {
+  color: var(--color-lightest);
+  font-size: 13px;
+}
+
+.account-owners-modal:focus {
+  outline: none;
+}
+
+/* Wraps onto more lines rather than clipping the last choices on a narrow screen. */
+.account-owners-choices {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  min-width: 0;
+  gap: var(--spacing-xs);
+}
+
+.account-owners-choice {
+  position: relative;
+  display: flex;
+  padding: 2px;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+  opacity: 0.6;
+  transition:
+    border-color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.account-owners-choice:hover,
+.account-owners-choice:focus-visible {
+  opacity: 1;
+  outline: none;
+  border-color: var(--color-medium);
+}
+
+.account-owners-choice--chosen,
+.account-owners-choice--chosen:hover,
+.account-owners-choice--chosen:focus-visible {
+  border-color: var(--color-primary);
+  opacity: 1;
+}
+
+.account-owners-shared-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--color-medium);
+  color: var(--color-white);
+  font-size: 14px;
+}
+
+.account-owners-check {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: var(--color-white);
+  font-size: 9px;
+}

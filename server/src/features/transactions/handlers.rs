@@ -23,7 +23,7 @@ use super::model::{
 use super::repository;
 use crate::features::accounts::ACCOUNT_TYPES;
 use crate::features::auth::CurrentUser;
-use crate::features::{accounts, categories, category_groups, merchants, tags};
+use crate::features::{accounts, categories, category_groups, members, merchants, tags};
 use crate::shared::anthropic::{AnthropicClient, AnthropicError};
 use crate::shared::http_error::{
     error_response, error_response_with_n, internal_error_response, is_foreign_key_violation,
@@ -55,6 +55,9 @@ const MAX_IMPORT_LINES: usize = 1000;
 /// `replace_transactions_account_with_account_id` migration. Every other FK a transaction write can
 /// trip is the category one, so this is how a 400 tells the two apart.
 const ACCOUNT_FKEY: &str = "transactions_household_account_fkey";
+
+/// The FK that keeps a transaction's owner in its own household.
+const OWNER_FKEY: &str = "transactions_household_owner_fkey";
 
 /// File format for `GET /transactions/download`.
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
@@ -114,6 +117,12 @@ async fn create_transaction(
             StatusCode::BAD_REQUEST,
             "account-not-found",
             new_transaction.account_id as u32,
+        ),
+        Err(e) if is_foreign_key_violation_on(&e, OWNER_FKEY) => error_response(
+            &l10n,
+            &locale,
+            StatusCode::BAD_REQUEST,
+            "account-owner-not-found",
         ),
         Err(e) if is_foreign_key_violation(&e) => error_response_with_n(
             &l10n,
@@ -179,9 +188,16 @@ async fn download_transactions(
             return internal_error_response(&l10n, &locale);
         }
     };
+    let owners = match members::repository::list(&pool, household_id).await {
+        Ok(members) => download::OwnerNames::new(members),
+        Err(e) => {
+            error!("failed to list members for download error={e}");
+            return internal_error_response(&l10n, &locale);
+        }
+    };
 
     match format.format {
-        DownloadFormat::Csv => match download::to_csv(&transactions) {
+        DownloadFormat::Csv => match download::to_csv(&transactions, &owners) {
             Ok(bytes) => {
                 let filename = download::filename(&filter, "csv");
                 HttpResponse::Ok()
@@ -197,7 +213,7 @@ async fn download_transactions(
                 internal_error_response(&l10n, &locale)
             }
         },
-        DownloadFormat::Xlsx => match download::to_xlsx(&transactions) {
+        DownloadFormat::Xlsx => match download::to_xlsx(&transactions, &owners) {
             Ok(bytes) => {
                 let filename = download::filename(&filter, "xlsx");
                 HttpResponse::Ok()
@@ -649,6 +665,12 @@ async fn update_transaction(
             "account-not-found",
             patch.account_id.unwrap_or_default() as u32,
         ),
+        Err(e) if is_foreign_key_violation_on(&e, OWNER_FKEY) => error_response(
+            &l10n,
+            &locale,
+            StatusCode::BAD_REQUEST,
+            "account-owner-not-found",
+        ),
         Err(e) if is_foreign_key_violation(&e) => error_response_with_n(
             &l10n,
             &locale,
@@ -721,6 +743,12 @@ async fn bulk_update_transactions(
             StatusCode::BAD_REQUEST,
             "account-not-found",
             body.patch.account_id.unwrap_or_default() as u32,
+        ),
+        Err(e) if is_foreign_key_violation_on(&e, OWNER_FKEY) => error_response(
+            &l10n,
+            &locale,
+            StatusCode::BAD_REQUEST,
+            "account-owner-not-found",
         ),
         Err(e) if is_foreign_key_violation(&e) => error_response_with_n(
             &l10n,

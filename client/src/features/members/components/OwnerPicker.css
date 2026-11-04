@@ -30,6 +30,26 @@
   border-color: var(--color-primary);
 }
 
+.owner-picker-trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Only the avatar, centered in a narrow list column. */
+.owner-picker-trigger--cell {
+  justify-content: center;
+  width: auto;
+  padding: 2px;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: none;
+}
+
+.owner-picker-trigger--cell:hover,
+.owner-picker-trigger--cell:focus-visible {
+  border-color: var(--color-medium);
+}
+
 .owner-picker-name {
   flex: 1;
   min-width: 0;
@@ -79,4 +99,9 @@
 /* One highlight at a time: the mouse moves it too, and the list opens on the picked choice. */
 .owner-picker-option--highlighted {
   background: var(--color-medium);
+}
+
+.owner-avatar {
+  display: inline-flex;
+  justify-content: center;
 }

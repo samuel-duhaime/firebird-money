@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faChevronDown, faLink } from '@fortawesome/free-solid-svg-icons';
 import { Avatar } from '../../../components/Avatar';
+import { Tooltip } from '../../../components/Tooltip';
 import { useAnchoredPopover } from '../../../lib/use-anchored-popover';
 import { useMembers } from '../hooks/use-members';
 import { memberDisplayName, pictureSrc } from '../utils/format';
@@ -18,6 +19,13 @@ type OwnerPickerProps = {
   onChange: (owner: number | null) => void;
   /** Shown while `value` is `undefined`. */
   placeholder?: string;
+  /** The owner it gets when nobody picks one, e.g. a transaction's account's: marked "(default)"
+   * wherever it shows. */
+  defaultOwner?: number | null;
+  disabled?: boolean;
+  /** `field` (default) is a form field; `cell` is only the avatar, for a list row, with the name
+   * and email on hover. */
+  variant?: 'field' | 'cell';
   /** For a `<label htmlFor>` to point at the trigger. */
   id?: string;
   triggerClassName?: string;
@@ -30,13 +38,31 @@ const SharedIcon = () => (
   </span>
 );
 
-const MemberLabel = ({ member }: { member: Member }) => {
+/** The name (with any `suffix`), and the email when the name isn't already it — what a lone
+ * avatar shows on hover. */
+const memberTooltip = (member: Member, suffix = '') => {
+  const name = memberDisplayName(member);
+  return name === member.email
+    ? name + suffix
+    : `${name}${suffix}\n${member.email}`;
+};
+
+const MemberLabel = ({
+  member,
+  suffix,
+}: {
+  member: Member;
+  suffix?: string;
+}) => {
   const name = memberDisplayName(member);
 
   return (
     <>
       <Avatar name={name} src={pictureSrc(member.picture_url)} />
-      <span className="owner-picker-name">{name}</span>
+      <span className="owner-picker-name">
+        {name}
+        {suffix}
+      </span>
     </>
   );
 };
@@ -72,6 +98,35 @@ export const OwnerLabel = ({ owner }: { owner: number | null }) => {
   return <MemberLabel member={member} />;
 };
 
+/** Who owns something as just its avatar (or the Shared icon), with the name and email on hover —
+ * for a narrow list column. */
+export const OwnerAvatar = ({ owner }: { owner: number | null }) => {
+  const { t } = useTranslation();
+  const { data: members } = useMembers();
+
+  if (owner === null) {
+    return (
+      <Tooltip text={t('settings.members.owner.shared')}>
+        <span className="owner-avatar">
+          <SharedIcon />
+        </span>
+      </Tooltip>
+    );
+  }
+  const member = members?.find((m) => m.id === owner);
+  if (!member) return null;
+  return (
+    <Tooltip text={memberTooltip(member)}>
+      <span className="owner-avatar">
+        <Avatar
+          name={memberDisplayName(member)}
+          src={pictureSrc(member.picture_url)}
+        />
+      </span>
+    </Tooltip>
+  );
+};
+
 /** The keys that move through a closed or open list the way they do in a native `<select>`. */
 const NAVIGATION_KEYS = ['ArrowDown', 'ArrowUp', 'Home', 'End'];
 
@@ -86,6 +141,9 @@ export const OwnerPicker = ({
   value,
   onChange,
   placeholder,
+  defaultOwner,
+  disabled = false,
+  variant = 'field',
   id,
   triggerClassName,
   ariaLabel,
@@ -101,6 +159,17 @@ export const OwnerPicker = ({
 
   const selected = members?.find((member) => member.id === value);
   const sharedLabel = t('settings.members.owner.shared');
+  /** " (default)" after the owner that's the default, nothing after the others. */
+  const suffix = (owner: number | null | undefined) =>
+    defaultOwner !== undefined && owner === defaultOwner
+      ? ` ${t('settings.members.owner.default')}`
+      : '';
+  const isCell = variant === 'cell';
+  const tooltip = !isCell
+    ? undefined
+    : value === null
+      ? sharedLabel + suffix(null)
+      : selected && memberTooltip(selected, suffix(selected.id));
 
   // Every choice in list order, with the text type-to-jump matches against.
   const options: { owner: number | null; label: string; member?: Member }[] = [
@@ -206,43 +275,63 @@ export const OwnerPicker = ({
 
   const isShown = isOpen && position;
 
-  return (
-    <>
-      <button
-        id={id}
-        type="button"
-        role="combobox"
-        className={`owner-picker-trigger ${triggerClassName ?? ''}`}
-        ref={triggerRef}
-        aria-haspopup="listbox"
-        aria-expanded={isOpen}
-        aria-controls={isShown ? listboxId : undefined}
-        aria-activedescendant={
-          isShown && highlightedIndex >= 0
-            ? optionId(highlightedIndex)
-            : undefined
-        }
-        aria-label={ariaLabel}
-        onClick={() => (isOpen ? setIsOpen(false) : open())}
-        onKeyDown={handleKeyDown}
-      >
-        {value === null && (
-          <>
-            <SharedIcon />
-            <span className="owner-picker-name">{sharedLabel}</span>
-          </>
-        )}
-        {selected && <MemberLabel member={selected} />}
-        {value === undefined && (
-          <span className="owner-picker-name owner-picker-name--placeholder">
-            {placeholder}
-          </span>
-        )}
+  const trigger = (
+    <button
+      id={id}
+      type="button"
+      role="combobox"
+      className={`owner-picker-trigger owner-picker-trigger--${variant} ${triggerClassName ?? ''}`}
+      ref={triggerRef}
+      disabled={disabled}
+      aria-haspopup="listbox"
+      aria-expanded={isOpen}
+      aria-controls={isShown ? listboxId : undefined}
+      aria-activedescendant={
+        isShown && highlightedIndex >= 0
+          ? optionId(highlightedIndex)
+          : undefined
+      }
+      aria-label={isCell && tooltip ? `${ariaLabel}: ${tooltip}` : ariaLabel}
+      onClick={() => (isOpen ? setIsOpen(false) : open())}
+      onKeyDown={handleKeyDown}
+    >
+      {value === null && (
+        <>
+          <SharedIcon />
+          {!isCell && (
+            <span className="owner-picker-name">
+              {sharedLabel}
+              {suffix(null)}
+            </span>
+          )}
+        </>
+      )}
+      {selected &&
+        (isCell ? (
+          <Avatar
+            name={memberDisplayName(selected)}
+            src={pictureSrc(selected.picture_url)}
+          />
+        ) : (
+          <MemberLabel member={selected} suffix={suffix(selected.id)} />
+        ))}
+      {value === undefined && (
+        <span className="owner-picker-name owner-picker-name--placeholder">
+          {placeholder}
+        </span>
+      )}
+      {!isCell && (
         <FontAwesomeIcon
           icon={faChevronDown}
           className="owner-picker-chevron"
         />
-      </button>
+      )}
+    </button>
+  );
+
+  return (
+    <>
+      {isCell ? <Tooltip text={tooltip}>{trigger}</Tooltip> : trigger}
       {isShown &&
         createPortal(
           <div
@@ -250,12 +339,13 @@ export const OwnerPicker = ({
             className="anchored-popover owner-picker-popover"
             role="listbox"
             ref={popoverRef}
-            // As wide as the field it opens from. Read on each render, and the hook re-renders on
+            // As wide as the field it opens from (a cell's is narrower than its names, so the
+            // popover's min-width takes over). Read on each render, and the hook re-renders on
             // resize as it repositions.
             style={{
               top: position.top,
               left: position.left,
-              width: triggerRef.current?.offsetWidth,
+              width: isCell ? undefined : triggerRef.current?.offsetWidth,
             }}
           >
             {options.map((option, index) => (
@@ -275,11 +365,17 @@ export const OwnerPicker = ({
                 onClick={() => pick(index)}
               >
                 {option.member ? (
-                  <MemberLabel member={option.member} />
+                  <MemberLabel
+                    member={option.member}
+                    suffix={suffix(option.owner)}
+                  />
                 ) : (
                   <>
                     <SharedIcon />
-                    <span className="owner-picker-name">{sharedLabel}</span>
+                    <span className="owner-picker-name">
+                      {sharedLabel}
+                      {suffix(null)}
+                    </span>
                   </>
                 )}
               </div>

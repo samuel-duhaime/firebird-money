@@ -6,7 +6,7 @@ use log::error;
 use serde::Deserialize;
 use sqlx::PgPool;
 
-use super::model::{AccountPatch, NewAccount, ACCOUNT_TYPES};
+use super::model::{AccountOwnersRequest, AccountPatch, NewAccount, ACCOUNT_TYPES};
 use super::repository;
 use crate::features::auth::CurrentUser;
 use crate::shared::http_error::{
@@ -226,6 +226,53 @@ async fn update_account(
     }
 }
 
+/// `PATCH /accounts/owners` — gives many accounts a new owner at once, all or nothing, each one's
+/// transactions following as they do on `PATCH /accounts/{id}`. Answers with every account.
+async fn update_account_owners(
+    body: web::Json<AccountOwnersRequest>,
+    current_user: CurrentUser,
+    pool: web::Data<PgPool>,
+    l10n: web::Data<L10n>,
+) -> impl Responder {
+    let locale = l10n.locale();
+    let household_id = match current_user.require_household_id(&l10n, &locale) {
+        Ok(id) => id,
+        Err(response) => return response,
+    };
+
+    let mut account_ids: Vec<i32> = body.owners.iter().map(|o| o.account_id).collect();
+    account_ids.sort_unstable();
+    account_ids.dedup();
+    if account_ids.len() != body.owners.len() {
+        return error_response(
+            &l10n,
+            &locale,
+            StatusCode::BAD_REQUEST,
+            "account-owners-duplicate",
+        );
+    }
+
+    match repository::update_owners(&pool, household_id, &body.owners).await {
+        Ok(Some(accounts)) => HttpResponse::Ok().json(accounts),
+        Ok(None) => error_response(
+            &l10n,
+            &locale,
+            StatusCode::BAD_REQUEST,
+            "account-owners-account-not-found",
+        ),
+        Err(e) if is_foreign_key_violation_on(&e, OWNER_FKEY) => error_response(
+            &l10n,
+            &locale,
+            StatusCode::BAD_REQUEST,
+            "account-owner-not-found",
+        ),
+        Err(e) => {
+            error!("failed to update account owners error={e}");
+            internal_error_response(&l10n, &locale)
+        }
+    }
+}
+
 /// `DELETE /accounts/{id}` — delete an account. Fails while any transaction is still in it.
 async fn delete_account(
     path: web::Path<AccountIdPath>,
@@ -257,6 +304,8 @@ async fn delete_account(
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.route("/accounts", web::get().to(list_accounts))
         .route("/accounts", web::post().to(create_account))
+        // Before `/accounts/{id}`, which would otherwise take "owners" as an id.
+        .route("/accounts/owners", web::patch().to(update_account_owners))
         .route("/accounts/{id}", web::get().to(get_account))
         .route("/accounts/{id}", web::patch().to(update_account))
         .route("/accounts/{id}", web::delete().to(delete_account));

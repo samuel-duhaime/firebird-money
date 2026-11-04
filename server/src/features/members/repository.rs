@@ -54,7 +54,7 @@ pub async fn update(
 
 /// Removes a member from `household_id` (the user itself is kept, with no household). Returns
 /// `true` if they were removed, `false` if the id didn't exist (including when they belong to a
-/// different household). The accounts they own become Shared. Fails with a foreign-key violation
+/// different household). The accounts and transactions they own become Shared. Fails with a foreign-key violation
 /// while they still have transactions in the household.
 pub async fn remove(pool: &PgPool, household_id: i32, id: i32) -> Result<bool, sqlx::Error> {
     let mut tx = pool.begin().await?;
@@ -81,6 +81,14 @@ pub async fn remove(pool: &PgPool, household_id: i32, id: i32) -> Result<bool, s
     .execute(&mut *tx)
     .await?;
     sqlx::query(
+        "UPDATE transactions SET owner_user_id = NULL
+         WHERE owner_user_id = $1 AND household_id = $2",
+    )
+    .bind(id)
+    .bind(household_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
         "UPDATE users SET household_id = NULL, household_role = NULL
          WHERE id = $1 AND household_id = $2",
     )
@@ -89,8 +97,8 @@ pub async fn remove(pool: &PgPool, household_id: i32, id: i32) -> Result<bool, s
     .execute(&mut *tx)
     .await?;
 
-    // Not reached when the update above is refused over transactions, so their accounts' owner
-    // stays as it was.
+    // Not reached when the update above is refused over transactions, so their accounts' and
+    // transactions' owner stays as it was.
     tx.commit().await?;
     Ok(true)
 }

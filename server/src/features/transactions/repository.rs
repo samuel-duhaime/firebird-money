@@ -16,7 +16,48 @@ const SELECT_COLUMNS: &str = "
     t.id, t.household_id, t.user_id, t.date, t.original_statement, t.merchant_id,
     mch.name AS merchant_name, mch.logo_url AS merchant_logo_url, t.amount, t.category_id,
     c.name_en AS category_name_en, c.name_fr AS category_name_fr, g.type AS category_type,
-    t.account_id, a.name AS account_name, t.reviewed, t.source, t.created_at";
+    t.account_id, a.name AS account_name, t.owner_user_id, t.reviewed, t.source, t.created_at";
+
+/// The owner a new transaction takes: its account's (`$8`, in household `$1`). `FOR SHARE` waits for
+/// an owner change in progress on the account (see `accounts::repository::set_owners`) and reads
+/// the result.
+const ACCOUNT_OWNER: &str =
+    "SELECT owner_user_id FROM accounts WHERE id = $8 AND household_id = $1 FOR SHARE";
+
+/// `owner_user_id` in an `UPDATE transactions t` that may set an explicit owner (`$take` true, to
+/// `$owner`) or move it to another account (`$account`, `NULL` to stay): explicit wins, else a
+/// transaction that had its old account's owner takes the new one's, and an override stays. In a
+/// `SET`, `t.*` are the values before the update.
+fn owner_on_update(take: &str, owner: &str, account: &str) -> String {
+    format!(
+        "CASE
+            WHEN {take} THEN {owner}
+            WHEN {account}::integer IS NOT NULL
+                 AND t.owner_user_id IS NOT DISTINCT FROM
+                     (SELECT owner_user_id FROM accounts WHERE id = t.account_id)
+                THEN (SELECT owner_user_id FROM accounts
+                      WHERE id = {account} AND household_id = t.household_id)
+            ELSE t.owner_user_id
+         END"
+    )
+}
+
+/// Waits for an owner change in progress on `account_id` (see
+/// `accounts::repository::set_owners`) and holds the account until `conn`'s transaction ends, so a
+/// transaction moved there reads its new owner. Ignores an id that isn't the household's: the
+/// move then fails on the account's foreign key.
+async fn lock_account(
+    conn: &mut PgConnection,
+    household_id: i32,
+    account_id: i32,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("SELECT 1 FROM accounts WHERE id = $1 AND household_id = $2 FOR SHARE")
+        .bind(account_id)
+        .bind(household_id)
+        .execute(&mut *conn)
+        .await?;
+    Ok(())
+}
 
 const FROM_JOIN: &str = "FROM transactions t
     JOIN merchants mch ON mch.id = t.merchant_id
@@ -178,8 +219,9 @@ pub async fn create(
         "WITH inserted AS (
             INSERT INTO transactions
                 (household_id, user_id, date, original_statement, merchant_id, amount,
-                 category_id, account_id, reviewed)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                 category_id, account_id, reviewed, owner_user_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
+                    CASE WHEN $10 THEN $11 ELSE ({ACCOUNT_OWNER}) END)
             RETURNING *
          )
          SELECT {SELECT_COLUMNS}
@@ -198,6 +240,8 @@ pub async fn create(
     .bind(new_transaction.category_id)
     .bind(new_transaction.account_id)
     .bind(new_transaction.reviewed.unwrap_or(true))
+    .bind(new_transaction.owner.is_some())
+    .bind(new_transaction.owner.and_then(|owner| owner.user_id()))
     .fetch_one(&mut *tx)
     .await?;
 
@@ -285,13 +329,13 @@ pub async fn create_imported(
             (None, None) => return Err(sqlx::Error::RowNotFound),
         };
 
-        let (transaction_id,): (i64,) = sqlx::query_as(
+        let (transaction_id,): (i64,) = sqlx::query_as(&format!(
             "INSERT INTO transactions
                 (household_id, user_id, date, original_statement, merchant_id, amount,
-                 category_id, account_id, reviewed, source)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, 'import')
-             RETURNING id",
-        )
+                 category_id, account_id, reviewed, source, owner_user_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, 'import', ({ACCOUNT_OWNER}))
+             RETURNING id"
+        ))
         .bind(household_id)
         .bind(user_id)
         .bind(line.date)
@@ -454,15 +498,19 @@ pub async fn update(
     }
 
     let mut tx = pool.begin().await?;
+    if let Some(account_id) = patch.account_id {
+        lock_account(&mut tx, household_id, account_id).await?;
+    }
 
     let updated = sqlx::query_as::<_, Transaction>(&format!(
         "WITH updated AS (
-            UPDATE transactions
+            UPDATE transactions t
             SET date = COALESCE($3, date),
                 merchant_id = COALESCE($4, merchant_id),
                 amount = COALESCE($5, amount),
                 category_id = COALESCE($6, category_id),
-                account_id = COALESCE($7, account_id)
+                account_id = COALESCE($7, account_id),
+                owner_user_id = {owner}
             WHERE id = $1 AND household_id = $2
             RETURNING *
          )
@@ -471,7 +519,8 @@ pub async fn update(
          JOIN merchants mch ON mch.id = t.merchant_id
          JOIN categories c ON c.id = t.category_id
          JOIN category_groups g ON g.id = c.group_id
-         JOIN accounts a ON a.id = t.account_id"
+         JOIN accounts a ON a.id = t.account_id",
+        owner = owner_on_update("$8", "$9", "$7"),
     ))
     .bind(id)
     .bind(household_id)
@@ -480,6 +529,8 @@ pub async fn update(
     .bind(patch.amount)
     .bind(patch.category_id)
     .bind(patch.account_id)
+    .bind(patch.owner.is_some())
+    .bind(patch.owner.and_then(|owner| owner.user_id()))
     .fetch_optional(&mut *tx)
     .await?;
 
@@ -527,14 +578,18 @@ pub async fn bulk_update(
     }
 
     let mut tx = pool.begin().await?;
+    if let Some(account_id) = patch.account_id {
+        lock_account(&mut tx, household_id, account_id).await?;
+    }
 
     let mut transactions = sqlx::query_as::<_, Transaction>(&format!(
         "WITH updated AS (
-            UPDATE transactions
+            UPDATE transactions t
             SET date = COALESCE($3, date),
                 merchant_id = COALESCE($4, merchant_id),
                 category_id = COALESCE($5, category_id),
-                account_id = COALESCE($6, account_id)
+                account_id = COALESCE($6, account_id),
+                owner_user_id = {owner}
             WHERE id = ANY($1) AND household_id = $2
             RETURNING *
          )
@@ -543,7 +598,8 @@ pub async fn bulk_update(
          JOIN merchants mch ON mch.id = t.merchant_id
          JOIN categories c ON c.id = t.category_id
          JOIN category_groups g ON g.id = c.group_id
-         JOIN accounts a ON a.id = t.account_id"
+         JOIN accounts a ON a.id = t.account_id",
+        owner = owner_on_update("$7", "$8", "$6"),
     ))
     .bind(ids)
     .bind(household_id)
@@ -551,6 +607,8 @@ pub async fn bulk_update(
     .bind(patch.merchant_id)
     .bind(patch.category_id)
     .bind(patch.account_id)
+    .bind(patch.owner.is_some())
+    .bind(patch.owner.and_then(|owner| owner.user_id()))
     .fetch_all(&mut *tx)
     .await?;
 
