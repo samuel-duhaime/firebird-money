@@ -43,6 +43,12 @@ pub struct Transaction {
     /// follows it, unless it was changed on its own — see `accounts::repository::set_owners`.
     pub owner_user_id: Option<i32>,
     pub reviewed: bool,
+    /// Who it waits on for a review, or `None` for Anyone. Only meaningful while `reviewed` is false.
+    pub review_assignee_user_id: Option<i32>,
+    /// Who marked it reviewed, and when. Both `None` when nobody did, e.g. a transaction added by
+    /// hand or imported, which starts out reviewed.
+    pub reviewed_by_user_id: Option<i32>,
+    pub reviewed_at: Option<DateTime<Utc>>,
     pub source: TransactionSource,
     pub created_at: DateTime<Utc>,
     /// Never read directly off a `transactions` row — there's no such column. Always populated
@@ -239,6 +245,15 @@ pub struct TransactionFilter {
     pub amount: Option<Decimal>,
     /// Inclusive upper bound, only read when `amount_op` is `Between`.
     pub amount_max: Option<Decimal>,
+    /// Comma-separated member ids — matches unreviewed transactions waiting on any of them.
+    #[serde(default, deserialize_with = "deserialize_id_list")]
+    pub review_assignee_ids: Option<Vec<i32>>,
+    /// `true` also matches unreviewed transactions waiting on Anyone (OR-ed with
+    /// `review_assignee_ids` when both are set).
+    pub review_anyone: Option<bool>,
+    /// Keeps only unreviewed transactions: all of them, or the ones waiting on the caller or on
+    /// Anyone.
+    pub needs_review: Option<NeedsReview>,
 }
 
 impl TransactionFilter {
@@ -285,6 +300,57 @@ where
         .map(Some)
 }
 
+/// Which unreviewed transactions `GET /transactions?needs_review=` keeps.
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum NeedsReview {
+    /// Every unreviewed transaction, whoever it waits on.
+    All,
+    /// Unreviewed transactions waiting on the caller or on Anyone.
+    Mine,
+}
+
+/// Who a transaction waits on for a review, as the API takes it: `"anyone"` or a member's user id.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(try_from = "ReviewAssigneeInput")]
+pub enum ReviewAssignee {
+    Anyone,
+    Member(i32),
+}
+
+impl ReviewAssignee {
+    /// The `review_assignee_user_id` it's stored as.
+    pub fn user_id(self) -> Option<i32> {
+        match self {
+            ReviewAssignee::Anyone => None,
+            ReviewAssignee::Member(id) => Some(id),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum ReviewAssigneeInput {
+    Member(i32),
+    Keyword(String),
+}
+
+impl TryFrom<ReviewAssigneeInput> for ReviewAssignee {
+    type Error = &'static str;
+
+    fn try_from(input: ReviewAssigneeInput) -> Result<Self, Self::Error> {
+        match input {
+            ReviewAssigneeInput::Member(id) => Ok(ReviewAssignee::Member(id)),
+            ReviewAssigneeInput::Keyword(keyword) if keyword == "anyone" => {
+                Ok(ReviewAssignee::Anyone)
+            }
+            ReviewAssigneeInput::Keyword(_) => {
+                Err(r#"review_assignee must be "anyone" or a member id"#)
+            }
+        }
+    }
+}
+
 /// Sort order for `GET /transactions`.
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -311,6 +377,12 @@ pub struct TransactionPatch {
     /// `None` leaves it as is, or moves it to the new account's owner when `account_id` changes
     /// and it had the old account's owner.
     pub owner: Option<Owner>,
+    /// `Some(true)` marks it reviewed by the caller, now; `Some(false)` sends it back for review.
+    /// Any member can mark one reviewed, even one waiting on someone else.
+    pub reviewed: Option<bool>,
+    /// Who it waits on for a review. Setting it also marks the transaction unreviewed, unless
+    /// `reviewed` is given too.
+    pub review_assignee: Option<ReviewAssignee>,
     /// `None` leaves tags unchanged. `Some(ids)` *replaces* the full tag set with exactly `ids`
     /// (so `Some([])` clears every tag) — unlike `BulkTransactionPatch::tag_ids`, which only adds.
     /// Ids outside the caller's own household are silently dropped.
@@ -328,6 +400,10 @@ pub struct BulkTransactionPatch {
     pub account_id: Option<i32>,
     /// Same as `TransactionPatch::owner`.
     pub owner: Option<Owner>,
+    /// Same as `TransactionPatch::reviewed`.
+    pub reviewed: Option<bool>,
+    /// Same as `TransactionPatch::review_assignee`.
+    pub review_assignee: Option<ReviewAssignee>,
     /// `None` (or `Some([])`) leaves tags unchanged. `Some(ids)` *adds* `ids` to each selected
     /// transaction's existing tags — unlike `TransactionPatch::tag_ids`, nothing already on a
     /// transaction is ever removed this way. Ids outside the caller's own household are silently

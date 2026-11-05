@@ -1,5 +1,19 @@
 import type { SortOrder } from './types';
 
+export type NeedsReview = 'all' | 'mine';
+
+export const NEEDS_REVIEW_VALUES: NeedsReview[] = ['all', 'mine'];
+
+/** The "All transactions" dropdown's options. */
+export type ReviewView = 'all' | 'needs_review' | 'mine';
+
+/** The dropdown's view for the URL's `needs_review`, and back. */
+export const toReviewView = (needsReview?: NeedsReview): ReviewView =>
+  needsReview === 'all' ? 'needs_review' : (needsReview ?? 'all');
+
+export const toNeedsReview = (view: ReviewView): NeedsReview | undefined =>
+  view === 'needs_review' ? 'all' : view === 'mine' ? 'mine' : undefined;
+
 export type AmountOp = 'greater_than' | 'less_than' | 'equal_to' | 'between';
 
 /** Amount operators offered in the Filters popover, in display order. */
@@ -21,6 +35,10 @@ export type TransactionFilters = {
   owner_ids?: number[];
   /** Also match Shared transactions (OR-ed with `owner_ids`). */
   shared_owner?: boolean;
+  /** Unreviewed transactions waiting on any of these members. */
+  review_assignee_ids?: number[];
+  /** Also match unreviewed transactions waiting on Anyone (OR-ed with `review_assignee_ids`). */
+  review_anyone?: boolean;
   amount_op?: AmountOp;
   amount?: number;
   /** Upper bound, only meaningful when `amount_op` is `between`. */
@@ -29,6 +47,9 @@ export type TransactionFilters = {
 
 /** Everything that narrows/sorts the transactions list, as carried in the page's URL. */
 export type TransactionsQuery = TransactionFilters & {
+  /** The "All transactions" dropdown's review views: every unreviewed transaction, or the ones
+   * waiting on the caller or on Anyone. Not a Filters popover field, so Clear all keeps it. */
+  needs_review?: NeedsReview;
   search?: string;
   order?: SortOrder;
   start_date?: string;
@@ -43,6 +64,8 @@ export const FILTER_KEYS = [
   'untagged',
   'owner_ids',
   'shared_owner',
+  'review_assignee_ids',
+  'review_anyone',
   'amount_op',
   'amount',
   'amount_max',
@@ -53,7 +76,7 @@ export const EMPTY_FILTERS: TransactionFilters = Object.fromEntries(
   FILTER_KEYS.map((key) => [key, undefined]),
 );
 
-/** How many filters are active — one per selected id, plus one each for "untagged", "Shared" and
+/** How many filters are active — one per selected id, plus one each for "untagged", "Shared", "Anyone" and
  * amount. */
 export const countFilters = (filters: TransactionFilters): number =>
   (filters.category_ids?.length ?? 0) +
@@ -63,6 +86,8 @@ export const countFilters = (filters: TransactionFilters): number =>
   (filters.untagged ? 1 : 0) +
   (filters.owner_ids?.length ?? 0) +
   (filters.shared_owner ? 1 : 0) +
+  (filters.review_assignee_ids?.length ?? 0) +
+  (filters.review_anyone ? 1 : 0) +
   (filters.amount_op && filters.amount !== undefined ? 1 : 0);
 
 // Each parser takes both shapes a value can arrive in: text read back from the URL (see
@@ -114,6 +139,8 @@ export const parseFilters = (
     untagged: parseFlag(search.untagged),
     owner_ids: parseIdList(search.owner_ids),
     shared_owner: parseFlag(search.shared_owner),
+    review_assignee_ids: parseIdList(search.review_assignee_ids),
+    review_anyone: parseFlag(search.review_anyone),
     amount_op: amount !== undefined ? amountOp : undefined,
     amount,
     amount_max:
@@ -128,6 +155,7 @@ export const transactionsQueryParams = (
   query: TransactionsQuery,
 ): URLSearchParams => {
   const params = new URLSearchParams();
+  if (query.needs_review) params.set('needs_review', query.needs_review);
   if (query.search) params.set('search', query.search);
   if (query.order) params.set('order', query.order);
   if (query.start_date) params.set('start_date', query.start_date);
@@ -138,12 +166,14 @@ export const transactionsQueryParams = (
     'account_ids',
     'tag_ids',
     'owner_ids',
+    'review_assignee_ids',
   ] as const) {
     const ids = query[key];
     if (ids?.length) params.set(key, ids.join(','));
   }
   if (query.untagged) params.set('untagged', 'true');
   if (query.shared_owner) params.set('shared_owner', 'true');
+  if (query.review_anyone) params.set('review_anyone', 'true');
   if (query.amount_op && query.amount !== undefined) {
     params.set('amount_op', query.amount_op);
     params.set('amount', String(query.amount));

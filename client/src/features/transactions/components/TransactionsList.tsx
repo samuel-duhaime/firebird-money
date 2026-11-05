@@ -3,7 +3,7 @@ import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { getRouteApi, useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faChevronRight } from '@fortawesome/free-solid-svg-icons';
+import { faCheck, faChevronRight } from '@fortawesome/free-solid-svg-icons';
 import { useAccounts } from '../../accounts/hooks/use-accounts';
 import { accountLabel } from '../../accounts/utils/format';
 import { toOwner } from '../../accounts/utils/api';
@@ -13,6 +13,11 @@ import { useUpdateTransaction } from '../hooks/use-update-transaction';
 import { useSettings } from '../../settings/hooks/use-settings';
 import { useUpdateSettings } from '../../settings/hooks/use-update-settings';
 import { TransactionsToolbar } from './TransactionsToolbar';
+import { ReviewEmptyState } from './ReviewViewButton';
+import { useBulkUpdateTransactions } from '../hooks/use-bulk-update-transactions';
+import { useCurrentUser } from '../../auth/hooks/use-current-user';
+import { toNeedsReview, toReviewView } from '../utils/filters';
+import type { ReviewView } from '../utils/filters';
 import { CategoryPicker } from './CategoryPicker';
 import { MerchantPicker } from './MerchantPicker';
 import { TagPicker } from '../../tags/components/TagPicker';
@@ -33,6 +38,7 @@ import type {
 import {
   amountTooLongToast,
   invalidAmountToast,
+  bulkUpdateTransactionsFailedToast,
   updateSettingsFailedToast,
   updateTransactionFailedToast,
 } from '../../../lib/toast';
@@ -75,6 +81,7 @@ const TransactionRow = ({
   isSelected,
   onToggleSelect,
   columnVisibility,
+  showReviewButton,
 }: {
   transaction: Transaction;
   language: string;
@@ -83,6 +90,8 @@ const TransactionRow = ({
   isSelected: boolean;
   onToggleSelect: (id: number) => void;
   columnVisibility: ColumnVisibility;
+  /** A round "Mark reviewed" button before the merchant, for the review views. */
+  showReviewButton: boolean;
 }) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -246,10 +255,23 @@ const TransactionRow = ({
       className="transactions-row"
       style={{
         gridTemplateColumns: rowGridTemplateColumns(columnVisibility, {
-          selectable: false,
+          selectable: showReviewButton,
         }),
       }}
     >
+      {showReviewButton && (
+        <button
+          type="button"
+          className="transactions-row-review"
+          onClick={() => save({ reviewed: true })}
+          aria-label={t('transactions.review.markReviewedRow', {
+            merchant: transaction.merchant_name,
+          })}
+          title={t('transactions.review.markReviewed')}
+        >
+          <FontAwesomeIcon icon={faCheck} />
+        </button>
+      )}
       <div className="transactions-row-cell-group">
         <MerchantPicker
           merchantId={transaction.merchant_id}
@@ -392,7 +414,37 @@ export const TransactionsList = () => {
   const language = i18n.resolvedLanguage ?? i18n.language;
   const locale = toIntlLocale(language);
   const query = routeApi.useSearch();
+  const navigate = useNavigate();
   const { data: transactions, isPending, isError } = useTransactions(query);
+
+  const reviewView = toReviewView(query.needs_review);
+  const setReviewView = (view: ReviewView) =>
+    navigate({
+      to: '/transactions',
+      search: (prev) => ({ ...prev, needs_review: toNeedsReview(view) }),
+      replace: true,
+    });
+  // The dropdown's counts are the whole household's, whatever else narrows the list.
+  const { data: currentUser } = useCurrentUser();
+  const { data: needsReview } = useTransactions({ needs_review: 'all' });
+  const reviewCounts = {
+    needs_review: needsReview?.length ?? 0,
+    mine:
+      needsReview?.filter(
+        (transaction) =>
+          transaction.review_assignee_user_id === null ||
+          transaction.review_assignee_user_id === currentUser?.user.id,
+      ).length ?? 0,
+  };
+  const bulkUpdateMutation = useBulkUpdateTransactions();
+  const markAllReviewed = () =>
+    bulkUpdateMutation.mutate(
+      {
+        ids: (transactions ?? []).map((transaction) => transaction.id),
+        patch: { reviewed: true },
+      },
+      { onError: () => bulkUpdateTransactionsFailedToast() },
+    );
 
   const { data: settings } = useSettings();
   const updateSettingsMutation = useUpdateSettings();
@@ -491,7 +543,30 @@ export const TransactionsList = () => {
         onToggleSelectAll={toggleSelectAll}
         onOpenBulkEdit={() => setBulkEditOpen(true)}
         onToggleColumn={handleToggleColumn}
+        reviewView={reviewView}
+        reviewCounts={reviewCounts}
+        onReviewViewChange={setReviewView}
       />
+      {reviewView !== 'all' &&
+        !selectionMode &&
+        transactions &&
+        transactions.length > 0 && (
+          <div className="review-banner">
+            <span>
+              {t(`transactions.review.banner.${reviewView}`, {
+                count: transactions.length,
+              })}
+            </span>
+            <button
+              type="button"
+              className="transactions-toolbar-button transactions-toolbar-button--primary"
+              onClick={markAllReviewed}
+              disabled={bulkUpdateMutation.isPending}
+            >
+              {t('transactions.review.markAllReviewed')}
+            </button>
+          </div>
+        )}
       <div className="transactions-card-body">
         {isPending && (
           <p className="transactions-status">
@@ -501,9 +576,15 @@ export const TransactionsList = () => {
         {isError && (
           <p className="transactions-status">{t('transactions.list.error')}</p>
         )}
-        {transactions && transactions.length === 0 && (
-          <p className="transactions-status">{t('transactions.list.empty')}</p>
-        )}
+        {transactions &&
+          transactions.length === 0 &&
+          (reviewView === 'all' ? (
+            <p className="transactions-status">
+              {t('transactions.list.empty')}
+            </p>
+          ) : (
+            <ReviewEmptyState onViewAll={() => setReviewView('all')} />
+          ))}
         {transactions && transactions.length > 0 && (
           <ul className="transactions-rows">
             {groupByDate(transactions).map((group, index) => (
@@ -524,6 +605,9 @@ export const TransactionsList = () => {
                     isSelected={selectedIds.has(transaction.id)}
                     onToggleSelect={toggleSelect}
                     columnVisibility={columnVisibility}
+                    showReviewButton={
+                      reviewView !== 'all' && !transaction.reviewed
+                    }
                   />
                 ))}
               </Fragment>

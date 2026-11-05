@@ -38,8 +38,20 @@ export interface TransactionPatch {
   /** Absent leaves it as is, or moves it to the new account's owner when `account_id` changes and
    * it had the old account's owner. */
   owner?: Owner;
+  /** `true` marks it reviewed by the caller; `false` sends it back for review. */
+  reviewed?: boolean;
+  /** Who it waits on for a review. Setting it also marks it unreviewed, unless `reviewed` is given
+   * too. */
+  review_assignee?: ReviewAssignee;
   tag_ids?: number[];
 }
+
+/** Who a transaction waits on for a review, as the API takes it. */
+export type ReviewAssignee = 'anyone' | number;
+
+/** `null` (Anyone) as the API takes it. */
+export const toReviewAssignee = (userId: number | null): ReviewAssignee =>
+  userId ?? 'anyone';
 
 export const updateTransaction = (
   id: number,
@@ -62,7 +74,14 @@ export const deleteTransaction = (id: number): Promise<void> =>
  * existing tags rather than replacing them, unlike `TransactionPatch.tag_ids`. */
 export type BulkTransactionPatch = Pick<
   TransactionPatch,
-  'date' | 'merchant_id' | 'category_id' | 'account_id' | 'owner' | 'tag_ids'
+  | 'date'
+  | 'merchant_id'
+  | 'category_id'
+  | 'account_id'
+  | 'owner'
+  | 'reviewed'
+  | 'review_assignee'
+  | 'tag_ids'
 >;
 
 export const bulkUpdateTransactions = (

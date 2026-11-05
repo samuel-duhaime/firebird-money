@@ -1,9 +1,10 @@
 import { useEffect, useId, useState } from 'react';
-import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faChevronDown, faLink } from '@fortawesome/free-solid-svg-icons';
+import type { IconDefinition } from '@fortawesome/free-solid-svg-icons';
 import { Avatar } from '../../../components/Avatar';
 import { Tooltip } from '../../../components/Tooltip';
 import { useAnchoredPopover } from '../../../lib/use-anchored-popover';
@@ -13,15 +14,20 @@ import type { Member } from '../utils/types';
 import '../../../components/Popover.css';
 import './OwnerPicker.css';
 
-type OwnerPickerProps = {
-  /** The owning member's id, `null` for Shared, or `undefined` while nothing is picked yet. */
-  value: number | null | undefined;
-  onChange: (owner: number | null) => void;
+/** A choice that isn't a member, e.g. Shared, listed before the members with its own icon. */
+export type PickerChoice<V> = { value: V; label: string; icon: ReactNode };
+
+type OwnerPickerProps<V extends string | null> = {
+  /** A member's id, one of `choices`' values, or `undefined` while nothing is picked yet. */
+  value: number | V | undefined;
+  onChange: (value: number | V) => void;
+  /** The choices besides the members. Defaults to Shared (`null`). */
+  choices?: PickerChoice<V>[];
   /** Shown while `value` is `undefined`. */
   placeholder?: string;
   /** The owner it gets when nobody picks one, e.g. a transaction's account's: marked "(default)"
    * wherever it shows. */
-  defaultOwner?: number | null;
+  defaultOwner?: number | V;
   disabled?: boolean;
   /** `field` (default) is a form field; `cell` is only the avatar, for a list row, with the name
    * and email on hover. */
@@ -32,12 +38,15 @@ type OwnerPickerProps = {
   ariaLabel?: string;
 };
 
-/** Stands in for an avatar wherever Shared is a choice. */
-export const SharedIcon = () => (
+/** Stands in for an avatar wherever a choice isn't a member, e.g. Shared. */
+export const ChoiceIcon = ({ icon }: { icon: IconDefinition }) => (
   <span className="owner-picker-shared-icon" aria-hidden="true">
-    <FontAwesomeIcon icon={faLink} />
+    <FontAwesomeIcon icon={icon} />
   </span>
 );
+
+/** Stands in for an avatar wherever Shared is a choice. */
+export const SharedIcon = () => <ChoiceIcon icon={faLink} />;
 
 /** The name (with any `suffix`), and the email when the name isn't already it — what a lone
  * avatar shows on hover. */
@@ -132,15 +141,17 @@ export const OwnerAvatar = ({ owner }: { owner: number | null }) => {
 const NAVIGATION_KEYS = ['ArrowDown', 'ArrowUp', 'Home', 'End'];
 
 /**
- * Picks who owns something: Shared, or one member of the household, each with their avatar.
+ * Picks who owns something: Shared, or one member of the household, each with their avatar. Other
+ * `choices` can stand in for Shared, e.g. who a review waits on.
  * Behaves like a native `<select>` from the keyboard (a select-only combobox): focus stays on the
  * trigger, the arrows, Home and End change the choice while closed or move through the list while
  * open, a letter jumps to the next choice starting with it, Alt+Down, Enter or Space opens, and
  * Enter, Space or Tab picks the highlighted choice, Escape closes without picking.
  */
-export const OwnerPicker = ({
+export const OwnerPicker = <V extends string | null = null>({
   value,
   onChange,
+  choices,
   placeholder,
   defaultOwner,
   disabled = false,
@@ -148,33 +159,51 @@ export const OwnerPicker = ({
   id,
   triggerClassName,
   ariaLabel,
-}: OwnerPickerProps) => {
+}: OwnerPickerProps<V>) => {
   const { t } = useTranslation();
   const { data: members } = useMembers();
   const { isOpen, setIsOpen, position, triggerRef, popoverRef } =
     useAnchoredPopover<HTMLButtonElement>();
   const listboxId = useId();
-  // The highlighted choice's owner rather than its position, so it stays on the right person if
+  // The highlighted choice's value rather than its position, so it stays on the right person if
   // the members load while the list is open.
-  const [highlightedOwner, setHighlightedOwner] = useState<number | null>(null);
+  const [highlightedOwner, setHighlightedOwner] = useState<
+    number | V | undefined
+  >(undefined);
 
+  const extraChoices: PickerChoice<V>[] = choices ?? [
+    {
+      value: null as V,
+      label: t('settings.members.owner.shared'),
+      icon: <SharedIcon />,
+    },
+  ];
   const selected = members?.find((member) => member.id === value);
-  const sharedLabel = t('settings.members.owner.shared');
+  const selectedChoice = extraChoices.find((choice) => choice.value === value);
   /** " (default)" after the owner that's the default, nothing after the others. */
-  const suffix = (owner: number | null | undefined) =>
+  const suffix = (owner: number | V | undefined) =>
     defaultOwner !== undefined && owner === defaultOwner
       ? ` ${t('settings.members.owner.default')}`
       : '';
   const isCell = variant === 'cell';
   const tooltip = !isCell
     ? undefined
-    : value === null
-      ? sharedLabel + suffix(null)
+    : selectedChoice
+      ? selectedChoice.label + suffix(selectedChoice.value)
       : selected && memberTooltip(selected, suffix(selected.id));
 
   // Every choice in list order, with the text type-to-jump matches against.
-  const options: { owner: number | null; label: string; member?: Member }[] = [
-    { owner: null, label: sharedLabel },
+  const options: {
+    owner: number | V;
+    label: string;
+    icon?: ReactNode;
+    member?: Member;
+  }[] = [
+    ...extraChoices.map((choice) => ({
+      owner: choice.value,
+      label: choice.label,
+      icon: choice.icon,
+    })),
     ...(members ?? []).map((member) => ({
       owner: member.id,
       label: memberDisplayName(member),
@@ -188,7 +217,7 @@ export const OwnerPicker = ({
   const optionId = (index: number) => `${listboxId}-option-${index}`;
 
   const open = () => {
-    setHighlightedOwner(value ?? null);
+    setHighlightedOwner(value === undefined ? options[0]?.owner : value);
     setIsOpen(true);
   };
 
@@ -296,13 +325,13 @@ export const OwnerPicker = ({
       onClick={() => (isOpen ? setIsOpen(false) : open())}
       onKeyDown={handleKeyDown}
     >
-      {value === null && (
+      {selectedChoice && (
         <>
-          <SharedIcon />
+          {selectedChoice.icon}
           {!isCell && (
             <span className="owner-picker-name">
-              {sharedLabel}
-              {suffix(null)}
+              {selectedChoice.label}
+              {suffix(selectedChoice.value)}
             </span>
           )}
         </>
@@ -351,7 +380,7 @@ export const OwnerPicker = ({
           >
             {options.map((option, index) => (
               <div
-                key={option.owner ?? 'shared'}
+                key={option.owner ?? 'null'}
                 id={optionId(index)}
                 role="option"
                 aria-selected={option.owner === value}
@@ -372,10 +401,10 @@ export const OwnerPicker = ({
                   />
                 ) : (
                   <>
-                    <SharedIcon />
+                    {option.icon}
                     <span className="owner-picker-name">
-                      {sharedLabel}
-                      {suffix(null)}
+                      {option.label}
+                      {suffix(option.owner)}
                     </span>
                   </>
                 )}

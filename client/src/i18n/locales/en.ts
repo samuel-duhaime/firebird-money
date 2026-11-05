@@ -336,6 +336,31 @@ export const en = {
       selected_other: '{{count}} transactions selected (ESC)',
       editCount: 'Edit {{count}}',
     },
+    review: {
+      views: {
+        all: 'All transactions',
+        needs_review: 'Needs review',
+        mine: 'Needs my review',
+      },
+      banner: {
+        needs_review_one: '{{count}} transaction is waiting for a review',
+        needs_review_other: '{{count}} transactions are waiting for a review',
+        mine_one: '{{count}} transaction is waiting on you',
+        mine_other: '{{count}} transactions are waiting on you',
+      },
+      empty: {
+        title: 'You reviewed everything!',
+        text: 'Transactions waiting for a review will show up here.',
+        viewAll: 'View all transactions',
+      },
+      markAllReviewed: 'Mark all reviewed',
+      anyone: 'Anyone',
+      noOne: 'No one',
+      markReviewed: 'Mark reviewed',
+      markReviewedRow: 'Mark {{merchant}} reviewed',
+      reviewedBy: 'Reviewed by {{name}} · {{date}}',
+      memberUnavailable: 'Member unavailable',
+    },
     sort: {
       trigger: 'Sort',
       options: {
@@ -373,7 +398,9 @@ export const en = {
         owners: 'Owners',
         tags: 'Tags',
         amount: 'Amount',
+        other: 'Other',
       },
+      needsReviewBy: 'Needs review by',
       selectAll: 'Select all',
       untagged: 'Untagged',
       noResults: 'No results.',

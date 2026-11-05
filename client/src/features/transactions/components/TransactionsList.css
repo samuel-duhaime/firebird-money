@@ -207,3 +207,26 @@
   color: var(--color-light);
   transition: color 0.15s ease;
 }
+
+.transactions-row-review {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--color-lightest);
+  border-radius: 50%;
+  background: none;
+  color: var(--color-white);
+  font-size: 10px;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.transactions-row-review:hover,
+.transactions-row-review:focus-visible {
+  background: var(--color-success);
+  border-color: var(--color-success);
+}

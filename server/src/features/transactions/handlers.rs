@@ -59,6 +59,9 @@ const ACCOUNT_FKEY: &str = "transactions_household_account_fkey";
 /// The FK that keeps a transaction's owner in its own household.
 const OWNER_FKEY: &str = "transactions_household_owner_fkey";
 
+/// The FK that keeps who a transaction waits on for a review in its own household.
+const REVIEW_ASSIGNEE_FKEY: &str = "transactions_household_review_assignee_fkey";
+
 /// File format for `GET /transactions/download`.
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -141,9 +144,10 @@ async fn create_transaction(
 /// `GET /transactions` — list transactions, optionally filtered by `date`, a `start_date`/
 /// `end_date` range, `merchant_id`, `account_id`, a free-text `search` matched against merchant
 /// name, original statement, category, and amount, comma-separated `category_ids`/`merchant_ids`/
-/// `account_ids`/`tag_ids` (plus `untagged=true`)/`owner_ids` (plus `shared_owner=true`), and/or
-/// `amount_op` (`greater_than`, `less_than`, `equal_to`, `between`) with `amount` (and
-/// `amount_max` for `between`). Accepts
+/// `account_ids`/`tag_ids` (plus `untagged=true`)/`owner_ids` (plus `shared_owner=true`)/
+/// `review_assignee_ids` (plus `review_anyone=true`), `needs_review` (`all`, or `mine` for the
+/// caller's and Anyone's), and/or `amount_op` (`greater_than`, `less_than`, `equal_to`, `between`)
+/// with `amount` (and `amount_max` for `between`). Accepts
 /// `order` (`date`, `inverse_date`, `amount`, `inverse_amount`) to control sort order.
 async fn list_transactions(
     filter: web::Query<TransactionFilter>,
@@ -157,7 +161,7 @@ async fn list_transactions(
         Err(response) => return response,
     };
 
-    match repository::list(&pool, household_id, &filter).await {
+    match repository::list(&pool, household_id, current_user.user.id, &filter).await {
         Ok(transactions) => HttpResponse::Ok().json(transactions),
         Err(e) => {
             error!("failed to list transactions error={e}");
@@ -182,13 +186,14 @@ async fn download_transactions(
         Err(response) => return response,
     };
 
-    let transactions = match repository::list(&pool, household_id, &filter).await {
-        Ok(transactions) => transactions,
-        Err(e) => {
-            error!("failed to list transactions for download error={e}");
-            return internal_error_response(&l10n, &locale);
-        }
-    };
+    let transactions =
+        match repository::list(&pool, household_id, current_user.user.id, &filter).await {
+            Ok(transactions) => transactions,
+            Err(e) => {
+                error!("failed to list transactions for download error={e}");
+                return internal_error_response(&l10n, &locale);
+            }
+        };
     let owners = match members::repository::list(&pool, household_id).await {
         Ok(members) => download::OwnerNames::new(members),
         Err(e) => {
@@ -649,7 +654,15 @@ async fn update_transaction(
         Err(response) => return response,
     };
 
-    match repository::update(&pool, household_id, i64::from(id), &patch).await {
+    match repository::update(
+        &pool,
+        household_id,
+        current_user.user.id,
+        i64::from(id),
+        &patch,
+    )
+    .await
+    {
         Ok(Some(transaction)) => HttpResponse::Ok().json(transaction),
         Ok(None) => not_found_response(&l10n, &locale, "transaction-not-found", id),
         Err(sqlx::Error::RowNotFound) => error_response_with_n(
@@ -671,6 +684,12 @@ async fn update_transaction(
             &locale,
             StatusCode::BAD_REQUEST,
             "account-owner-not-found",
+        ),
+        Err(e) if is_foreign_key_violation_on(&e, REVIEW_ASSIGNEE_FKEY) => error_response(
+            &l10n,
+            &locale,
+            StatusCode::BAD_REQUEST,
+            "review-assignee-not-found",
         ),
         Err(e) if is_foreign_key_violation(&e) => error_response_with_n(
             &l10n,
@@ -729,7 +748,15 @@ async fn bulk_update_transactions(
         return HttpResponse::Ok().json(Vec::<Transaction>::new());
     }
 
-    match repository::bulk_update(&pool, household_id, &body.ids, &body.patch).await {
+    match repository::bulk_update(
+        &pool,
+        household_id,
+        current_user.user.id,
+        &body.ids,
+        &body.patch,
+    )
+    .await
+    {
         Ok(transactions) => HttpResponse::Ok().json(transactions),
         Err(sqlx::Error::RowNotFound) => error_response_with_n(
             &l10n,
@@ -750,6 +777,12 @@ async fn bulk_update_transactions(
             &locale,
             StatusCode::BAD_REQUEST,
             "account-owner-not-found",
+        ),
+        Err(e) if is_foreign_key_violation_on(&e, REVIEW_ASSIGNEE_FKEY) => error_response(
+            &l10n,
+            &locale,
+            StatusCode::BAD_REQUEST,
+            "review-assignee-not-found",
         ),
         Err(e) if is_foreign_key_violation(&e) => error_response_with_n(
             &l10n,

@@ -89,6 +89,14 @@ pub async fn remove(pool: &PgPool, household_id: i32, id: i32) -> Result<bool, s
     .execute(&mut *tx)
     .await?;
     sqlx::query(
+        "UPDATE transactions SET review_assignee_user_id = NULL
+         WHERE review_assignee_user_id = $1 AND household_id = $2",
+    )
+    .bind(id)
+    .bind(household_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
         "UPDATE users SET household_id = NULL, household_role = NULL
          WHERE id = $1 AND household_id = $2",
     )

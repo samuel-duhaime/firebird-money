@@ -43,6 +43,7 @@ account-invalid-last-four = last_four must be 1 to 4 letters or digits
 account-invalid-currency = currency must be a 3-letter code, e.g. CAD
 account-owner-required = owner is required: "shared" or a member id
 account-owner-not-found = The owner must be a member of this household
+review-assignee-not-found = Whoever reviews it must be a member of this household
 account-owners-duplicate = Each account can only be listed once
 account-owners-account-not-found = One of the accounts doesn’t exist
 # Magic-link email. The link itself is inserted between the instructions and the sign-off.

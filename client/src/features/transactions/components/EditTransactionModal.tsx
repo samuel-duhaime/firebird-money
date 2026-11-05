@@ -22,6 +22,7 @@ import {
 import { normalizeAmount, sanitizeAmountInput } from '../utils/amount';
 import { CategoryPicker } from './CategoryPicker';
 import { MerchantPicker } from './MerchantPicker';
+import { ReviewField } from './ReviewField';
 import type { TransactionPatch } from '../utils/api';
 import { Select } from '../../../components/Select';
 import './AddTransactionModal.css';
@@ -402,6 +403,8 @@ export const EditTransactionModal = ({
                   ariaLabel={t('transactions.add.tags')}
                 />
               </div>
+
+              <ReviewField transaction={transaction} />
             </>
           )}
         </div>

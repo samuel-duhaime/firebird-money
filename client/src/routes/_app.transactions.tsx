@@ -15,10 +15,14 @@ import { DownloadButton } from '../features/transactions/components/DownloadButt
 import { ImportButton } from '../features/transactions/components/ImportButton';
 import { FiltersButton } from '../features/transactions/components/FiltersButton';
 import {
+  NEEDS_REVIEW_VALUES,
   countFilters,
   parseFilters,
 } from '../features/transactions/utils/filters';
-import type { TransactionsQuery } from '../features/transactions/utils/filters';
+import type {
+  NeedsReview,
+  TransactionsQuery,
+} from '../features/transactions/utils/filters';
 import type { SortOrder } from '../features/transactions/utils/types';
 import '../components/TopMenu.css';
 
@@ -40,7 +44,13 @@ const ClearAllButton = () => {
   const navigate = routeApi.useNavigate();
   const { search, order, start_date, end_date } = query;
 
-  if (!search && !order && !start_date && !end_date && countFilters(query) === 0)
+  if (
+    !search &&
+    !order &&
+    !start_date &&
+    !end_date &&
+    countFilters(query) === 0
+  )
     return null;
 
   return (
@@ -96,6 +106,11 @@ const Transactions = () => (
 export const Route = createFileRoute('/_app/transactions')({
   component: Transactions,
   validateSearch: (search: Record<string, unknown>): TransactionsQuery => ({
+    needs_review: NEEDS_REVIEW_VALUES.includes(
+      search.needs_review as NeedsReview,
+    )
+      ? (search.needs_review as NeedsReview)
+      : undefined,
     search:
       typeof search.search === 'string' && search.search !== ''
         ? search.search

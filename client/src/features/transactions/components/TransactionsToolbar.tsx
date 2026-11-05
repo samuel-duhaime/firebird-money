@@ -1,11 +1,15 @@
 import { useEffect, useRef } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { useTranslation } from 'react-i18next';
-import { faChevronDown, faSquareCheck } from '@fortawesome/free-solid-svg-icons';
-import { notImplementedToast } from '../../../lib/toast';
+import { faSquareCheck } from '@fortawesome/free-solid-svg-icons';
 import { SortButton } from './SortButton';
 import { ColumnsButton } from './ColumnsButton';
-import type { ColumnVisibility, OptionalColumn } from '../utils/column-visibility';
+import { ReviewViewButton } from './ReviewViewButton';
+import type { ReviewView } from '../utils/filters';
+import type {
+  ColumnVisibility,
+  OptionalColumn,
+} from '../utils/column-visibility';
 import './TransactionsToolbar.css';
 
 type TransactionsToolbarProps = {
@@ -18,6 +22,9 @@ type TransactionsToolbarProps = {
   onToggleSelectAll: () => void;
   onOpenBulkEdit: () => void;
   onToggleColumn: (column: OptionalColumn) => void;
+  reviewView: ReviewView;
+  reviewCounts: { needs_review: number; mine: number };
+  onReviewViewChange: (view: ReviewView) => void;
 };
 
 export const TransactionsToolbar = ({
@@ -30,6 +37,9 @@ export const TransactionsToolbar = ({
   onToggleSelectAll,
   onOpenBulkEdit,
   onToggleColumn,
+  reviewView,
+  reviewCounts,
+  onReviewViewChange,
 }: TransactionsToolbarProps) => {
   const { t } = useTranslation();
   const selectAllRef = useRef<HTMLInputElement>(null);
@@ -60,14 +70,11 @@ export const TransactionsToolbar = ({
           </span>
         </label>
       ) : (
-        <button
-          type="button"
-          className="transactions-toolbar-button"
-          onClick={notImplementedToast}
-        >
-          <span>{t('transactions.toolbar.allTransactions')}</span>
-          <FontAwesomeIcon icon={faChevronDown} />
-        </button>
+        <ReviewViewButton
+          view={reviewView}
+          counts={reviewCounts}
+          onChange={onReviewViewChange}
+        />
       )}
       <div className="transactions-toolbar-actions">
         {selectionMode ? (
@@ -102,7 +109,10 @@ export const TransactionsToolbar = ({
         )}
         <span className="transactions-toolbar-divider" />
         <SortButton />
-        <ColumnsButton visibility={columnVisibility} onToggle={onToggleColumn} />
+        <ColumnsButton
+          visibility={columnVisibility}
+          onToggle={onToggleColumn}
+        />
       </div>
     </div>
   );

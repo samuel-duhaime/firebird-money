@@ -1,0 +1,126 @@
+.review-view-trigger--active {
+  background: color-mix(in srgb, var(--color-primary) 30%, var(--color-dark));
+}
+
+.review-view-icon {
+  width: 14px;
+  opacity: 0.8;
+}
+
+.review-view-count {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--color-dark);
+  font-size: 12px;
+  text-align: center;
+}
+
+.review-view-popover {
+  width: 240px;
+  padding: var(--spacing-xs);
+  gap: 2px;
+}
+
+.review-view-divider {
+  height: 1px;
+  margin: var(--spacing-xs) 0;
+  background: var(--color-medium);
+}
+
+.review-view-option {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  width: 100%;
+  padding: var(--spacing-xs) var(--spacing-s);
+  border: none;
+  border-radius: var(--spacing-xs);
+  background: none;
+  color: var(--color-white);
+  font:
+    400 15px/1.5 Quicksand,
+    sans-serif;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.review-view-option > span:first-of-type {
+  flex: 1;
+}
+
+.review-view-option .review-view-count {
+  background: var(--color-medium);
+}
+
+.review-view-option:hover,
+.review-view-option:focus-visible {
+  background: var(--color-medium);
+}
+
+.review-view-option--selected,
+.review-view-option--selected:hover,
+.review-view-option--selected:focus-visible {
+  background: color-mix(in srgb, var(--color-primary) 30%, var(--color-dark));
+}
+
+.review-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-s);
+  padding: var(--spacing-xs) var(--spacing-s);
+  background: color-mix(in srgb, var(--color-primary) 15%, var(--color-dark));
+  border-top: 1px solid
+    color-mix(in srgb, var(--color-primary) 40%, var(--color-dark));
+  color: var(--color-white);
+  font:
+    400 14px/1.5 Quicksand,
+    sans-serif;
+}
+
+.review-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-l) var(--spacing-s);
+  text-align: center;
+}
+
+.review-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  margin-bottom: var(--spacing-xs);
+  border-radius: 50%;
+  background: var(--color-success);
+  box-shadow: 0 0 0 4px
+    color-mix(in srgb, var(--color-success) 30%, transparent);
+  color: var(--color-white);
+  font-size: 18px;
+}
+
+.review-empty-title {
+  margin: 0;
+  font:
+    700 15px/1.5 Quicksand,
+    sans-serif;
+}
+
+.review-empty-text {
+  max-width: 300px;
+  margin: 0;
+  font:
+    400 14px/1.5 Quicksand,
+    sans-serif;
+  opacity: 0.85;
+}
+
+.review-empty-button {
+  margin-top: var(--spacing-xs);
+  background: none;
+  border: 1px solid var(--color-medium);
+}

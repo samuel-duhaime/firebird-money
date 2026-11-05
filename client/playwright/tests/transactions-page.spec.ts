@@ -1905,7 +1905,7 @@ test.describe('filters', () => {
     await expect(popover(authedPage)).not.toBeVisible();
   });
 
-  test('offers only the Categories, Merchants, Accounts, Owners, Tags, and Amount sections', async ({
+  test('offers only the Categories, Merchants, Accounts, Owners, Tags, Amount, and Other sections', async ({
     authedPage,
   }) => {
     await authedPage.goto('/transactions');
@@ -1920,6 +1920,7 @@ test.describe('filters', () => {
       'Owners',
       'Tags',
       'Amount',
+      'Other',
     ]);
   });
 
