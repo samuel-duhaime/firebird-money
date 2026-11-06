@@ -47,13 +47,13 @@ fn owner_on_update(take: &str, owner: &str, account: &str) -> String {
 /// to leave it) and the assignee (`$take` true, to `$assignee`), on behalf of `$user`. Setting the
 /// assignee sends it back for review unless `reviewed` is given too. Turning reviewed records who
 /// and when, and so does a first explicit review of one that started out reviewed (added by hand or
-/// imported); turning unreviewed clears both. In a `SET`, `t.*` are the values before the update.
+/// imported) — told apart by `reviewed_at`, which stays even once the reviewer's account is
+/// deleted; turning unreviewed clears both. In a `SET`, `t.*` are the values before the update.
 fn review_on_update(reviewed: &str, take: &str, assignee: &str, user: &str) -> String {
     let now_reviewed =
         format!("COALESCE({reviewed}::boolean, CASE WHEN {take} THEN false ELSE t.reviewed END)");
-    let newly_reviewed = format!(
-        "(NOT t.reviewed OR ({reviewed}::boolean IS TRUE AND t.reviewed_by_user_id IS NULL))"
-    );
+    let newly_reviewed =
+        format!("(NOT t.reviewed OR ({reviewed}::boolean IS TRUE AND t.reviewed_at IS NULL))");
     format!(
         "reviewed = {now_reviewed},
          review_assignee_user_id =

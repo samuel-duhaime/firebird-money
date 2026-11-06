@@ -426,7 +426,11 @@ export const TransactionsList = () => {
     });
   // The dropdown's counts are the whole household's, whatever else narrows the list.
   const { data: currentUser } = useCurrentUser();
-  const { data: needsReview } = useTransactions({ needs_review: 'all' });
+  const {
+    data: needsReview,
+    isPending: isNeedsReviewPending,
+    isError: isNeedsReviewError,
+  } = useTransactions({ needs_review: 'all' });
   const reviewCounts = {
     needs_review: needsReview?.length ?? 0,
     mine:
@@ -578,11 +582,19 @@ export const TransactionsList = () => {
         )}
         {transactions &&
           transactions.length === 0 &&
-          // Only "all reviewed" when the queue itself is empty, not when a search or filter hides
-          // what's left in it.
+          // Only "all reviewed" once the counts say the queue itself is empty, not when a search or
+          // filter hides what's left in it.
           (reviewView === 'all' || reviewCounts[reviewView] > 0 ? (
             <p className="transactions-status">
               {t('transactions.list.empty')}
+            </p>
+          ) : isNeedsReviewPending ? (
+            <p className="transactions-status">
+              {t('transactions.list.loading')}
+            </p>
+          ) : isNeedsReviewError ? (
+            <p className="transactions-status">
+              {t('transactions.list.error')}
             </p>
           ) : (
             <ReviewEmptyState onViewAll={() => setReviewView('all')} />
