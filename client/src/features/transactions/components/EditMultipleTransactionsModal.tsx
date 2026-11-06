@@ -18,6 +18,8 @@ import {
 } from '../../../lib/toast';
 import { CategoryPicker } from './CategoryPicker';
 import { MerchantPicker } from './MerchantPicker';
+import { useReviewChoices } from '../hooks/use-review-choices';
+import type { ReviewChoice } from '../hooks/use-review-choices';
 import type { BulkTransactionPatch } from '../utils/api';
 import { Select } from '../../../components/Select';
 import './AddTransactionModal.css';
@@ -61,6 +63,11 @@ export const EditMultipleTransactionsModal = ({
   // Picking a tag here only ever *adds* it to each selected transaction's existing tags (see
   // `BulkTransactionPatch.tag_ids`) — there's no "no change" vs "clear" distinction to track like
   // the other fields, so a plain array (empty = nothing picked yet) is enough.
+  // `undefined` for No change, No one to mark them reviewed, else who they wait on.
+  const [review, setReview] = useState<number | ReviewChoice | undefined>(
+    undefined,
+  );
+  const reviewChoices = useReviewChoices();
   const [tagIds, setTagIds] = useState<number[]>([]);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
@@ -158,6 +165,8 @@ export const EditMultipleTransactionsModal = ({
     if (categoryId !== undefined) patch.category_id = categoryId;
     if (accountId !== undefined) patch.account_id = accountId;
     if (owner !== undefined) patch.owner = toOwner(owner);
+    if (review === 'no_one') patch.reviewed = true;
+    else if (review !== undefined) patch.review_assignee = review;
     if (tagIds.length > 0) patch.tag_ids = tagIds;
 
     if (Object.keys(patch).length === 0) {
@@ -382,6 +391,31 @@ export const EditMultipleTransactionsModal = ({
                   type="button"
                   className="edit-multiple-field-clear"
                   onClick={() => setTagIds([])}
+                  aria-label={t('transactions.editMultiple.noChange')}
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="edit-transaction-field">
+            <label htmlFor="bulk-edit-review">
+              {t('transactions.filters.needsReviewBy')}
+            </label>
+            <div className="edit-multiple-field-control">
+              <OwnerPicker
+                id="bulk-edit-review"
+                value={review}
+                choices={reviewChoices}
+                placeholder={t('transactions.editMultiple.noChange')}
+                onChange={setReview}
+              />
+              {review !== undefined && (
+                <button
+                  type="button"
+                  className="edit-multiple-field-clear"
+                  onClick={() => setReview(undefined)}
                   aria-label={t('transactions.editMultiple.noChange')}
                 >
                   ×

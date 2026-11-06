@@ -79,7 +79,10 @@ const ownerName = (owner: Locator) => owner.locator('.owner-picker-name');
 
 /** Picks `owner` ("Shared" or a member's name, with any "(default)") from an open Owner list. */
 const pickOwner = (page: Page, owner: string) =>
-  page.getByRole('option', { name: owner, exact: true }).click();
+  page
+    .getByRole('listbox')
+    .getByRole('option', { name: owner, exact: true })
+    .click();
 
 test.describe('Transaction owners', () => {
   test('adding a transaction: Owner waits for an account, then takes its owner', async ({

@@ -1336,6 +1336,239 @@ async fn list_transactions_filters_by_owner_ids_and_shared_owner(pool: PgPool) {
     assert!(csv.lines().nth(1).unwrap().contains("IGA"), "{csv}");
 }
 
+/// Sends `PATCH /transactions/{id}` with `patch` and returns the updated row.
+async fn patch_transaction<S, B>(
+    app: &S,
+    cookie: &str,
+    id: i64,
+    patch: serde_json::Value,
+) -> serde_json::Value
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let req = test::TestRequest::patch()
+        .uri(&format!("/transactions/{id}"))
+        .insert_header(("Cookie", cookie))
+        .set_json(patch)
+        .to_request();
+    let resp = test::call_service(app, req).await;
+    assert_eq!(resp.status(), 200);
+    test::read_body_json(resp).await
+}
+
+#[sqlx::test]
+async fn assigning_a_review_marks_the_transaction_unreviewed(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let alice_id = join_household(&app, &cookie, "alice@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    let id = create_via_api(&app, &cookie, category_id, "2024-01-15", "IGA", "10.00").await;
+
+    let row = patch_transaction(
+        &app,
+        &cookie,
+        id,
+        serde_json::json!({ "review_assignee": alice_id }),
+    )
+    .await;
+    assert_eq!(row["reviewed"], false);
+    assert_eq!(row["review_assignee_user_id"], alice_id);
+    assert!(row["reviewed_by_user_id"].is_null());
+
+    let row = patch_transaction(
+        &app,
+        &cookie,
+        id,
+        serde_json::json!({ "review_assignee": "anyone" }),
+    )
+    .await;
+    assert_eq!(row["reviewed"], false);
+    assert!(row["review_assignee_user_id"].is_null());
+}
+
+#[sqlx::test]
+async fn any_member_can_mark_a_transaction_reviewed(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let sam_id = own_user_id(&app, &cookie).await;
+    let alice_id = join_household(&app, &cookie, "alice@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    let id = create_via_api(&app, &cookie, category_id, "2024-01-15", "IGA", "10.00").await;
+    patch_transaction(
+        &app,
+        &cookie,
+        id,
+        serde_json::json!({ "review_assignee": alice_id }),
+    )
+    .await;
+
+    // Waiting on Alice, but Sam reviews it.
+    let row = patch_transaction(&app, &cookie, id, serde_json::json!({ "reviewed": true })).await;
+    assert_eq!(row["reviewed"], true);
+    assert_eq!(row["reviewed_by_user_id"], sam_id);
+    assert!(row["reviewed_at"].is_string());
+
+    // Marking it reviewed again keeps the first review.
+    let again = patch_transaction(&app, &cookie, id, serde_json::json!({ "reviewed": true })).await;
+    assert_eq!(again["reviewed_at"], row["reviewed_at"]);
+
+    let row = patch_transaction(&app, &cookie, id, serde_json::json!({ "reviewed": false })).await;
+    assert_eq!(row["reviewed"], false);
+    assert!(row["reviewed_by_user_id"].is_null());
+    assert!(row["reviewed_at"].is_null());
+
+    // `reviewed` wins over an assignee sent with it.
+    let row = patch_transaction(
+        &app,
+        &cookie,
+        id,
+        serde_json::json!({ "reviewed": true, "review_assignee": alice_id }),
+    )
+    .await;
+    assert_eq!(row["reviewed"], true);
+    assert_eq!(row["reviewed_by_user_id"], sam_id);
+}
+
+#[sqlx::test]
+async fn reviewing_a_transaction_that_started_reviewed_records_who(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let sam_id = own_user_id(&app, &cookie).await;
+    let category_id = create_other_category(&app, &cookie).await;
+    // Added by hand, so reviewed without anyone having reviewed it.
+    let id = create_via_api(&app, &cookie, category_id, "2024-01-15", "IGA", "10.00").await;
+
+    // An unrelated edit doesn't count as a review.
+    let row = patch_transaction(&app, &cookie, id, serde_json::json!({ "amount": "12.00" })).await;
+    assert!(row["reviewed_by_user_id"].is_null());
+
+    let row = patch_transaction(&app, &cookie, id, serde_json::json!({ "reviewed": true })).await;
+    assert_eq!(row["reviewed_by_user_id"], sam_id);
+    assert!(row["reviewed_at"].is_string());
+}
+
+#[sqlx::test]
+async fn review_assignee_must_be_in_the_household(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let other_cookie = sign_in_with_household(&app, "other@example.com").await;
+    let other_id = own_user_id(&app, &other_cookie).await;
+    let category_id = create_other_category(&app, &cookie).await;
+    let id = create_via_api(&app, &cookie, category_id, "2024-01-15", "IGA", "10.00").await;
+
+    let req = test::TestRequest::patch()
+        .uri(&format!("/transactions/{id}"))
+        .insert_header(("Cookie", cookie))
+        .set_json(serde_json::json!({ "review_assignee": other_id }))
+        .to_request();
+    assert_eq!(test::call_service(&app, req).await.status(), 400);
+}
+
+#[sqlx::test]
+async fn bulk_update_assigns_and_marks_reviews(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let sam_id = own_user_id(&app, &cookie).await;
+    let category_id = create_other_category(&app, &cookie).await;
+    let first = create_via_api(&app, &cookie, category_id, "2024-01-15", "IGA", "10.00").await;
+    let second = create_via_api(&app, &cookie, category_id, "2024-01-16", "METRO", "10.00").await;
+
+    for (patch, reviewed) in [
+        (serde_json::json!({ "review_assignee": sam_id }), false),
+        (serde_json::json!({ "reviewed": true }), true),
+        // `reviewed` wins over an assignee sent with it.
+        (
+            serde_json::json!({ "reviewed": false, "review_assignee": "anyone" }),
+            false,
+        ),
+        (
+            serde_json::json!({ "reviewed": true, "review_assignee": sam_id }),
+            true,
+        ),
+    ] {
+        let req = test::TestRequest::patch()
+            .uri("/transactions/bulk")
+            .insert_header(("Cookie", cookie.clone()))
+            .set_json(serde_json::json!({ "ids": [first, second], "patch": patch }))
+            .to_request();
+        let rows: serde_json::Value = test::call_and_read_body_json(&app, req).await;
+        let rows = rows.as_array().unwrap();
+        assert_eq!(rows.len(), 2);
+        assert!(
+            rows.iter().all(|row| row["reviewed"] == reviewed),
+            "{rows:?}"
+        );
+        if !reviewed {
+            let expected = match &patch["review_assignee"] {
+                serde_json::Value::String(_) => serde_json::Value::Null,
+                id => id.clone(),
+            };
+            assert!(
+                rows.iter()
+                    .all(|row| row["review_assignee_user_id"] == expected),
+                "{rows:?}"
+            );
+        }
+    }
+}
+
+#[sqlx::test]
+async fn list_transactions_filters_by_review(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let sam_id = own_user_id(&app, &cookie).await;
+    let alice_id = join_household(&app, &cookie, "alice@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+
+    // STARBUCKS stays reviewed, as every new transaction starts.
+    create_via_api(
+        &app,
+        &cookie,
+        category_id,
+        "2024-01-15",
+        "STARBUCKS",
+        "10.00",
+    )
+    .await;
+    for (date, statement, assignee) in [
+        ("2024-01-16", "IGA", serde_json::json!(sam_id)),
+        ("2024-01-17", "METRO", serde_json::json!(alice_id)),
+        ("2024-01-18", "COSTCO", serde_json::json!("anyone")),
+    ] {
+        let id = create_via_api(&app, &cookie, category_id, date, statement, "10.00").await;
+        patch_transaction(
+            &app,
+            &cookie,
+            id,
+            serde_json::json!({ "review_assignee": assignee }),
+        )
+        .await;
+    }
+
+    let all = listed_merchant_names(&app, &cookie, "/transactions?needs_review=all").await;
+    assert_eq!(all, vec!["COSTCO", "METRO", "IGA"]);
+
+    let mine = listed_merchant_names(&app, &cookie, "/transactions?needs_review=mine").await;
+    assert_eq!(mine, vec!["COSTCO", "IGA"]);
+
+    let alice = listed_merchant_names(
+        &app,
+        &cookie,
+        &format!("/transactions?review_assignee_ids={alice_id}"),
+    )
+    .await;
+    assert_eq!(alice, vec!["METRO"]);
+
+    let alice_or_anyone = listed_merchant_names(
+        &app,
+        &cookie,
+        &format!("/transactions?review_assignee_ids={alice_id}&review_anyone=true"),
+    )
+    .await;
+    assert_eq!(alice_or_anyone, vec!["COSTCO", "METRO"]);
+}
+
 #[sqlx::test]
 async fn list_transactions_filters_by_amount(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;

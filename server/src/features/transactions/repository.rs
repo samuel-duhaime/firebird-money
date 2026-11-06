@@ -5,8 +5,8 @@ use rust_decimal::Decimal;
 use sqlx::{PgConnection, PgPool};
 
 use super::model::{
-    BulkTransactionPatch, ImportResult, ImportTransaction, NewTransaction, SortOrder, Transaction,
-    TransactionFilter, TransactionPatch, TransactionTag,
+    BulkTransactionPatch, ImportResult, ImportTransaction, NeedsReview, NewTransaction,
+    ReviewAssignee, SortOrder, Transaction, TransactionFilter, TransactionPatch, TransactionTag,
 };
 use crate::features::accounts::repository as accounts_repository;
 use crate::features::institutions::repository as institutions_repository;
@@ -16,7 +16,8 @@ const SELECT_COLUMNS: &str = "
     t.id, t.household_id, t.user_id, t.date, t.original_statement, t.merchant_id,
     mch.name AS merchant_name, mch.logo_url AS merchant_logo_url, t.amount, t.category_id,
     c.name_en AS category_name_en, c.name_fr AS category_name_fr, g.type AS category_type,
-    t.account_id, a.name AS account_name, t.owner_user_id, t.reviewed, t.source, t.created_at";
+    t.account_id, a.name AS account_name, t.owner_user_id, t.reviewed, t.review_assignee_user_id, t.reviewed_by_user_id, t.reviewed_at,
+    t.source, t.created_at";
 
 /// The owner a new transaction takes: its account's (`$8`, in household `$1`). `FOR SHARE` waits for
 /// an owner change in progress on the account (see `accounts::repository::set_owners`) and reads
@@ -40,6 +41,54 @@ fn owner_on_update(take: &str, owner: &str, account: &str) -> String {
             ELSE t.owner_user_id
          END"
     )
+}
+
+/// The review columns in an `UPDATE transactions t` that may set `reviewed` (`$reviewed`, `NULL`
+/// to leave it) and the assignee (`$take` true, to `$assignee`), on behalf of `$user`. Setting the
+/// assignee sends it back for review unless `reviewed` is given too. Turning reviewed records who
+/// and when, and so does a first explicit review of one that started out reviewed (added by hand or
+/// imported) — told apart by `reviewed_at`, which stays even once the reviewer's account is
+/// deleted; turning unreviewed clears both. In a `SET`, `t.*` are the values before the update.
+fn review_on_update(reviewed: &str, take: &str, assignee: &str, user: &str) -> String {
+    let now_reviewed =
+        format!("COALESCE({reviewed}::boolean, CASE WHEN {take} THEN false ELSE t.reviewed END)");
+    let newly_reviewed =
+        format!("(NOT t.reviewed OR ({reviewed}::boolean IS TRUE AND t.reviewed_at IS NULL))");
+    format!(
+        "reviewed = {now_reviewed},
+         review_assignee_user_id =
+            CASE WHEN {take} THEN {assignee} ELSE t.review_assignee_user_id END,
+         reviewed_by_user_id = CASE
+            WHEN NOT {now_reviewed} THEN NULL
+            WHEN {newly_reviewed} THEN {user}
+            ELSE t.reviewed_by_user_id
+         END,
+         reviewed_at = CASE
+            WHEN NOT {now_reviewed} THEN NULL
+            WHEN {newly_reviewed} THEN now()
+            ELSE t.reviewed_at
+         END"
+    )
+}
+
+/// Waits for a member's removal in progress (see `members::repository::remove`) and holds them
+/// until `conn`'s transaction ends, before a transaction is given to them for review. Taking the
+/// member before the transaction, as removal does, keeps the two from deadlocking. Ignores an id
+/// that isn't the household's: the assignment then fails on its foreign key.
+async fn lock_review_assignee(
+    conn: &mut PgConnection,
+    household_id: i32,
+    assignee: Option<ReviewAssignee>,
+) -> Result<(), sqlx::Error> {
+    let Some(user_id) = assignee.and_then(|assignee| assignee.user_id()) else {
+        return Ok(());
+    };
+    sqlx::query("SELECT 1 FROM users WHERE id = $1 AND household_id = $2 FOR KEY SHARE")
+        .bind(user_id)
+        .bind(household_id)
+        .execute(&mut *conn)
+        .await?;
+    Ok(())
 }
 
 /// Waits for an owner change in progress on `account_id` (see
@@ -385,11 +434,13 @@ pub async fn list_on_dates(
 /// `start_date`/`end_date` range, an exact `merchant_id` or `account_id`, a free-text search across
 /// merchant name, original statement, category name, and amount, and/or the Filters popover's
 /// multi-select (`category_ids`, `merchant_ids`, `account_ids`, `tag_ids`/`untagged`,
-/// `owner_ids`/`shared_owner`) and amount filters.
+/// `owner_ids`/`shared_owner`, `review_assignee_ids`/`review_anyone`) and amount filters, and/or
+/// `needs_review` (`mine` meaning waiting on `user_id` or on Anyone).
 /// Sorted per `filter.order` (most recent first by default).
 pub async fn list(
     pool: &PgPool,
     household_id: i32,
+    user_id: i32,
     filter: &TransactionFilter,
 ) -> Result<Vec<Transaction>, sqlx::Error> {
     // `id DESC` is a stable tie-breaker for rows sharing a date/amount; never built from user input.
@@ -436,6 +487,12 @@ pub async fn list(
            AND (($17::integer[] IS NULL AND NOT $18)
               OR t.owner_user_id = ANY($17)
               OR ($18 AND t.owner_user_id IS NULL))
+           AND ($19::text IS NULL OR (NOT t.reviewed AND ($19 = 'all'
+              OR t.review_assignee_user_id IS NULL
+              OR t.review_assignee_user_id = $20)))
+           AND (($21::integer[] IS NULL AND NOT $22)
+              OR (NOT t.reviewed AND (t.review_assignee_user_id = ANY($21)
+                  OR ($22 AND t.review_assignee_user_id IS NULL))))
          ORDER BY {order_by}"
     ))
     .bind(household_id)
@@ -456,6 +513,13 @@ pub async fn list(
     .bind(at_most)
     .bind(&filter.owner_ids)
     .bind(filter.shared_owner.unwrap_or(false))
+    .bind(filter.needs_review.map(|needs_review| match needs_review {
+        NeedsReview::All => "all",
+        NeedsReview::Mine => "mine",
+    }))
+    .bind(user_id)
+    .bind(&filter.review_assignee_ids)
+    .bind(filter.review_anyone.unwrap_or(false))
     .fetch_all(pool)
     .await?;
 
@@ -493,6 +557,7 @@ pub async fn get(
 pub async fn update(
     pool: &PgPool,
     household_id: i32,
+    user_id: i32,
     id: i64,
     patch: &TransactionPatch,
 ) -> Result<Option<Transaction>, sqlx::Error> {
@@ -506,6 +571,7 @@ pub async fn update(
     if let Some(account_id) = patch.account_id {
         lock_account(&mut tx, household_id, account_id).await?;
     }
+    lock_review_assignee(&mut tx, household_id, patch.review_assignee).await?;
 
     let updated = sqlx::query_as::<_, Transaction>(&format!(
         "WITH updated AS (
@@ -515,7 +581,8 @@ pub async fn update(
                 amount = COALESCE($5, amount),
                 category_id = COALESCE($6, category_id),
                 account_id = COALESCE($7, account_id),
-                owner_user_id = {owner}
+                owner_user_id = {owner},
+                {review}
             WHERE id = $1 AND household_id = $2
             RETURNING *
          )
@@ -526,6 +593,7 @@ pub async fn update(
          JOIN category_groups g ON g.id = c.group_id
          JOIN accounts a ON a.id = t.account_id",
         owner = owner_on_update("$8", "$9", "$7"),
+        review = review_on_update("$10", "$11", "$12", "$13"),
     ))
     .bind(id)
     .bind(household_id)
@@ -536,6 +604,14 @@ pub async fn update(
     .bind(patch.account_id)
     .bind(patch.owner.is_some())
     .bind(patch.owner.and_then(|owner| owner.user_id()))
+    .bind(patch.reviewed)
+    .bind(patch.review_assignee.is_some())
+    .bind(
+        patch
+            .review_assignee
+            .and_then(|assignee| assignee.user_id()),
+    )
+    .bind(user_id)
     .fetch_optional(&mut *tx)
     .await?;
 
@@ -573,6 +649,7 @@ pub async fn delete(pool: &PgPool, household_id: i32, id: i64) -> Result<bool, s
 pub async fn bulk_update(
     pool: &PgPool,
     household_id: i32,
+    user_id: i32,
     ids: &[i64],
     patch: &BulkTransactionPatch,
 ) -> Result<Vec<Transaction>, sqlx::Error> {
@@ -586,6 +663,7 @@ pub async fn bulk_update(
     if let Some(account_id) = patch.account_id {
         lock_account(&mut tx, household_id, account_id).await?;
     }
+    lock_review_assignee(&mut tx, household_id, patch.review_assignee).await?;
 
     let mut transactions = sqlx::query_as::<_, Transaction>(&format!(
         "WITH updated AS (
@@ -594,7 +672,8 @@ pub async fn bulk_update(
                 merchant_id = COALESCE($4, merchant_id),
                 category_id = COALESCE($5, category_id),
                 account_id = COALESCE($6, account_id),
-                owner_user_id = {owner}
+                owner_user_id = {owner},
+                {review}
             WHERE id = ANY($1) AND household_id = $2
             RETURNING *
          )
@@ -605,6 +684,7 @@ pub async fn bulk_update(
          JOIN category_groups g ON g.id = c.group_id
          JOIN accounts a ON a.id = t.account_id",
         owner = owner_on_update("$7", "$8", "$6"),
+        review = review_on_update("$9", "$10", "$11", "$12"),
     ))
     .bind(ids)
     .bind(household_id)
@@ -614,6 +694,14 @@ pub async fn bulk_update(
     .bind(patch.account_id)
     .bind(patch.owner.is_some())
     .bind(patch.owner.and_then(|owner| owner.user_id()))
+    .bind(patch.reviewed)
+    .bind(patch.review_assignee.is_some())
+    .bind(
+        patch
+            .review_assignee
+            .and_then(|assignee| assignee.user_id()),
+    )
+    .bind(user_id)
     .fetch_all(&mut *tx)
     .await?;
 

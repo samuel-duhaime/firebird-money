@@ -337,6 +337,31 @@ export const fr: typeof en = {
       selected_other: '{{count}} transactions sélectionnées (ESC)',
       editCount: 'Modifier {{count}}',
     },
+    review: {
+      views: {
+        all: 'Toutes les transactions',
+        needs_review: 'À réviser',
+        mine: 'À réviser par moi',
+      },
+      banner: {
+        needs_review_one: '{{count}} transaction attend une révision',
+        needs_review_other: '{{count}} transactions attendent une révision',
+        mine_one: '{{count}} transaction t’attend',
+        mine_other: '{{count}} transactions t’attendent',
+      },
+      empty: {
+        title: 'T’as tout révisé!',
+        text: 'Les transactions qui attendent une révision vont apparaître ici.',
+        viewAll: 'Voir toutes les transactions',
+      },
+      markAllReviewed: 'Tout marquer comme révisé',
+      anyone: 'N’importe qui',
+      noOne: 'Personne',
+      markReviewed: 'Marquer comme révisé',
+      markReviewedRow: 'Marquer {{merchant}} comme révisé',
+      reviewedBy: 'Révisé par {{name}} · {{date}}',
+      memberUnavailable: 'Membre indisponible',
+    },
     sort: {
       trigger: 'Trier',
       options: {
@@ -374,7 +399,9 @@ export const fr: typeof en = {
         owners: 'Propriétaires',
         tags: 'Étiquettes',
         amount: 'Montant',
+        other: 'Autres',
       },
+      needsReviewBy: 'À réviser par',
       selectAll: 'Tout sélectionner',
       untagged: 'Sans étiquette',
       noResults: 'Aucun résultat.',

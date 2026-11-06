@@ -43,6 +43,7 @@ account-invalid-last-four = last_four doit contenir de 1 à 4 lettres ou chiffre
 account-invalid-currency = currency doit être un code de 3 lettres, p. ex. CAD
 account-owner-required = owner est requis : "shared" ou l’id d’un membre
 account-owner-not-found = Le propriétaire doit être un membre de ce ménage
+review-assignee-not-found = La personne qui révise doit être membre de ce ménage
 account-owners-duplicate = Chaque compte ne peut être indiqué qu’une fois
 account-owners-account-not-found = Un des comptes n’existe pas
 # Courriel de connexion. Le lien est inséré entre les instructions et la signature.

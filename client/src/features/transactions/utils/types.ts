@@ -29,6 +29,13 @@ export interface Transaction {
    * follows it, unless it was changed on its own. */
   owner_user_id: number | null;
   reviewed: boolean;
+  /** Who it waits on for a review, or `null` for Anyone. Only meaningful while `reviewed` is
+   * false. */
+  review_assignee_user_id: number | null;
+  /** Who marked it reviewed, and when. Both `null` when nobody did, e.g. a transaction added by
+   * hand or imported, which starts out reviewed. */
+  reviewed_by_user_id: number | null;
+  reviewed_at: string | null;
   /** `import` when added from a bank statement, else `manual`. */
   source: 'manual' | 'import';
   created_at: string;

@@ -34,7 +34,13 @@ import './FiltersButton.css';
 const routeApi = getRouteApi('/_app/transactions');
 
 type Section =
-  'categories' | 'merchants' | 'accounts' | 'owners' | 'tags' | 'amount';
+  | 'categories'
+  | 'merchants'
+  | 'accounts'
+  | 'owners'
+  | 'tags'
+  | 'amount'
+  | 'other';
 
 const SECTIONS: Section[] = [
   'categories',
@@ -43,13 +49,20 @@ const SECTIONS: Section[] = [
   'owners',
   'tags',
   'amount',
+  'other',
 ];
 
 type IdListKey =
-  'category_ids' | 'merchant_ids' | 'account_ids' | 'owner_ids' | 'tag_ids';
+  | 'category_ids'
+  | 'merchant_ids'
+  | 'account_ids'
+  | 'owner_ids'
+  | 'tag_ids'
+  | 'review_assignee_ids';
 
-/** The checkbox each list can have on top of its ids: "Untagged" for tags, "Shared" for owners. */
-type FlagKey = 'untagged' | 'shared_owner';
+/** The checkbox each list can have on top of its ids: "Untagged" for tags, "Shared" for owners,
+ * "Anyone" for who a review waits on. */
+type FlagKey = 'untagged' | 'shared_owner' | 'review_anyone';
 
 /** The popover's in-progress edits, only written to the URL on Apply. Amounts stay as typed text
  * until then, so a half-typed value (e.g. "12,") doesn't get coerced away mid-edit. */
@@ -61,6 +74,8 @@ type Draft = {
   untagged: boolean;
   owner_ids: number[];
   shared_owner: boolean;
+  review_assignee_ids: number[];
+  review_anyone: boolean;
   amount_op: AmountOp;
   amount: string;
   amount_max: string;
@@ -74,6 +89,8 @@ const toDraft = (filters: TransactionFilters): Draft => ({
   untagged: filters.untagged ?? false,
   owner_ids: filters.owner_ids ?? [],
   shared_owner: filters.shared_owner ?? false,
+  review_assignee_ids: filters.review_assignee_ids ?? [],
+  review_anyone: filters.review_anyone ?? false,
   amount_op: filters.amount_op ?? 'greater_than',
   amount: filters.amount !== undefined ? String(filters.amount) : '',
   amount_max:
@@ -115,6 +132,8 @@ const toFilters = (draft: Draft): TransactionFilters | null => {
     untagged: draft.untagged || undefined,
     owner_ids: ids(draft.owner_ids),
     shared_owner: draft.shared_owner || undefined,
+    review_assignee_ids: ids(draft.review_assignee_ids),
+    review_anyone: draft.review_anyone || undefined,
     amount_op: hasAmount ? draft.amount_op : undefined,
     amount: hasAmount ? amount : undefined,
     amount_max:
@@ -268,6 +287,9 @@ export const FiltersButton = () => {
     matches(memberDisplayName(member), member.email),
   );
 
+  const anyoneLabel = t('transactions.review.anyone');
+  const showAnyone = matches(anyoneLabel);
+
   const toggleIds = (key: IdListKey, ids: number[], checked: boolean) =>
     setDraft((previous) => ({
       ...previous,
@@ -290,6 +312,8 @@ export const FiltersButton = () => {
     draft.untagged ||
     draft.owner_ids.length > 0 ||
     draft.shared_owner ||
+    draft.review_assignee_ids.length > 0 ||
+    draft.review_anyone ||
     draft.amount !== '' ||
     draft.amount_max !== '';
 
@@ -552,6 +576,44 @@ export const FiltersButton = () => {
           </>
         );
       }
+      case 'other': {
+        if (!showAnyone && visibleMembers.length === 0) return renderEmpty();
+        return (
+          <div className="filters-popover-group">
+            <div className="filters-popover-group-name">
+              {t('transactions.filters.needsReviewBy')}
+            </div>
+            {showAnyone && (
+              <CheckboxRow
+                checked={draft.review_anyone}
+                onChange={(checked) => setFlag('review_anyone', checked)}
+              >
+                <span className="filters-popover-row-label">{anyoneLabel}</span>
+              </CheckboxRow>
+            )}
+            {visibleMembers.map((member) => (
+              <CheckboxRow
+                key={member.id}
+                checked={draft.review_assignee_ids.includes(member.id)}
+                onChange={(checked) =>
+                  toggleIds('review_assignee_ids', [member.id], checked)
+                }
+              >
+                <Avatar
+                  name={memberDisplayName(member)}
+                  src={pictureSrc(member.picture_url)}
+                />
+                <span
+                  className="filters-popover-row-label"
+                  title={member.email}
+                >
+                  {memberDisplayName(member)}
+                </span>
+              </CheckboxRow>
+            ))}
+          </div>
+        );
+      }
       case 'amount':
         return (
           <div className="filters-popover-amount">
@@ -628,6 +690,8 @@ export const FiltersButton = () => {
   // The summary column, one group per section with at least one selection, in nav order.
   const summary: {
     section: Section;
+    /** Shown instead of the section's name. */
+    title?: string;
     items: SummaryItem[];
     onClear: () => void;
   }[] = [];
@@ -790,6 +854,44 @@ export const FiltersButton = () => {
     });
   }
 
+  const reviewItems: SummaryItem[] = [];
+  if (draft.review_anyone) {
+    reviewItems.push({
+      key: 'anyone',
+      label: anyoneLabel,
+      onRemove: () => setFlag('review_anyone', false),
+    });
+  }
+  for (const id of draft.review_assignee_ids) {
+    const member = memberById.get(id);
+    reviewItems.push({
+      key: `r${id}`,
+      icon: member && (
+        <Avatar
+          name={memberDisplayName(member)}
+          src={pictureSrc(member.picture_url)}
+        />
+      ),
+      label: member
+        ? memberDisplayName(member)
+        : t('transactions.review.memberUnavailable'),
+      onRemove: removeId('review_assignee_ids', id),
+    });
+  }
+  if (reviewItems.length > 0) {
+    summary.push({
+      section: 'other',
+      title: t('transactions.filters.needsReviewBy'),
+      items: reviewItems,
+      onClear: () =>
+        setDraft((previous) => ({
+          ...previous,
+          review_assignee_ids: [],
+          review_anyone: false,
+        })),
+    });
+  }
+
   return (
     <div className="filters-button-trigger">
       <TopMenuButton
@@ -869,7 +971,8 @@ export const FiltersButton = () => {
                     >
                       <div className="filters-popover-summary-header">
                         <span>
-                          {t(`transactions.filters.sections.${entry.section}`)}
+                          {entry.title ??
+                            t(`transactions.filters.sections.${entry.section}`)}
                         </span>
                         <button
                           type="button"
