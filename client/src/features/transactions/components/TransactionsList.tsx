@@ -578,7 +578,9 @@ export const TransactionsList = () => {
         )}
         {transactions &&
           transactions.length === 0 &&
-          (reviewView === 'all' ? (
+          // Only "all reviewed" when the queue itself is empty, not when a search or filter hides
+          // what's left in it.
+          (reviewView === 'all' || reviewCounts[reviewView] > 0 ? (
             <p className="transactions-status">
               {t('transactions.list.empty')}
             </p>

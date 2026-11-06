@@ -83,6 +83,10 @@ test.describe('Transaction reviews', () => {
     await addTransaction(context.request, apiOrigin, 'Tangerine');
     await addTransaction(context.request, apiOrigin, 'Desjardins', 'anyone');
     await addTransaction(context.request, apiOrigin, 'Koodo', aliceId);
+    const me: number = (
+      await (await context.request.get(`${apiOrigin}/auth/me`)).json()
+    ).user.id;
+    await addTransaction(context.request, apiOrigin, 'Questrade', me);
 
     const row = (merchant: string) =>
       authedPage.locator('li.transactions-row', { hasText: merchant });
@@ -102,10 +106,10 @@ test.describe('Transaction reviews', () => {
     await trigger.click();
     const popover = authedPage.locator('.review-view-popover');
     await expect(
-      popover.getByRole('button', { name: /^Needs review\s*2$/ }),
+      popover.getByRole('button', { name: /^Needs review\s*3$/ }),
     ).toBeVisible();
     await expect(
-      popover.getByRole('button', { name: /^Needs my review\s*1$/ }),
+      popover.getByRole('button', { name: /^Needs my review\s*2$/ }),
     ).toBeVisible();
     await authedPage.keyboard.press('Escape');
 
@@ -113,6 +117,7 @@ test.describe('Transaction reviews', () => {
     await expect(trigger).toContainText('Needs review');
     await expect(row('Desjardins')).toBeVisible();
     await expect(row('Koodo')).toBeVisible();
+    await expect(row('Questrade')).toBeVisible();
     await expect(row('Tangerine')).not.toBeVisible();
     expect(new URL(authedPage.url()).searchParams.get('needs_review')).toBe(
       'all',
@@ -125,12 +130,26 @@ test.describe('Transaction reviews', () => {
     await expect(row('Koodo')).not.toBeVisible();
     await expect(row('Desjardins')).toBeVisible();
 
-    // Waiting on Anyone counts as mine.
+    // Waiting on Test User or on Anyone counts as mine.
     await pickView(/^Needs my review/);
     await expect(row('Desjardins')).toBeVisible();
+    await expect(row('Questrade')).toBeVisible();
     await expect(
-      authedPage.getByText('1 transaction is waiting on you'),
+      authedPage.getByText('2 transactions are waiting on you'),
     ).toBeVisible();
+
+    // A search that hides what's left isn't "all reviewed".
+    await authedPage.goto(
+      '/transactions?needs_review=mine&search=nothing-matches',
+    );
+    await expect(
+      authedPage.getByText('You reviewed everything!'),
+    ).not.toBeVisible();
+    await expect(
+      authedPage.getByText('No transactions', { exact: false }),
+    ).toBeVisible();
+    await authedPage.goto('/transactions?needs_review=mine');
+    await expect(row('Questrade')).toBeVisible();
 
     await authedPage
       .getByRole('button', { name: 'Mark all reviewed', exact: true })

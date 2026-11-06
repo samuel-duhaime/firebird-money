@@ -5,8 +5,8 @@ use rust_decimal::Decimal;
 use sqlx::{PgConnection, PgPool};
 
 use super::model::{
-    BulkTransactionPatch, ImportResult, ImportTransaction, NeedsReview, NewTransaction, SortOrder,
-    Transaction, TransactionFilter, TransactionPatch, TransactionTag,
+    BulkTransactionPatch, ImportResult, ImportTransaction, NeedsReview, NewTransaction,
+    ReviewAssignee, SortOrder, Transaction, TransactionFilter, TransactionPatch, TransactionTag,
 };
 use crate::features::accounts::repository as accounts_repository;
 use crate::features::institutions::repository as institutions_repository;
@@ -46,25 +46,49 @@ fn owner_on_update(take: &str, owner: &str, account: &str) -> String {
 /// The review columns in an `UPDATE transactions t` that may set `reviewed` (`$reviewed`, `NULL`
 /// to leave it) and the assignee (`$take` true, to `$assignee`), on behalf of `$user`. Setting the
 /// assignee sends it back for review unless `reviewed` is given too. Turning reviewed records who
-/// and when; turning unreviewed clears both. In a `SET`, `t.*` are the values before the update.
+/// and when, and so does a first explicit review of one that started out reviewed (added by hand or
+/// imported); turning unreviewed clears both. In a `SET`, `t.*` are the values before the update.
 fn review_on_update(reviewed: &str, take: &str, assignee: &str, user: &str) -> String {
     let now_reviewed =
         format!("COALESCE({reviewed}::boolean, CASE WHEN {take} THEN false ELSE t.reviewed END)");
+    let newly_reviewed = format!(
+        "(NOT t.reviewed OR ({reviewed}::boolean IS TRUE AND t.reviewed_by_user_id IS NULL))"
+    );
     format!(
         "reviewed = {now_reviewed},
          review_assignee_user_id =
             CASE WHEN {take} THEN {assignee} ELSE t.review_assignee_user_id END,
          reviewed_by_user_id = CASE
             WHEN NOT {now_reviewed} THEN NULL
-            WHEN NOT t.reviewed THEN {user}
+            WHEN {newly_reviewed} THEN {user}
             ELSE t.reviewed_by_user_id
          END,
          reviewed_at = CASE
             WHEN NOT {now_reviewed} THEN NULL
-            WHEN NOT t.reviewed THEN now()
+            WHEN {newly_reviewed} THEN now()
             ELSE t.reviewed_at
          END"
     )
+}
+
+/// Waits for a member's removal in progress (see `members::repository::remove`) and holds them
+/// until `conn`'s transaction ends, before a transaction is given to them for review. Taking the
+/// member before the transaction, as removal does, keeps the two from deadlocking. Ignores an id
+/// that isn't the household's: the assignment then fails on its foreign key.
+async fn lock_review_assignee(
+    conn: &mut PgConnection,
+    household_id: i32,
+    assignee: Option<ReviewAssignee>,
+) -> Result<(), sqlx::Error> {
+    let Some(user_id) = assignee.and_then(|assignee| assignee.user_id()) else {
+        return Ok(());
+    };
+    sqlx::query("SELECT 1 FROM users WHERE id = $1 AND household_id = $2 FOR KEY SHARE")
+        .bind(user_id)
+        .bind(household_id)
+        .execute(&mut *conn)
+        .await?;
+    Ok(())
 }
 
 /// Waits for an owner change in progress on `account_id` (see
@@ -547,6 +571,7 @@ pub async fn update(
     if let Some(account_id) = patch.account_id {
         lock_account(&mut tx, household_id, account_id).await?;
     }
+    lock_review_assignee(&mut tx, household_id, patch.review_assignee).await?;
 
     let updated = sqlx::query_as::<_, Transaction>(&format!(
         "WITH updated AS (
@@ -638,6 +663,7 @@ pub async fn bulk_update(
     if let Some(account_id) = patch.account_id {
         lock_account(&mut tx, household_id, account_id).await?;
     }
+    lock_review_assignee(&mut tx, household_id, patch.review_assignee).await?;
 
     let mut transactions = sqlx::query_as::<_, Transaction>(&format!(
         "WITH updated AS (

@@ -1417,6 +1417,35 @@ async fn any_member_can_mark_a_transaction_reviewed(pool: PgPool) {
     assert_eq!(row["reviewed"], false);
     assert!(row["reviewed_by_user_id"].is_null());
     assert!(row["reviewed_at"].is_null());
+
+    // `reviewed` wins over an assignee sent with it.
+    let row = patch_transaction(
+        &app,
+        &cookie,
+        id,
+        serde_json::json!({ "reviewed": true, "review_assignee": alice_id }),
+    )
+    .await;
+    assert_eq!(row["reviewed"], true);
+    assert_eq!(row["reviewed_by_user_id"], sam_id);
+}
+
+#[sqlx::test]
+async fn reviewing_a_transaction_that_started_reviewed_records_who(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let sam_id = own_user_id(&app, &cookie).await;
+    let category_id = create_other_category(&app, &cookie).await;
+    // Added by hand, so reviewed without anyone having reviewed it.
+    let id = create_via_api(&app, &cookie, category_id, "2024-01-15", "IGA", "10.00").await;
+
+    // An unrelated edit doesn't count as a review.
+    let row = patch_transaction(&app, &cookie, id, serde_json::json!({ "amount": "12.00" })).await;
+    assert!(row["reviewed_by_user_id"].is_null());
+
+    let row = patch_transaction(&app, &cookie, id, serde_json::json!({ "reviewed": true })).await;
+    assert_eq!(row["reviewed_by_user_id"], sam_id);
+    assert!(row["reviewed_at"].is_string());
 }
 
 #[sqlx::test]
@@ -1448,6 +1477,15 @@ async fn bulk_update_assigns_and_marks_reviews(pool: PgPool) {
     for (patch, reviewed) in [
         (serde_json::json!({ "review_assignee": sam_id }), false),
         (serde_json::json!({ "reviewed": true }), true),
+        // `reviewed` wins over an assignee sent with it.
+        (
+            serde_json::json!({ "reviewed": false, "review_assignee": "anyone" }),
+            false,
+        ),
+        (
+            serde_json::json!({ "reviewed": true, "review_assignee": sam_id }),
+            true,
+        ),
     ] {
         let req = test::TestRequest::patch()
             .uri("/transactions/bulk")
@@ -1461,6 +1499,17 @@ async fn bulk_update_assigns_and_marks_reviews(pool: PgPool) {
             rows.iter().all(|row| row["reviewed"] == reviewed),
             "{rows:?}"
         );
+        if !reviewed {
+            let expected = match &patch["review_assignee"] {
+                serde_json::Value::String(_) => serde_json::Value::Null,
+                id => id.clone(),
+            };
+            assert!(
+                rows.iter()
+                    .all(|row| row["review_assignee_user_id"] == expected),
+                "{rows:?}"
+            );
+        }
     }
 }
 
