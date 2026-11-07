@@ -151,6 +151,8 @@ export const en = {
           'Download the household’s {{count}} transaction before you go. You can import the file later from the Transactions page of your new household.',
         downloadDescription_other:
           'Download the household’s {{count}} transactions before you go. You can import the file later from the Transactions page of your new household.',
+        downloadDescriptionUnknown:
+          'Download the household’s transactions before you go. You can import the file later from the Transactions page of your new household.',
         downloaded: 'Downloaded',
         nothingToDownload: 'There are no transactions to download.',
         understood:

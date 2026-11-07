@@ -506,6 +506,51 @@ async fn update_member_demotes_a_manager_once_another_one_exists(pool: PgPool) {
     );
 }
 
+#[sqlx::test]
+async fn a_manager_demoted_meanwhile_cannot_remove_or_change_roles(pool: PgPool) {
+    let app = test::init_service(app_with(pool.clone())).await;
+    let cookie = onboard(&app, "sam@example.com", None).await;
+    let (jane_cookie, jane_id) = join(&app, &cookie, "jane@example.com").await;
+    let (_, alex_id) = join(&app, &cookie, "alex@example.com").await;
+    let sam_id = my_id(&app, &cookie).await;
+    let household_id = me(&app, &cookie).await["household"]["household_id"]
+        .as_i64()
+        .unwrap() as i32;
+
+    // Jane is made a manager, then demotes Sam: what Sam's request checked before that is stale.
+    let promote_req = test::TestRequest::patch()
+        .uri(&format!("/members/{jane_id}"))
+        .insert_header(("Cookie", cookie.clone()))
+        .set_json(serde_json::json!({ "role": "family_manager" }))
+        .to_request();
+    assert_eq!(test::call_service(&app, promote_req).await.status(), 200);
+    let demote_req = test::TestRequest::patch()
+        .uri(&format!("/members/{sam_id}"))
+        .insert_header(("Cookie", jane_cookie))
+        .set_json(serde_json::json!({ "role": "family_member" }))
+        .to_request();
+    assert_eq!(test::call_service(&app, demote_req).await.status(), 200);
+
+    let removed = super::repository::remove(&pool, household_id, sam_id as i32, jane_id as i32)
+        .await
+        .unwrap();
+    assert!(matches!(
+        removed,
+        super::repository::MemberOutcome::NotManager
+    ));
+    let patch = super::model::MemberPatch {
+        role: Some("family_manager".to_string()),
+    };
+    let updated =
+        super::repository::update(&pool, household_id, sam_id as i32, alex_id as i32, &patch)
+            .await
+            .unwrap();
+    assert!(matches!(
+        updated,
+        super::repository::MemberOutcome::NotManager
+    ));
+}
+
 // --- POST /households/{id}/leave ---
 
 /// `POST /households/{id}/leave` for `cookie`'s own household.

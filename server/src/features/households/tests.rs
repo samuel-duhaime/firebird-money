@@ -44,6 +44,10 @@ fn app_with(
         .app_data(web::Data::new(reqwest::Client::new()))
         .configure(configure)
         .configure(auth::configure)
+        .configure(crate::features::categories::configure)
+        .configure(crate::features::institutions::configure)
+        .configure(crate::features::accounts::configure)
+        .configure(crate::features::transactions::configure)
 }
 
 /// Signs in through `POST /auth/request-login` and returns the session cookie to replay on later
@@ -312,7 +316,30 @@ where
 async fn delete_household_removes_it_and_everything_in_it(pool: PgPool) {
     let app = test::init_service(app_with(pool.clone())).await;
     let (cookie, id) = sign_in_with_household(&app, "sam@example.com").await;
-    assert!(count_in(&pool, "categories", id).await > 0);
+    let account_id = crate::shared::test_support::test_account_id(&app, &cookie).await;
+    let categories_req = test::TestRequest::get()
+        .uri("/categories")
+        .insert_header(("Cookie", cookie.clone()))
+        .to_request();
+    let categories: serde_json::Value = test::call_and_read_body_json(&app, categories_req).await;
+    let transaction_req = test::TestRequest::post()
+        .uri("/transactions")
+        .insert_header(("Cookie", cookie.clone()))
+        .set_json(serde_json::json!({
+            "date": "2026-10-15",
+            "original_statement": "STARBUCKS",
+            "amount": "4.50",
+            "category_id": categories[0]["id"],
+            "account_id": account_id,
+        }))
+        .to_request();
+    assert_eq!(
+        test::call_service(&app, transaction_req).await.status(),
+        201
+    );
+    for table in ["categories", "accounts", "transactions"] {
+        assert!(count_in(&pool, table, id).await > 0, "no {table} to delete");
+    }
 
     let req = test::TestRequest::delete()
         .uri(&format!("/households/{id}"))
@@ -320,7 +347,16 @@ async fn delete_household_removes_it_and_everything_in_it(pool: PgPool) {
         .to_request();
     assert_eq!(test::call_service(&app, req).await.status(), 204);
 
-    for table in ["categories", "category_groups", "tags", "users"] {
+    for table in [
+        "transactions",
+        "accounts",
+        "institutions",
+        "merchants",
+        "categories",
+        "category_groups",
+        "tags",
+        "users",
+    ] {
         assert_eq!(count_in(&pool, table, id).await, 0, "{table} left behind");
     }
     let me_req = test::TestRequest::get()

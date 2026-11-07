@@ -48,13 +48,18 @@ pub(crate) fn require_manager(
     if is_manager {
         Ok(())
     } else {
-        Err(error_response(
-            l10n,
-            locale,
-            StatusCode::FORBIDDEN,
-            "member-requires-manager",
-        ))
+        Err(not_manager_response(l10n, locale))
     }
+}
+
+/// The 403 `member-requires-manager` response.
+fn not_manager_response(l10n: &L10n, locale: &LanguageIdentifier) -> HttpResponse {
+    error_response(
+        l10n,
+        locale,
+        StatusCode::FORBIDDEN,
+        "member-requires-manager",
+    )
 }
 
 /// A 403 `member-picture-forbidden` response unless the caller is the member `id` or their
@@ -160,8 +165,10 @@ async fn update_member(
         return response;
     }
 
-    match repository::update(&pool, household_id, id as i32, &patch).await {
+    let actor_id = current_user.user.id;
+    match repository::update(&pool, household_id, actor_id, id as i32, &patch).await {
         Ok(MemberOutcome::Done(member)) => HttpResponse::Ok().json(member),
+        Ok(MemberOutcome::NotManager) => not_manager_response(&l10n, &locale),
         Ok(MemberOutcome::NotFound) => not_found_response(&l10n, &locale, "member-not-found", id),
         Ok(MemberOutcome::LastManager | MemberOutcome::Alone) => {
             error_response(&l10n, &locale, StatusCode::CONFLICT, "member-last-manager")
@@ -206,8 +213,9 @@ async fn delete_member(
         );
     }
 
-    match repository::remove(&pool, household_id, id as i32).await {
+    match repository::remove(&pool, household_id, current_user.user.id, id as i32).await {
         Ok(MemberOutcome::Done(())) => HttpResponse::NoContent().finish(),
+        Ok(MemberOutcome::NotManager) => not_manager_response(&l10n, &locale),
         Ok(_) => not_found_response(&l10n, &locale, "member-not-found", id),
         Err(e) => {
             error!("failed to delete household member id={id} error={e}");

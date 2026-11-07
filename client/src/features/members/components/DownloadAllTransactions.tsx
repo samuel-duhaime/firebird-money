@@ -8,7 +8,7 @@ import type { DownloadFormat } from '../../transactions/utils/download';
 import './DownloadAllTransactions.css';
 
 type DownloadAllTransactionsProps = {
-  /** From `useHouseholdTransactionCount`: `null` while loading. */
+  /** From `useHouseholdTransactionCount`: `null` while unknown, which still allows downloading. */
   count: number | null;
   /** Called once a file has been downloaded. */
   onDownloaded: () => void;
@@ -51,9 +51,9 @@ export const DownloadAllTransactions = ({
     <section className="download-all">
       <h3>{t('settings.members.household.downloadStep')}</h3>
       <p>
-        {t('settings.members.household.downloadDescription', {
-          count: count ?? 0,
-        })}
+        {count === null
+          ? t('settings.members.household.downloadDescriptionUnknown')
+          : t('settings.members.household.downloadDescription', { count })}
       </p>
       <div className="download-all-actions">
         {(['csv', 'xlsx'] as const).map((format) => (
@@ -62,7 +62,7 @@ export const DownloadAllTransactions = ({
             type="button"
             className="modal-button modal-button--primary"
             onClick={() => download(format)}
-            disabled={count === null || downloading}
+            disabled={downloading}
           >
             <FontAwesomeIcon icon={faDownload} />
             {format === 'csv' ? 'CSV' : 'Excel'}

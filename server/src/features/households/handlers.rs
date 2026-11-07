@@ -136,7 +136,8 @@ async fn leave_household(
 
     match members_repository::leave(&pool, household_id, current_user.user.id).await {
         Ok(MemberOutcome::Done(())) => HttpResponse::NoContent().finish(),
-        Ok(MemberOutcome::NotFound) => {
+        // `leave` never asks for a manager: `NotManager` can't happen here.
+        Ok(MemberOutcome::NotFound | MemberOutcome::NotManager) => {
             not_found_response(&l10n, &locale, "household-not-found", id)
         }
         Ok(MemberOutcome::LastManager) => {

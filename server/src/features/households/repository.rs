@@ -12,7 +12,7 @@ const SELECT_COLUMNS: &str = "id, join_code, created_at";
 
 /// How many times `create` retries after colliding with an existing `join_code`. Codes are drawn
 /// from 16^8 values, so one retry is already generous — this is just belt and braces.
-const JOIN_CODE_ATTEMPTS: u8 = 3;
+pub(crate) const JOIN_CODE_ATTEMPTS: u8 = 3;
 
 /// A short code that's quick to read out loud or type into the join field.
 fn generate_join_code() -> String {
@@ -103,25 +103,43 @@ pub async fn create_with_manager(
     Err(last_error.expect("loop only exits early on success"))
 }
 
-/// Puts `user_id` into `household_id` as a `family_member` and adds their own tag, named
-/// `member_tag_name` (see `tags::defaults::member_tag_name`), in one transaction — used by
-/// `POST /auth/onboarding`'s `join_code` branch. Returns `false` (and adds no tag) if the user
-/// already belongs to a household.
-pub async fn join(
+/// What joining a household by its code came to, when it didn't fail outright.
+#[derive(Debug, PartialEq, Eq)]
+pub enum JoinOutcome {
+    Joined,
+    /// No household uses that code (anymore).
+    CodeNotFound,
+    AlreadyInHousehold,
+}
+
+/// Puts `user_id` into the household behind `join_code` as a `family_member` and adds their own
+/// tag, named `member_tag_name` (see `tags::defaults::member_tag_name`), in one transaction — used
+/// by `POST /auth/onboarding`'s `join_code` branch. The code is looked up while locking the
+/// household, so a code rotated by a removal can't still let someone in.
+pub async fn join_by_code(
     pool: &PgPool,
     user_id: i32,
-    household_id: i32,
+    join_code: &str,
     member_tag_name: &str,
-) -> Result<bool, sqlx::Error> {
+) -> Result<JoinOutcome, sqlx::Error> {
     let mut tx = pool.begin().await?;
 
+    let household_id: Option<i32> =
+        sqlx::query_scalar("SELECT id FROM households WHERE join_code = upper($1) FOR UPDATE")
+            .bind(join_code.trim())
+            .fetch_optional(&mut *tx)
+            .await?;
+    let Some(household_id) = household_id else {
+        return Ok(JoinOutcome::CodeNotFound);
+    };
+
     if !users_repository::join_household(&mut *tx, user_id, household_id, "family_member").await? {
-        return Ok(false);
+        return Ok(JoinOutcome::AlreadyInHousehold);
     }
     tags_repository::add_member_tag(&mut tx, household_id, member_tag_name).await?;
 
     tx.commit().await?;
-    Ok(true)
+    Ok(JoinOutcome::Joined)
 }
 
 /// Fetches a single household by id, or `None` if it doesn't exist.
@@ -130,20 +148,6 @@ pub async fn get(pool: &PgPool, id: i32) -> Result<Option<Household>, sqlx::Erro
         "SELECT {SELECT_COLUMNS} FROM households WHERE id = $1"
     ))
     .bind(id)
-    .fetch_optional(pool)
-    .await
-}
-
-/// Fetches a household by its `join_code`, or `None` if no household uses that code. Used by
-/// onboarding when someone joins an existing household.
-pub async fn get_by_join_code(
-    pool: &PgPool,
-    join_code: &str,
-) -> Result<Option<Household>, sqlx::Error> {
-    sqlx::query_as::<_, Household>(&format!(
-        "SELECT {SELECT_COLUMNS} FROM households WHERE join_code = upper($1)"
-    ))
-    .bind(join_code.trim())
     .fetch_optional(pool)
     .await
 }

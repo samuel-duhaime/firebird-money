@@ -1,8 +1,9 @@
 use sqlx::PgPool;
 
 use super::model::{Member, MemberPatch, MemberPicture};
-use crate::features::households::repository as households_repository;
+use crate::features::households::repository::{self as households_repository, JOIN_CODE_ATTEMPTS};
 use crate::features::users::model::picture_url_column;
+use crate::shared::http_error::is_unique_violation;
 
 const SELECT_COLUMNS: &str = concat!(
     "id, household_id, household_role AS role, email, first_name, last_name, status, created_at, ",
@@ -41,6 +42,8 @@ pub enum MemberOutcome<T> {
     LastManager,
     /// They're the only one left: leaving would orphan the household, so it's deleted instead.
     Alone,
+    /// The person asking is no longer a `family_manager` (someone changed their role meanwhile).
+    NotManager,
 }
 
 /// Locks `household_id` for the rest of `tx`, so changes to its membership (role changes,
@@ -73,19 +76,23 @@ async fn manager_ids(
 }
 
 /// Applies a partial update (only the role can change), scoped to `household_id`, and returns the
-/// updated member. Refuses to demote the household's last `family_manager`.
+/// updated member. `actor_id` must still be a `family_manager` once the household is locked.
+/// Refuses to demote the household's last `family_manager`.
 pub async fn update(
     pool: &PgPool,
     household_id: i32,
+    actor_id: i32,
     id: i32,
     patch: &MemberPatch,
 ) -> Result<MemberOutcome<Member>, sqlx::Error> {
     let mut tx = pool.begin().await?;
     lock_household(&mut tx, household_id).await?;
 
-    if patch.role.as_deref() == Some("family_member")
-        && manager_ids(&mut tx, household_id).await? == [id]
-    {
+    let managers = manager_ids(&mut tx, household_id).await?;
+    if !managers.contains(&actor_id) {
+        return Ok(MemberOutcome::NotManager);
+    }
+    if patch.role.as_deref() == Some("family_member") && managers == [id] {
         return Ok(MemberOutcome::LastManager);
     }
 
@@ -163,19 +170,44 @@ async fn detach(
 }
 
 /// Removes someone else from `household_id` (see `detach`) and gives the household a new
-/// `join_code`, since they still know the old one.
+/// `join_code`, since they still know the old one. `actor_id` must still be a `family_manager`
+/// once the household is locked.
 pub async fn remove(
     pool: &PgPool,
     household_id: i32,
+    actor_id: i32,
     id: i32,
 ) -> Result<MemberOutcome<()>, sqlx::Error> {
     let mut tx = pool.begin().await?;
     lock_household(&mut tx, household_id).await?;
 
+    if !manager_ids(&mut tx, household_id)
+        .await?
+        .contains(&actor_id)
+    {
+        return Ok(MemberOutcome::NotManager);
+    }
     if !detach(&mut tx, household_id, id).await? {
         return Ok(MemberOutcome::NotFound);
     }
-    households_repository::rotate_join_code(&mut *tx, household_id).await?;
+
+    // Each attempt in its own savepoint, so colliding with another household's code (one in 16^8)
+    // doesn't abort the removal.
+    let mut attempts = 0;
+    loop {
+        let mut savepoint = sqlx::Connection::begin(&mut *tx).await?;
+        match households_repository::rotate_join_code(&mut *savepoint, household_id).await {
+            Ok(_) => {
+                savepoint.commit().await?;
+                break;
+            }
+            Err(e) if is_unique_violation(&e) && attempts + 1 < JOIN_CODE_ATTEMPTS => {
+                savepoint.rollback().await?;
+                attempts += 1;
+            }
+            Err(e) => return Err(e),
+        }
+    }
 
     tx.commit().await?;
     Ok(MemberOutcome::Done(()))

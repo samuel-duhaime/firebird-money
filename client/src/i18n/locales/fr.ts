@@ -154,6 +154,8 @@ export const fr: typeof en = {
           'Télécharge la {{count}} transaction du ménage avant de partir. Tu pourras importer le fichier plus tard à partir de la page Transactions de ton nouveau ménage.',
         downloadDescription_other:
           'Télécharge les {{count}} transactions du ménage avant de partir. Tu pourras importer le fichier plus tard à partir de la page Transactions de ton nouveau ménage.',
+        downloadDescriptionUnknown:
+          'Télécharge les transactions du ménage avant de partir. Tu pourras importer le fichier plus tard à partir de la page Transactions de ton nouveau ménage.',
         downloaded: 'Téléchargé',
         nothingToDownload: 'Il n’y a aucune transaction à télécharger.',
         understood:
