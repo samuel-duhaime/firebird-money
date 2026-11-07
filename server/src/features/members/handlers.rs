@@ -13,11 +13,10 @@ use sqlx::PgPool;
 use unic_langid::LanguageIdentifier;
 
 use super::model::{picture_content_type, MemberPatch};
-use super::repository;
+use super::repository::{self, MemberOutcome};
 use crate::features::auth::CurrentUser;
 use crate::shared::http_error::{
-    error_response, internal_error_response, is_check_violation, is_foreign_key_violation,
-    not_found_response,
+    error_response, internal_error_response, is_check_violation, not_found_response,
 };
 use crate::shared::l10n::L10n;
 
@@ -37,7 +36,7 @@ struct PictureForm {
 
 /// A 403 `member-requires-manager` response unless the caller is their household's
 /// `family_manager` — changing roles and removing people is theirs to do.
-fn require_manager(
+pub(crate) fn require_manager(
     current_user: &CurrentUser,
     l10n: &L10n,
     locale: &LanguageIdentifier,
@@ -49,13 +48,18 @@ fn require_manager(
     if is_manager {
         Ok(())
     } else {
-        Err(error_response(
-            l10n,
-            locale,
-            StatusCode::FORBIDDEN,
-            "member-requires-manager",
-        ))
+        Err(not_manager_response(l10n, locale))
     }
+}
+
+/// The 403 `member-requires-manager` response.
+fn not_manager_response(l10n: &L10n, locale: &LanguageIdentifier) -> HttpResponse {
+    error_response(
+        l10n,
+        locale,
+        StatusCode::FORBIDDEN,
+        "member-requires-manager",
+    )
 }
 
 /// A 403 `member-picture-forbidden` response unless the caller is the member `id` or their
@@ -143,7 +147,7 @@ async fn get_member(
 }
 
 /// `PATCH /members/{id}` — change a member's role, within the caller's own household. Managers
-/// only.
+/// only, and never leaving the household without one.
 async fn update_member(
     path: web::Path<MemberIdPath>,
     patch: web::Json<MemberPatch>,
@@ -161,9 +165,14 @@ async fn update_member(
         return response;
     }
 
-    match repository::update(&pool, household_id, id as i32, &patch).await {
-        Ok(Some(member)) => HttpResponse::Ok().json(member),
-        Ok(None) => not_found_response(&l10n, &locale, "member-not-found", id),
+    let actor_id = current_user.user.id;
+    match repository::update(&pool, household_id, actor_id, id as i32, &patch).await {
+        Ok(MemberOutcome::Done(member)) => HttpResponse::Ok().json(member),
+        Ok(MemberOutcome::NotManager) => not_manager_response(&l10n, &locale),
+        Ok(MemberOutcome::NotFound) => not_found_response(&l10n, &locale, "member-not-found", id),
+        Ok(MemberOutcome::LastManager | MemberOutcome::Alone) => {
+            error_response(&l10n, &locale, StatusCode::CONFLICT, "member-last-manager")
+        }
         Err(e) if is_check_violation(&e) => error_response(
             &l10n,
             &locale,
@@ -177,9 +186,9 @@ async fn update_member(
     }
 }
 
-/// `DELETE /members/{id}` — remove a member from the caller's own household. Their user
-/// account is kept. Managers only, and blocked while they still have transactions in the household
-/// (#109).
+/// `DELETE /members/{id}` — remove someone else from the caller's own household. Their user
+/// account is kept, and what they created stays in the household. Managers only. Leaving yourself
+/// is `POST /households/{id}/leave`, which checks for the last manager.
 async fn delete_member(
     path: web::Path<MemberIdPath>,
     current_user: CurrentUser,
@@ -195,16 +204,19 @@ async fn delete_member(
     if let Err(response) = require_manager(&current_user, &l10n, &locale) {
         return response;
     }
-
-    match repository::remove(&pool, household_id, id as i32).await {
-        Ok(true) => HttpResponse::NoContent().finish(),
-        Ok(false) => not_found_response(&l10n, &locale, "member-not-found", id),
-        Err(e) if is_foreign_key_violation(&e) => error_response(
+    if current_user.user.id == id as i32 {
+        return error_response(
             &l10n,
             &locale,
-            StatusCode::CONFLICT,
-            "member-has-transactions",
-        ),
+            StatusCode::BAD_REQUEST,
+            "member-remove-self",
+        );
+    }
+
+    match repository::remove(&pool, household_id, current_user.user.id, id as i32).await {
+        Ok(MemberOutcome::Done(())) => HttpResponse::NoContent().finish(),
+        Ok(MemberOutcome::NotManager) => not_manager_response(&l10n, &locale),
+        Ok(_) => not_found_response(&l10n, &locale, "member-not-found", id),
         Err(e) => {
             error!("failed to delete household member id={id} error={e}");
             internal_error_response(&l10n, &locale)

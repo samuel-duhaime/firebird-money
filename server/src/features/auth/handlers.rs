@@ -18,7 +18,7 @@ use super::model::{
 };
 use super::session::{build_removal_cookie, build_session_cookie, session_token};
 use super::{repository, tokens, CurrentUser};
-use crate::features::households::repository as households_repository;
+use crate::features::households::repository::{self as households_repository, JoinOutcome};
 use crate::features::tags::defaults::member_tag_name;
 use crate::features::tags::repository as tags_repository;
 use crate::features::users::model::User;
@@ -345,25 +345,15 @@ async fn settle_household(
 
     match join_code {
         Some(code) => {
-            let household = match households_repository::get_by_join_code(pool, code).await {
-                Ok(Some(household)) => household,
-                Ok(None) => {
-                    return Err(error_response(
-                        l10n,
-                        &locale,
-                        StatusCode::NOT_FOUND,
-                        "auth-join-code-not-found",
-                    ))
-                }
-                Err(e) => {
-                    error!("failed to look up join code error={e}");
-                    return Err(internal_error_response(l10n, &locale));
-                }
-            };
-
-            match households_repository::join(pool, user_id, household.id, member_tag_name).await {
-                Ok(true) => Ok(()),
-                Ok(false) => Err(already_in_household()),
+            match households_repository::join_by_code(pool, user_id, code, member_tag_name).await {
+                Ok(JoinOutcome::Joined) => Ok(()),
+                Ok(JoinOutcome::CodeNotFound) => Err(error_response(
+                    l10n,
+                    &locale,
+                    StatusCode::NOT_FOUND,
+                    "auth-join-code-not-found",
+                )),
+                Ok(JoinOutcome::AlreadyInHousehold) => Err(already_in_household()),
                 Err(e) => {
                     error!("failed to connect user to household error={e}");
                     Err(internal_error_response(l10n, &locale))

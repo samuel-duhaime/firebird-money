@@ -31,6 +31,21 @@ export const uploadMemberPictureFailedToast = () =>
 export const deleteMemberPictureFailedToast = () =>
   toast.error(i18n.t('toast.deleteMemberPictureFailed'));
 
+export const updateMemberRoleFailedToast = () =>
+  toast.error(i18n.t('toast.updateMemberRoleFailed'));
+
+export const removeMemberFailedToast = () =>
+  toast.error(i18n.t('toast.removeMemberFailed'));
+
+export const regenerateJoinCodeFailedToast = () =>
+  toast.error(i18n.t('toast.regenerateJoinCodeFailed'));
+
+export const leaveHouseholdFailedToast = () =>
+  toast.error(i18n.t('toast.leaveHouseholdFailed'));
+
+export const deleteHouseholdFailedToast = () =>
+  toast.error(i18n.t('toast.deleteHouseholdFailed'));
+
 export const joinCodeNotFoundToast = () =>
   toast.error(i18n.t('toast.joinCodeNotFound'));
 

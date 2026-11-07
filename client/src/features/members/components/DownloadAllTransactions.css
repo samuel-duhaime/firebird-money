@@ -1,0 +1,35 @@
+.download-all {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--color-medium);
+  border-radius: 8px;
+}
+
+.download-all h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.download-all-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.download-all-actions .modal-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.download-all-done {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-success, var(--color-lightest));
+  font-size: 14px;
+  font-weight: 600;
+}

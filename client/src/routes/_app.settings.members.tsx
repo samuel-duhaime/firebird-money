@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
+import { HouseholdSection } from '../features/members/components/HouseholdSection';
 import { InviteCode } from '../features/members/components/InviteCode';
 import { MembersList } from '../features/members/components/MembersList';
 import './_app.settings.css';
@@ -15,6 +16,7 @@ const MembersPage = () => {
 
       <InviteCode />
       <MembersList />
+      <HouseholdSection />
     </div>
   );
 };

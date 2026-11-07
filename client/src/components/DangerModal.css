@@ -1,0 +1,76 @@
+.danger-modal {
+  width: 500px;
+  max-width: 90vw;
+  max-height: calc(100dvh - 2rem);
+  display: flex;
+  flex-direction: column;
+  background: var(--color-dark);
+  color: var(--color-white);
+  border: 1px solid color-mix(in srgb, var(--color-error) 60%, transparent);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+}
+
+.danger-modal-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 26px 22px 6px;
+  text-align: center;
+}
+
+.danger-modal-header h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.danger-modal-icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--color-error) 18%, transparent);
+  color: var(--color-error);
+  font-size: 24px;
+}
+
+.danger-modal-body p {
+  margin: 0;
+  color: var(--color-lightest);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.danger-modal-body ul {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--color-lightest);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.modal-body .danger-modal-acknowledgement {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 4px 0 0;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-error) 10%, transparent);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.modal-body .danger-modal-acknowledgement input {
+  width: auto;
+  margin-top: 2px;
+  accent-color: var(--color-error);
+}
+
+.danger-modal .modal-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
