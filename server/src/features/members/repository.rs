@@ -1,6 +1,7 @@
 use sqlx::PgPool;
 
 use super::model::{Member, MemberPatch, MemberPicture};
+use crate::features::households::repository as households_repository;
 use crate::features::users::model::picture_url_column;
 
 const SELECT_COLUMNS: &str = concat!(
@@ -30,16 +31,65 @@ pub async fn get(pool: &PgPool, household_id: i32, id: i32) -> Result<Option<Mem
     .await
 }
 
+/// What a change to someone's membership came to, when it didn't fail outright.
+#[derive(Debug)]
+pub enum MemberOutcome<T> {
+    Done(T),
+    /// No such member (including when they belong to a different household).
+    NotFound,
+    /// It would leave a household that still has other people in it without a `family_manager`.
+    LastManager,
+    /// They're the only one left: leaving would orphan the household, so it's deleted instead.
+    Alone,
+}
+
+/// Locks `household_id` for the rest of `tx`, so changes to its membership (role changes,
+/// removals, people joining or leaving) happen one at a time and each checks the result of the
+/// last. `FOR UPDATE` rather than `FOR NO KEY UPDATE`: a removal also changes the `join_code`, and
+/// taking the strongest lock up front means it never has to upgrade while holding a member's row.
+pub(crate) async fn lock_household(
+    tx: &mut sqlx::PgConnection,
+    household_id: i32,
+) -> Result<bool, sqlx::Error> {
+    let found: Option<i32> =
+        sqlx::query_scalar("SELECT id FROM households WHERE id = $1 FOR UPDATE")
+            .bind(household_id)
+            .fetch_optional(tx)
+            .await?;
+    Ok(found.is_some())
+}
+
+/// The ids of `household_id`'s `family_manager`s.
+async fn manager_ids(
+    tx: &mut sqlx::PgConnection,
+    household_id: i32,
+) -> Result<Vec<i32>, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT id FROM users WHERE household_id = $1 AND household_role = 'family_manager'",
+    )
+    .bind(household_id)
+    .fetch_all(tx)
+    .await
+}
+
 /// Applies a partial update (only the role can change), scoped to `household_id`, and returns the
-/// updated member, or `None` if the id doesn't exist (including when they belong to a different
-/// household).
+/// updated member. Refuses to demote the household's last `family_manager`.
 pub async fn update(
     pool: &PgPool,
     household_id: i32,
     id: i32,
     patch: &MemberPatch,
-) -> Result<Option<Member>, sqlx::Error> {
-    sqlx::query_as::<_, Member>(&format!(
+) -> Result<MemberOutcome<Member>, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    lock_household(&mut tx, household_id).await?;
+
+    if patch.role.as_deref() == Some("family_member")
+        && manager_ids(&mut tx, household_id).await? == [id]
+    {
+        return Ok(MemberOutcome::LastManager);
+    }
+
+    let member = sqlx::query_as::<_, Member>(&format!(
         "UPDATE users
          SET household_role = COALESCE($3, household_role)
          WHERE id = $1 AND household_id = $2
@@ -48,21 +98,25 @@ pub async fn update(
     .bind(id)
     .bind(household_id)
     .bind(&patch.role)
-    .fetch_optional(pool)
-    .await
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+    Ok(member.map_or(MemberOutcome::NotFound, MemberOutcome::Done))
 }
 
-/// Removes a member from `household_id` (the user itself is kept, with no household). Returns
-/// `true` if they were removed, `false` if the id didn't exist (including when they belong to a
-/// different household). The accounts and transactions they own become Shared. Fails with a foreign-key violation
-/// while they still have transactions in the household.
-pub async fn remove(pool: &PgPool, household_id: i32, id: i32) -> Result<bool, sqlx::Error> {
-    let mut tx = pool.begin().await?;
-
+/// Takes `id` out of `household_id` (the user itself is kept, with no household): the accounts and
+/// transactions they own become Shared, and the reviews waiting on them go back to Anyone. The
+/// transactions they created stay in the household, still attributed to them. Returns `false` if
+/// they aren't in it.
+async fn detach(
+    tx: &mut sqlx::PgConnection,
+    household_id: i32,
+    id: i32,
+) -> Result<bool, sqlx::Error> {
     // Locks the member first: giving them an account takes a lock on this row (through the owner
-    // foreign key) that this one waits for, and the other way around. Without it, an account given
-    // to them after the update below reads `accounts` would fail the removal as if it were a
-    // transaction.
+    // foreign key) that this one waits for. Without it, an account given to them after the update
+    // below reads `accounts` would fail the removal on its owner foreign key.
     let found: Option<i32> =
         sqlx::query_scalar("SELECT id FROM users WHERE id = $1 AND household_id = $2 FOR UPDATE")
             .bind(id)
@@ -105,10 +159,56 @@ pub async fn remove(pool: &PgPool, household_id: i32, id: i32) -> Result<bool, s
     .execute(&mut *tx)
     .await?;
 
-    // Not reached when the update above is refused over transactions, so their accounts' and
-    // transactions' owner stays as it was.
-    tx.commit().await?;
     Ok(true)
+}
+
+/// Removes someone else from `household_id` (see `detach`) and gives the household a new
+/// `join_code`, since they still know the old one.
+pub async fn remove(
+    pool: &PgPool,
+    household_id: i32,
+    id: i32,
+) -> Result<MemberOutcome<()>, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    lock_household(&mut tx, household_id).await?;
+
+    if !detach(&mut tx, household_id, id).await? {
+        return Ok(MemberOutcome::NotFound);
+    }
+    households_repository::rotate_join_code(&mut *tx, household_id).await?;
+
+    tx.commit().await?;
+    Ok(MemberOutcome::Done(()))
+}
+
+/// Takes `id` out of their own household `household_id` (see `detach`). Refused for the last
+/// `family_manager` while others remain, and for the only member, who deletes the household
+/// instead. The `join_code` stays: they left on their own.
+pub async fn leave(
+    pool: &PgPool,
+    household_id: i32,
+    id: i32,
+) -> Result<MemberOutcome<()>, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    lock_household(&mut tx, household_id).await?;
+
+    let member_ids: Vec<i32> = sqlx::query_scalar("SELECT id FROM users WHERE household_id = $1")
+        .bind(household_id)
+        .fetch_all(&mut *tx)
+        .await?;
+    if !member_ids.contains(&id) {
+        return Ok(MemberOutcome::NotFound);
+    }
+    if member_ids.len() == 1 {
+        return Ok(MemberOutcome::Alone);
+    }
+    if manager_ids(&mut tx, household_id).await? == [id] {
+        return Ok(MemberOutcome::LastManager);
+    }
+
+    detach(&mut tx, household_id, id).await?;
+    tx.commit().await?;
+    Ok(MemberOutcome::Done(()))
 }
 
 /// Fetches a member's picture, scoped to `household_id`, or `None` if they have none (or don't

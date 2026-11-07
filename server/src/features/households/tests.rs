@@ -272,85 +272,88 @@ async fn get_household_not_found(pool: PgPool) {
 
 // --- DELETE /households/{id} ---
 
-#[sqlx::test]
-async fn delete_household_removes_row(pool: PgPool) {
-    let app = test::init_service(app_with(pool.clone())).await;
-    let cookie = sign_in(&app, "sam@example.com").await;
-    // A bare `POST /households` (unlike onboarding) never connects the caller as a member, but
-    // still seeds starter category groups/categories/tags — which would otherwise block this
-    // delete (see `delete_household_rejects_when_referenced_by_member`). Clear them directly, in
-    // FK order, so this test isolates "deleting an otherwise-unreferenced household succeeds".
-    let id = create_via_api(&app, &cookie).await;
-
-    sqlx::query("DELETE FROM tags WHERE household_id = $1")
-        .bind(id)
-        .execute(&pool)
-        .await
-        .expect("clear seeded tags");
-    sqlx::query("DELETE FROM categories WHERE household_id = $1")
-        .bind(id)
-        .execute(&pool)
-        .await
-        .expect("clear seeded categories");
-    sqlx::query("DELETE FROM category_groups WHERE household_id = $1")
-        .bind(id)
-        .execute(&pool)
-        .await
-        .expect("clear seeded category groups");
-
-    let delete_req = test::TestRequest::delete()
-        .uri(&format!("/households/{id}"))
-        .insert_header(("Cookie", cookie))
-        .to_request();
-    let delete_resp = test::call_service(&app, delete_req).await;
-    assert_eq!(delete_resp.status(), 204);
-
-    // Not re-checked through `GET /households/{id}`: that route is scoped to the caller's own
-    // household, and this orphan household was never sam's to begin with — it would 404 either
-    // way, regardless of whether the delete actually happened.
-    let remaining: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM households WHERE id = $1")
-        .bind(id)
-        .fetch_one(&pool)
-        .await
-        .expect("query households");
-    assert_eq!(remaining.0, 0);
+/// How many rows of `table` belong to `household_id`.
+async fn count_in(pool: &PgPool, table: &str, household_id: i64) -> i64 {
+    sqlx::query_scalar(&format!(
+        "SELECT COUNT(*) FROM {table} WHERE household_id = $1"
+    ))
+    .bind(household_id)
+    .fetch_one(pool)
+    .await
+    .expect("count rows")
 }
 
-#[sqlx::test]
-async fn delete_household_not_found(pool: PgPool) {
-    let app = test::init_service(app_with(pool)).await;
-    let cookie = sign_in(&app, "sam@example.com").await;
-
-    let req = test::TestRequest::delete()
-        .uri("/households/999999")
-        .insert_header(("Cookie", cookie))
-        .to_request();
-    let resp = test::call_service(&app, req).await;
-
-    assert_eq!(resp.status(), 404);
-}
-
-#[sqlx::test]
-async fn delete_household_rejects_when_referenced_by_member(pool: PgPool) {
-    let app = test::init_service(app_with(pool)).await;
-    let (manager_cookie, household_id) = sign_in_with_household(&app, "sam@example.com").await;
-
+/// Has `email` join `manager_cookie`'s household with its code, returning their cookie.
+async fn join<S, B>(app: &S, manager_cookie: &str, email: &str) -> String
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
     let me_req = test::TestRequest::get()
         .uri("/auth/me")
-        .insert_header(("Cookie", manager_cookie.clone()))
+        .insert_header(("Cookie", manager_cookie))
         .to_request();
-    let me: serde_json::Value = test::call_and_read_body_json(&app, me_req).await;
-    let join_code = me["household"]["join_code"].as_str().unwrap();
+    let me: serde_json::Value = test::call_and_read_body_json(app, me_req).await;
 
-    // A second member joining the same household — deleting it out from under them must be
-    // rejected, on top of (and regardless of) the caller's own membership and starter data.
-    let member_cookie = sign_in(&app, "member@example.com").await;
+    let cookie = sign_in(app, email).await;
     let join_req = test::TestRequest::post()
         .uri("/auth/onboarding")
-        .insert_header(("Cookie", member_cookie))
-        .set_json(serde_json::json!({ "first_name": "Test", "last_name": "User", "join_code": join_code }))
+        .insert_header(("Cookie", cookie.clone()))
+        .set_json(serde_json::json!({
+            "first_name": "Test",
+            "join_code": me["household"]["join_code"],
+        }))
         .to_request();
-    assert_eq!(test::call_service(&app, join_req).await.status(), 201);
+    assert_eq!(test::call_service(app, join_req).await.status(), 201);
+    cookie
+}
+
+#[sqlx::test]
+async fn delete_household_removes_it_and_everything_in_it(pool: PgPool) {
+    let app = test::init_service(app_with(pool.clone())).await;
+    let (cookie, id) = sign_in_with_household(&app, "sam@example.com").await;
+    assert!(count_in(&pool, "categories", id).await > 0);
+
+    let req = test::TestRequest::delete()
+        .uri(&format!("/households/{id}"))
+        .insert_header(("Cookie", cookie.clone()))
+        .to_request();
+    assert_eq!(test::call_service(&app, req).await.status(), 204);
+
+    for table in ["categories", "category_groups", "tags", "users"] {
+        assert_eq!(count_in(&pool, table, id).await, 0, "{table} left behind");
+    }
+    let me_req = test::TestRequest::get()
+        .uri("/auth/me")
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    let me: serde_json::Value = test::call_and_read_body_json(&app, me_req).await;
+    assert!(me["household"].is_null());
+    assert!(me["pending_onboarding_steps"]
+        .as_array()
+        .unwrap()
+        .contains(&serde_json::json!("household")));
+}
+
+#[sqlx::test]
+async fn delete_household_from_another_household_is_not_found(pool: PgPool) {
+    let app = test::init_service(app_with(pool.clone())).await;
+    let (_, household_a) = sign_in_with_household(&app, "a@example.com").await;
+    let (cookie_b, _) = sign_in_with_household(&app, "b@example.com").await;
+
+    let req = test::TestRequest::delete()
+        .uri(&format!("/households/{household_a}"))
+        .insert_header(("Cookie", cookie_b))
+        .to_request();
+    assert_eq!(test::call_service(&app, req).await.status(), 404);
+    assert!(count_in(&pool, "categories", household_a).await > 0);
+}
+
+#[sqlx::test]
+async fn delete_household_rejects_while_others_belong_to_it(pool: PgPool) {
+    let app = test::init_service(app_with(pool.clone())).await;
+    let (manager_cookie, household_id) = sign_in_with_household(&app, "sam@example.com").await;
+    join(&app, &manager_cookie, "member@example.com").await;
 
     let delete_req = test::TestRequest::delete()
         .uri(&format!("/households/{household_id}"))
@@ -361,4 +364,64 @@ async fn delete_household_rejects_when_referenced_by_member(pool: PgPool) {
     assert_eq!(delete_resp.status(), 409);
     let body: serde_json::Value = test::read_body_json(delete_resp).await;
     assert!(body["error"].is_string());
+    assert_eq!(count_in(&pool, "users", household_id).await, 2);
+}
+
+#[sqlx::test]
+async fn delete_household_requires_a_family_manager(pool: PgPool) {
+    let app = test::init_service(app_with(pool.clone())).await;
+    let (manager_cookie, household_id) = sign_in_with_household(&app, "sam@example.com").await;
+    let member_cookie = join(&app, &manager_cookie, "member@example.com").await;
+
+    let req = test::TestRequest::delete()
+        .uri(&format!("/households/{household_id}"))
+        .insert_header(("Cookie", member_cookie))
+        .to_request();
+    assert_eq!(test::call_service(&app, req).await.status(), 403);
+}
+
+// --- POST /households/{id}/join-code ---
+
+#[sqlx::test]
+async fn regenerate_join_code_replaces_the_old_one(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let (cookie, id) = sign_in_with_household(&app, "sam@example.com").await;
+    let me_req = test::TestRequest::get()
+        .uri("/auth/me")
+        .insert_header(("Cookie", cookie.clone()))
+        .to_request();
+    let me: serde_json::Value = test::call_and_read_body_json(&app, me_req).await;
+    let old_code = me["household"]["join_code"].clone();
+
+    let req = test::TestRequest::post()
+        .uri(&format!("/households/{id}/join-code"))
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+    assert_eq!(resp.status(), 200);
+    let household: serde_json::Value = test::read_body_json(resp).await;
+    assert!(household["join_code"].is_string());
+    assert_ne!(household["join_code"], old_code);
+
+    // The old code no longer lets anyone in.
+    let cookie = sign_in(&app, "late@example.com").await;
+    let join_req = test::TestRequest::post()
+        .uri("/auth/onboarding")
+        .insert_header(("Cookie", cookie))
+        .set_json(serde_json::json!({ "first_name": "Late", "join_code": old_code }))
+        .to_request();
+    assert_eq!(test::call_service(&app, join_req).await.status(), 404);
+}
+
+#[sqlx::test]
+async fn regenerate_join_code_requires_a_family_manager(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let (manager_cookie, id) = sign_in_with_household(&app, "sam@example.com").await;
+    let member_cookie = join(&app, &manager_cookie, "member@example.com").await;
+
+    let req = test::TestRequest::post()
+        .uri(&format!("/households/{id}/join-code"))
+        .insert_header(("Cookie", member_cookie))
+        .to_request();
+    assert_eq!(test::call_service(&app, req).await.status(), 403);
 }

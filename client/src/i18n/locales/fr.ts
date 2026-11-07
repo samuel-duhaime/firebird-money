@@ -108,6 +108,57 @@ export const fr: typeof en = {
         description:
           'Partage ce code avec quelqu’un pour qu’il puisse rejoindre ton ménage en s’inscrivant.',
         copy: 'Copier',
+        regenerate: 'Nouveau code',
+        regenerateHint: 'Le code actuel arrêtera de fonctionner.',
+      },
+      role: {
+        label: 'Rôle',
+        lastManager:
+          'Le ménage a besoin d’un gestionnaire. Nomme quelqu’un d’autre avant de changer ça.',
+      },
+      remove: {
+        button: 'Retirer du ménage',
+        confirm:
+          'Retirer {{name}}? Ce que cette personne a ajouté reste dans le ménage, et le code d’invitation change.',
+        confirmButton: 'Retirer',
+      },
+      household: {
+        heading: 'Ton ménage',
+        leaveDescription:
+          'Quitte-le pour créer ou rejoindre un autre ménage. Ce que tu as ajouté reste ici.',
+        lastManagerDescription:
+          'T’es le seul gestionnaire. Nomme quelqu’un d’autre gestionnaire avant de partir.',
+        aloneDescription:
+          'T’es la seule personne ici. Pour rejoindre un autre ménage, supprime celui-ci d’abord.',
+        leave: 'Quitter le ménage',
+        leaveTitle: 'Quitter ce ménage?',
+        leaveIntro:
+          'Ça prend effet tout de suite, et tu ne pourras pas l’annuler toi-même.',
+        leaveAccess:
+          'Tu perdras l’accès à tous les comptes et toutes les transactions de ce ménage.',
+        leaveShared:
+          'Les comptes et transactions qui t’appartiennent deviennent partagés. Les transactions que t’as ajoutées restent dans le ménage.',
+        leaveReviews:
+          'Les révisions qui t’attendent retournent à N’importe qui.',
+        leaveComeBack:
+          'Pour revenir, tu auras besoin du code d’invitation, et tu reviendras comme membre.',
+        leaveUnderstood:
+          'Je comprends que je quitte ce ménage et que je perds l’accès à ses données.',
+        leaveConfirm: 'Quitter le ménage',
+        delete: 'Supprimer le ménage et repartir à neuf',
+        deleteTitle: 'Supprimer ce ménage?',
+        deleteIntro:
+          'Ça supprime tout ce qu’il contient pour de bon. Personne ne pourra le récupérer.',
+        downloadStep: 'Garde tes transactions avant',
+        downloadDescription_one:
+          'Télécharge la {{count}} transaction du ménage avant de partir. Tu pourras importer le fichier plus tard à partir de la page Transactions de ton nouveau ménage.',
+        downloadDescription_other:
+          'Télécharge les {{count}} transactions du ménage avant de partir. Tu pourras importer le fichier plus tard à partir de la page Transactions de ton nouveau ménage.',
+        downloaded: 'Téléchargé',
+        nothingToDownload: 'Il n’y a aucune transaction à télécharger.',
+        understood:
+          'Je comprends que toutes les transactions, les comptes, les catégories et les étiquettes de ce ménage seront supprimés.',
+        deleteConfirm: 'Supprimer le ménage',
       },
     },
     tags: {
@@ -636,6 +687,11 @@ export const fr: typeof en = {
     uploadMemberPictureFailed: 'Impossible d’enregistrer la photo. Réessaie.',
     deleteMemberPictureFailed: 'Impossible de retirer la photo. Réessaie.',
     joinCodeNotFound: 'Aucun ménage ne correspond à ce code d’invitation.',
+    updateMemberRoleFailed: 'Impossible de changer le rôle. Réessaie.',
+    removeMemberFailed: 'Impossible de retirer ce membre. Réessaie.',
+    regenerateJoinCodeFailed: 'Impossible de créer un nouveau code. Réessaie.',
+    leaveHouseholdFailed: 'Impossible de quitter le ménage. Réessaie.',
+    deleteHouseholdFailed: 'Impossible de supprimer le ménage. Réessaie.',
     firstNameRequired: 'Un prénom est requis.',
     copyInviteCodeSucceeded: 'Code d’invitation copié.',
     copyInviteCodeFailed: 'Impossible de copier le code d’invitation.',

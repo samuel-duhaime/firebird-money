@@ -1,7 +1,8 @@
 import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faCopy } from '@fortawesome/free-solid-svg-icons';
+import { faCopy, faRotate } from '@fortawesome/free-solid-svg-icons';
 import { useCurrentUser } from '../../auth/hooks/use-current-user';
+import { useRegenerateJoinCode } from '../hooks/use-household-membership';
 import {
   copyInviteCodeFailedToast,
   copyInviteCodeSucceededToast,
@@ -12,9 +13,12 @@ import './InviteCode.css';
 export const InviteCode = () => {
   const { t } = useTranslation();
   const { data: session } = useCurrentUser();
-  const joinCode = session?.household?.join_code;
+  const regenerate = useRegenerateJoinCode();
+  const household = session?.household;
 
-  if (!joinCode) return null;
+  if (!household) return null;
+
+  const joinCode = household.join_code;
 
   const copy = () =>
     navigator.clipboard
@@ -32,6 +36,18 @@ export const InviteCode = () => {
         <FontAwesomeIcon icon={faCopy} />
         {t('settings.members.invite.copy')}
       </button>
+      {household.role === 'family_manager' && (
+        <button
+          type="button"
+          className="invite-code-copy"
+          onClick={() => regenerate.mutate(household.household_id)}
+          disabled={regenerate.isPending}
+          title={t('settings.members.invite.regenerateHint')}
+        >
+          <FontAwesomeIcon icon={faRotate} />
+          {t('settings.members.invite.regenerate')}
+        </button>
+      )}
     </section>
   );
 };

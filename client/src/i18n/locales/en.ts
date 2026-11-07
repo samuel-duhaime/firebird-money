@@ -106,6 +106,56 @@ export const en = {
         description:
           'Share this code with someone so they can join your household when they sign up.',
         copy: 'Copy',
+        regenerate: 'New code',
+        regenerateHint: 'The current code stops working.',
+      },
+      role: {
+        label: 'Role',
+        lastManager:
+          'The household needs a manager. Make someone else one before changing this.',
+      },
+      remove: {
+        button: 'Remove from household',
+        confirm:
+          'Remove {{name}}? What they added stays in the household, and the invite code changes.',
+        confirmButton: 'Remove',
+      },
+      household: {
+        heading: 'Your household',
+        leaveDescription:
+          'Leave to create or join another household. What you added stays here.',
+        lastManagerDescription:
+          'You’re the only manager. Make someone else a manager before you leave.',
+        aloneDescription:
+          'You’re the only one here. To join another household, delete this one first.',
+        leave: 'Leave household',
+        leaveTitle: 'Leave this household?',
+        leaveIntro:
+          'This takes effect right away, and you can’t undo it yourself.',
+        leaveAccess:
+          'You’ll lose access to all of this household’s accounts and transactions.',
+        leaveShared:
+          'Accounts and transactions you own become Shared. The transactions you added stay in the household.',
+        leaveReviews: 'Reviews waiting on you go back to Anyone.',
+        leaveComeBack:
+          'To come back, you’ll need the invite code, and you’ll return as a member.',
+        leaveUnderstood:
+          'I understand that I’m leaving this household and losing access to its data.',
+        leaveConfirm: 'Leave household',
+        delete: 'Delete household and start fresh',
+        deleteTitle: 'Delete this household?',
+        deleteIntro:
+          'This permanently deletes everything in it. Nobody can bring it back.',
+        downloadStep: 'Keep your transactions first',
+        downloadDescription_one:
+          'Download the household’s {{count}} transaction before you go. You can import the file later from the Transactions page of your new household.',
+        downloadDescription_other:
+          'Download the household’s {{count}} transactions before you go. You can import the file later from the Transactions page of your new household.',
+        downloaded: 'Downloaded',
+        nothingToDownload: 'There are no transactions to download.',
+        understood:
+          'I understand that all transactions, accounts, categories and tags in this household will be deleted.',
+        deleteConfirm: 'Delete household',
       },
     },
     tags: {
@@ -631,6 +681,11 @@ export const en = {
     uploadMemberPictureFailed: 'Could not save the photo. Please try again.',
     deleteMemberPictureFailed: 'Could not remove the photo. Please try again.',
     joinCodeNotFound: 'No household matches this join code.',
+    updateMemberRoleFailed: "Couldn't change the role. Please try again.",
+    removeMemberFailed: "Couldn't remove this member. Please try again.",
+    regenerateJoinCodeFailed: "Couldn't create a new code. Please try again.",
+    leaveHouseholdFailed: "Couldn't leave the household. Please try again.",
+    deleteHouseholdFailed: "Couldn't delete the household. Please try again.",
     firstNameRequired: 'A first name is required.',
     copyInviteCodeSucceeded: 'Invite code copied.',
     copyInviteCodeFailed: 'Could not copy the invite code.',

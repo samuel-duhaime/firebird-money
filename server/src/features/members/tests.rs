@@ -375,49 +375,217 @@ async fn delete_member_makes_their_accounts_shared(pool: PgPool) {
 }
 
 #[sqlx::test]
-async fn delete_member_is_blocked_while_they_have_transactions(pool: PgPool) {
+async fn delete_member_keeps_the_transactions_they_created(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
     let cookie = onboard(&app, "sam@example.com", None).await;
     let (jane_cookie, jane_id) = join(&app, &cookie, "jane@example.com").await;
-
-    let categories_req = test::TestRequest::get()
-        .uri("/categories")
-        .insert_header(("Cookie", jane_cookie.clone()))
-        .to_request();
-    let categories: serde_json::Value = test::call_and_read_body_json(&app, categories_req).await;
-    let category_id = categories[0]["id"].as_i64().unwrap();
-    let account_id = crate::shared::test_support::test_account_id(&app, &jane_cookie).await;
-
-    let transaction_req = test::TestRequest::post()
-        .uri("/transactions")
-        .insert_header(("Cookie", jane_cookie))
-        .set_json(serde_json::json!({
-            "date": "2026-10-15",
-            "original_statement": "STARBUCKS",
-            "amount": "4.50",
-            "category_id": category_id,
-            "account_id": account_id,
-        }))
-        .to_request();
-    assert_eq!(
-        test::call_service(&app, transaction_req).await.status(),
-        201
-    );
-
-    let owned_account_id = create_owned_account(&app, &cookie, jane_id).await;
+    let transaction_id = add_transaction(&app, &jane_cookie).await;
 
     let delete_req = test::TestRequest::delete()
         .uri(&format!("/members/{jane_id}"))
         .insert_header(("Cookie", cookie.clone()))
         .to_request();
-    let resp = test::call_service(&app, delete_req).await;
+    assert_eq!(test::call_service(&app, delete_req).await.status(), 204);
+
+    // Still in the household, still saying who added it.
+    let get_req = test::TestRequest::get()
+        .uri(&format!("/transactions/{transaction_id}"))
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    let transaction: serde_json::Value = test::call_and_read_body_json(&app, get_req).await;
+    assert_eq!(transaction["user_id"], jane_id);
+}
+
+/// Adds a transaction as `cookie`, returning its id.
+async fn add_transaction<S, B>(app: &S, cookie: &str) -> i64
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let categories_req = test::TestRequest::get()
+        .uri("/categories")
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    let categories: serde_json::Value = test::call_and_read_body_json(app, categories_req).await;
+    let account_id = crate::shared::test_support::test_account_id(app, cookie).await;
+
+    let transaction_req = test::TestRequest::post()
+        .uri("/transactions")
+        .insert_header(("Cookie", cookie))
+        .set_json(serde_json::json!({
+            "date": "2026-10-15",
+            "original_statement": "STARBUCKS",
+            "amount": "4.50",
+            "category_id": categories[0]["id"],
+            "account_id": account_id,
+        }))
+        .to_request();
+    let transaction: serde_json::Value = test::call_and_read_body_json(app, transaction_req).await;
+    transaction["id"].as_i64().unwrap()
+}
+
+#[sqlx::test]
+async fn delete_member_gives_the_household_a_new_join_code(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = onboard(&app, "sam@example.com", None).await;
+    let old_code = me(&app, &cookie).await["household"]["join_code"].clone();
+    let (_, jane_id) = join(&app, &cookie, "jane@example.com").await;
+
+    let delete_req = test::TestRequest::delete()
+        .uri(&format!("/members/{jane_id}"))
+        .insert_header(("Cookie", cookie.clone()))
+        .to_request();
+    assert_eq!(test::call_service(&app, delete_req).await.status(), 204);
+
+    let new_code = me(&app, &cookie).await["household"]["join_code"].clone();
+    assert!(new_code.is_string());
+    assert_ne!(new_code, old_code);
+}
+
+#[sqlx::test]
+async fn delete_member_refuses_removing_yourself(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = onboard(&app, "sam@example.com", None).await;
+    join(&app, &cookie, "jane@example.com").await;
+    let sam_id = my_id(&app, &cookie).await;
+
+    let delete_req = test::TestRequest::delete()
+        .uri(&format!("/members/{sam_id}"))
+        .insert_header(("Cookie", cookie.clone()))
+        .to_request();
+    assert_eq!(test::call_service(&app, delete_req).await.status(), 400);
+    assert!(!me(&app, &cookie).await["household"].is_null());
+}
+
+// --- Last manager ---
+
+#[sqlx::test]
+async fn update_member_refuses_to_demote_the_last_manager(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = onboard(&app, "sam@example.com", None).await;
+    join(&app, &cookie, "jane@example.com").await;
+    let sam_id = my_id(&app, &cookie).await;
+
+    let req = test::TestRequest::patch()
+        .uri(&format!("/members/{sam_id}"))
+        .insert_header(("Cookie", cookie.clone()))
+        .set_json(serde_json::json!({ "role": "family_member" }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
 
     assert_eq!(resp.status(), 409);
-    // The refused removal leaves her account hers.
     assert_eq!(
-        account_owner(&app, &cookie, owned_account_id).await,
-        jane_id
+        me(&app, &cookie).await["household"]["role"],
+        "family_manager"
     );
+}
+
+#[sqlx::test]
+async fn update_member_demotes_a_manager_once_another_one_exists(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = onboard(&app, "sam@example.com", None).await;
+    let (jane_cookie, jane_id) = join(&app, &cookie, "jane@example.com").await;
+    let sam_id = my_id(&app, &cookie).await;
+
+    let promote_req = test::TestRequest::patch()
+        .uri(&format!("/members/{jane_id}"))
+        .insert_header(("Cookie", cookie.clone()))
+        .set_json(serde_json::json!({ "role": "family_manager" }))
+        .to_request();
+    assert_eq!(test::call_service(&app, promote_req).await.status(), 200);
+
+    let demote_req = test::TestRequest::patch()
+        .uri(&format!("/members/{sam_id}"))
+        .insert_header(("Cookie", jane_cookie))
+        .set_json(serde_json::json!({ "role": "family_member" }))
+        .to_request();
+    assert_eq!(test::call_service(&app, demote_req).await.status(), 200);
+    assert_eq!(
+        me(&app, &cookie).await["household"]["role"],
+        "family_member"
+    );
+}
+
+// --- POST /households/{id}/leave ---
+
+/// `POST /households/{id}/leave` for `cookie`'s own household.
+async fn leave<S, B>(app: &S, cookie: &str) -> ServiceResponse<B>
+where
+    S: Service<Request, Response = ServiceResponse<B>, Error = actix_web::Error>,
+    B: MessageBody,
+{
+    let household_id = me(app, cookie).await["household"]["household_id"].clone();
+    let req = test::TestRequest::post()
+        .uri(&format!("/households/{household_id}/leave"))
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    test::call_service(app, req).await
+}
+
+#[sqlx::test]
+async fn a_member_can_leave_and_what_they_added_stays(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = onboard(&app, "sam@example.com", None).await;
+    let old_code = me(&app, &cookie).await["household"]["join_code"].clone();
+    let (jane_cookie, jane_id) = join(&app, &cookie, "jane@example.com").await;
+    let transaction_id = add_transaction(&app, &jane_cookie).await;
+    let account_id = create_owned_account(&app, &cookie, jane_id).await;
+
+    assert_eq!(leave(&app, &jane_cookie).await.status(), 204);
+
+    assert!(me(&app, &jane_cookie).await["household"].is_null());
+    assert!(account_owner(&app, &cookie, account_id).await.is_null());
+    let get_req = test::TestRequest::get()
+        .uri(&format!("/transactions/{transaction_id}"))
+        .insert_header(("Cookie", cookie.clone()))
+        .to_request();
+    assert_eq!(test::call_service(&app, get_req).await.status(), 200);
+    // She left on her own, so the code everyone else knows keeps working.
+    assert_eq!(me(&app, &cookie).await["household"]["join_code"], old_code);
+}
+
+#[sqlx::test]
+async fn the_last_manager_cannot_leave_while_others_remain(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = onboard(&app, "sam@example.com", None).await;
+    join(&app, &cookie, "jane@example.com").await;
+
+    let resp = leave(&app, &cookie).await;
+
+    assert_eq!(resp.status(), 409);
+    let body: serde_json::Value = test::read_body_json(resp).await;
+    assert!(body["error"].is_string());
+    assert!(!me(&app, &cookie).await["household"].is_null());
+}
+
+#[sqlx::test]
+async fn the_only_member_cannot_leave(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = onboard(&app, "sam@example.com", None).await;
+
+    assert_eq!(leave(&app, &cookie).await.status(), 409);
+    assert!(!me(&app, &cookie).await["household"].is_null());
+}
+
+#[sqlx::test]
+async fn someone_who_left_can_join_another_household(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = onboard(&app, "sam@example.com", None).await;
+    let (jane_cookie, _) = join(&app, &cookie, "jane@example.com").await;
+    let other_cookie = onboard(&app, "alex@example.com", None).await;
+    let other = me(&app, &other_cookie).await["household"].clone();
+
+    assert_eq!(leave(&app, &jane_cookie).await.status(), 204);
+    let onboard_req = test::TestRequest::post()
+        .uri("/auth/onboarding")
+        .insert_header(("Cookie", jane_cookie.clone()))
+        .set_json(serde_json::json!({ "first_name": "Jane", "join_code": other["join_code"] }))
+        .to_request();
+    assert_eq!(test::call_service(&app, onboard_req).await.status(), 201);
+
+    let jane = me(&app, &jane_cookie).await;
+    assert_eq!(jane["household"]["household_id"], other["household_id"]);
+    assert_eq!(jane["household"]["role"], "family_member");
 }
 
 #[sqlx::test]

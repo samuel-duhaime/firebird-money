@@ -19,6 +19,9 @@ export const MembersList = () => {
   const isManager = session?.household?.role === 'family_manager';
   // Looked up on every render, so the open modal shows a new picture as soon as it's saved.
   const editing = members.find((member) => member.id === editingId);
+  const managerCount = members.filter(
+    (member) => member.role === 'family_manager',
+  ).length;
 
   return (
     <>
@@ -63,7 +66,15 @@ export const MembersList = () => {
         })}
       </ul>
       {editing && (
-        <MemberEditModal member={editing} onClose={() => setEditingId(null)} />
+        <MemberEditModal
+          member={editing}
+          canManage={isManager}
+          isLastManager={
+            editing.role === 'family_manager' && managerCount === 1
+          }
+          isSelf={editing.id === session?.user.id}
+          onClose={() => setEditingId(null)}
+        />
       )}
     </>
   );

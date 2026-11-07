@@ -10,3 +10,14 @@
   overflow: hidden;
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
 }
+
+.member-edit-role {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.member-edit-hint {
+  font-size: 13px;
+  color: var(--color-lightest);
+}
