@@ -23,7 +23,7 @@ use super::model::{
 use super::repository;
 use crate::features::accounts::ACCOUNT_TYPES;
 use crate::features::auth::CurrentUser;
-use crate::features::{accounts, categories, category_groups, members, merchants, tags};
+use crate::features::{accounts, categories, category_groups, members, merchants, rules, tags};
 use crate::shared::anthropic::{AnthropicClient, AnthropicError};
 use crate::shared::http_error::{
     error_response, error_response_with_n, internal_error_response, is_foreign_key_violation,
@@ -412,6 +412,7 @@ async fn read_statement(
             l10n: l10n.into_inner(),
             locale,
             household_id,
+            user_id: current_user.user.id,
             lists,
             merchant_candidates,
             selected_account_id,
@@ -440,6 +441,8 @@ struct StatementRead {
     l10n: std::sync::Arc<L10n>,
     locale: LanguageIdentifier,
     household_id: i32,
+    /// Who's importing: a line for a new account would belong to them (see `import::apply_rules`).
+    user_id: i32,
     lists: HouseholdLists,
     merchant_candidates: Vec<(i32, String)>,
     selected_account_id: Option<i32>,
@@ -505,6 +508,22 @@ async fn stream_statement_read(
             selected_account_id: read.selected_account_id,
         },
     );
+
+    let loaded = match rules::repository::list_runnable(&read.pool, read.household_id).await {
+        Ok(rules) => rules::repository::account_owners(&read.pool, read.household_id)
+            .await
+            .map(|owners| (rules, owners)),
+        Err(e) => Err(e),
+    };
+    match loaded {
+        Ok((rules, account_owners)) => {
+            import::apply_rules(&mut transactions, &rules, &account_owners, read.user_id)
+        }
+        Err(e) => {
+            error!("statement import failed to load the household's rules error={e}");
+            return fail("internal-db-error");
+        }
+    }
 
     if events.send(StatementReadEvent::CheckingDuplicates).is_err() {
         return;

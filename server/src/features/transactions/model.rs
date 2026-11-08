@@ -128,6 +128,14 @@ pub struct StatementTransaction {
     /// the user accepts the line with it. Only set when `account_id` is `None`.
     pub new_account: Option<SuggestedAccount>,
     pub tag_ids: Vec<i32>,
+    /// The owner a rule gave it, or `None` for its account's owner.
+    pub owner: Option<Owner>,
+    /// `Some(false)` when a rule sends it for review (to `review_assignee`, Anyone when `None`);
+    /// `None` keeps the usual: imported lines start out reviewed.
+    pub reviewed: Option<bool>,
+    pub review_assignee: Option<ReviewAssignee>,
+    /// Whether one of the household's rules matched it (and applied its actions).
+    pub rule_applied: bool,
     /// An existing transaction with the same date, amount, and account (when known) — most likely
     /// this same line, imported or typed in before.
     pub duplicate_of_transaction_id: Option<i64>,
@@ -187,6 +195,12 @@ pub struct ImportTransaction {
     /// Ids outside the caller's own household are silently dropped, same as `NewTransaction`.
     #[serde(default)]
     pub tag_ids: Vec<i32>,
+    /// Defaults to the account's owner when absent.
+    pub owner: Option<Owner>,
+    /// Defaults to `true`. When `false`, it waits for a review by `review_assignee` (Anyone when
+    /// absent).
+    pub reviewed: Option<bool>,
+    pub review_assignee: Option<ReviewAssignee>,
 }
 
 /// Body for `POST /transactions/import`.

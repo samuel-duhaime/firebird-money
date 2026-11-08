@@ -1,5 +1,7 @@
 import { apiFetch } from '../../../lib/api-client';
+import type { Owner } from '../../accounts/utils/api';
 import type { AccountType } from '../../accounts/utils/types';
+import type { ReviewAssignee } from './api';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL as string;
 
@@ -31,6 +33,14 @@ export interface StatementTransaction {
    * line using it is accepted. Only set when `account_id` is `null`. */
   new_account: SuggestedAccount | null;
   tag_ids: number[];
+  /** The owner one of the household's rules gave it, or `null` for its account's owner. */
+  owner: Owner | null;
+  /** `false` when a rule sends it for review (to `review_assignee`); `null` keeps the usual:
+   * imported lines start out reviewed. */
+  reviewed: boolean | null;
+  review_assignee: ReviewAssignee | null;
+  /** Whether one of the household's rules matched it and applied its updates. */
+  rule_applied: boolean;
   /** An existing transaction with the same date, amount, and account — likely this same line. */
   duplicate_of_transaction_id: number | null;
 }
@@ -152,6 +162,11 @@ export interface ImportTransaction {
   account_id?: number;
   new_account?: SuggestedAccount;
   tag_ids: number[];
+  /** Defaults to the account's owner. */
+  owner?: Owner;
+  /** Defaults to `true`. */
+  reviewed?: boolean;
+  review_assignee?: ReviewAssignee;
 }
 
 export interface ImportResult {

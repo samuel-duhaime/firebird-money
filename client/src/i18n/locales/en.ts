@@ -686,6 +686,8 @@ export const en = {
         newAccount: 'New account',
         newAccounts_one: '{{count}} new account will be created',
         newAccounts_other: '{{count}} new accounts will be created',
+        rule: 'Rule',
+        ruleHint: 'One of your rules changed this line.',
         newMerchant: 'New merchant',
         unsure: 'Not sure, please check',
         duplicate: 'Already in your transactions. Left unticked.',

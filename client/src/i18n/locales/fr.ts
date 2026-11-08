@@ -690,6 +690,8 @@ export const fr: typeof en = {
         newAccount: 'Nouveau compte',
         newAccounts_one: '{{count}} nouveau compte sera créé',
         newAccounts_other: '{{count}} nouveaux comptes seront créés',
+        rule: 'Règle',
+        ruleHint: 'Une de tes règles a changé cette ligne.',
         newMerchant: 'Nouveau marchand',
         unsure: 'Pas certain, à vérifier',
         duplicate: 'Déjà dans tes transactions. Laissée décochée.',

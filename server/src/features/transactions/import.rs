@@ -9,7 +9,7 @@
 //! again here line by line: an id the household doesn't own is dropped, a line with an unreadable
 //! date or amount is skipped, so the client only ever gets well-typed, valid lines.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::io::{Cursor, Read};
 
 use base64::Engine;
@@ -21,9 +21,11 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use super::model::{StatementTransaction, SuggestedAccount};
-use crate::features::accounts::ACCOUNT_TYPES;
+use super::model::{ReviewAssignee, StatementTransaction, SuggestedAccount};
+use crate::features::accounts::{Owner, ACCOUNT_TYPES};
 use crate::features::merchants::repository::best_match;
+use crate::features::rules::engine;
+use crate::features::rules::model::{Rule, RuleTarget};
 
 /// Enough room for a few hundred lines. Statements are capped at 10 MB, not at a page count, so
 /// this is what actually bounds a single call's cost.
@@ -681,10 +683,76 @@ pub fn resolve(answer: Answer, context: &MatchContext) -> Vec<StatementTransacti
                 account_id,
                 new_account,
                 tag_ids: line_tag_ids,
+                owner: None,
+                reviewed: None,
+                review_assignee: None,
+                rule_applied: false,
                 duplicate_of_transaction_id: None,
             })
         })
         .collect()
+}
+
+/// Runs the household's `rules` (already in their order, see `rules::repository::list_runnable`)
+/// on each line, after Claude's suggestions, so a rule wins over them. `account_owners` is each
+/// account's owner; a line for an account that doesn't exist yet would belong to `user_id`, who's
+/// importing. A line a rule set the category of is confident.
+pub fn apply_rules(
+    lines: &mut [StatementTransaction],
+    rules: &[Rule],
+    account_owners: &HashMap<i32, Option<i32>>,
+    user_id: i32,
+) {
+    if rules.is_empty() {
+        return;
+    }
+    for line in lines.iter_mut() {
+        let owner_user_id = match line.account_id {
+            Some(id) => account_owners.get(&id).copied().flatten(),
+            None => Some(user_id),
+        };
+        let before = RuleTarget {
+            original_statement: line.original_statement.clone(),
+            amount: line.amount,
+            account_id: line.account_id,
+            merchant_id: line.merchant_id,
+            category_id: line.category_id,
+            owner_user_id,
+            tag_ids: line.tag_ids.clone(),
+            reviewed: true,
+            review_assignee_user_id: None,
+        };
+        let mut after = before.clone();
+        let applied = engine::run(rules, &mut after);
+        if applied.is_empty() {
+            continue;
+        }
+
+        line.rule_applied = true;
+        if after.merchant_id != before.merchant_id {
+            line.merchant_id = after.merchant_id;
+            line.new_merchant_name = None;
+        }
+        line.category_id = after.category_id;
+        if applied
+            .iter()
+            .any(|rule| rule.actions.category_id.is_some())
+        {
+            line.category_confident = true;
+        }
+        line.tag_ids = after.tag_ids;
+        if after.owner_user_id != before.owner_user_id {
+            line.owner = Some(Owner::from_user_id(after.owner_user_id));
+        }
+        if !after.reviewed {
+            line.reviewed = Some(false);
+            line.review_assignee = Some(
+                after
+                    .review_assignee_user_id
+                    .map_or(ReviewAssignee::Anyone, ReviewAssignee::Member),
+            );
+        }
+    }
 }
 
 /// Points each line at an existing transaction with the same date and amount (and the same
@@ -1293,5 +1361,82 @@ mod tests {
 
         assert_eq!(lines[0].duplicate_of_transaction_id, Some(8));
         assert_eq!(lines[1].duplicate_of_transaction_id, None);
+    }
+
+    #[test]
+    fn rules_win_over_claude_and_run_top_to_bottom() {
+        use crate::features::rules::model::{
+            ReviewAction, RuleActions, RuleConditions, TextCondition, TextOperator,
+        };
+        use sqlx::types::Json;
+
+        let rule = |id: i32, conditions: RuleConditions, actions: RuleActions| Rule {
+            id,
+            household_id: 1,
+            conditions: Json(conditions),
+            actions: Json(actions),
+            sort_order: id,
+            last_applied_at: None,
+            last_applied_count: 0,
+            created_at: chrono::Utc::now(),
+        };
+        let rules = [
+            rule(
+                1,
+                RuleConditions {
+                    original_statement: Some(vec![TextCondition {
+                        operator: TextOperator::Contains,
+                        value: "iga".to_string(),
+                    }]),
+                    ..Default::default()
+                },
+                RuleActions {
+                    merchant_id: Some(300),
+                    category_id: Some(99),
+                    ..Default::default()
+                },
+            ),
+            rule(
+                2,
+                RuleConditions {
+                    category_ids: Some(vec![99]),
+                    owners: Some(vec![Owner::Member(7)]),
+                    ..Default::default()
+                },
+                RuleActions {
+                    owner: Some(Owner::Shared),
+                    review: Some(ReviewAction {
+                        reviewed: false,
+                        assignee: None,
+                    }),
+                    ..Default::default()
+                },
+            ),
+        ];
+        let mut lines = vec![
+            resolve_one(line(json!({ "category_confident": false })), None).unwrap(),
+            resolve_one(
+                line(json!({ "original_statement": "BELL CANADA", "merchant_id": 300 })),
+                None,
+            )
+            .unwrap(),
+        ];
+        let account_owners = HashMap::from([(1, Some(7))]);
+
+        apply_rules(&mut lines, &rules, &account_owners, 7);
+
+        let iga = &lines[0];
+        assert!(iga.rule_applied);
+        assert_eq!(iga.merchant_id, Some(300));
+        assert_eq!(iga.category_id, Some(99));
+        assert!(iga.category_confident);
+        assert_eq!(iga.owner, Some(Owner::Shared));
+        assert_eq!(iga.reviewed, Some(false));
+        assert_eq!(iga.review_assignee, Some(ReviewAssignee::Anyone));
+
+        let bell = &lines[1];
+        assert!(!bell.rule_applied);
+        assert_eq!(bell.category_id, Some(10));
+        assert_eq!(bell.owner, None);
     }
 }
