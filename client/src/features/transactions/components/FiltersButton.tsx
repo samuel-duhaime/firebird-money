@@ -151,7 +151,7 @@ const setIds = (list: number[], ids: number[], checked: boolean): number[] =>
 
 /** A labelled checkbox that can also show the "some but not all" (indeterminate) state, which
  * has no HTML attribute and has to be set on the element itself. */
-const CheckboxRow = ({
+export const CheckboxRow = ({
   checked,
   indeterminate = false,
   onChange,

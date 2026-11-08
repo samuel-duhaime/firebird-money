@@ -13,7 +13,8 @@ type HouseholdNavItem =
         | '/settings/accounts'
         | '/settings/tags'
         | '/settings/categories'
-        | '/settings/merchants';
+        | '/settings/merchants'
+        | '/settings/rules';
     };
 
 const HOUSEHOLD_NAV_ITEMS: HouseholdNavItem[] = [
@@ -38,7 +39,7 @@ const HOUSEHOLD_NAV_ITEMS: HouseholdNavItem[] = [
     labelKey: 'settings.household.merchants',
     to: '/settings/merchants',
   },
-  { key: 'rules', labelKey: 'settings.household.rules' },
+  { key: 'rules', labelKey: 'settings.household.rules', to: '/settings/rules' },
   { key: 'tags', labelKey: 'settings.household.tags', to: '/settings/tags' },
   { key: 'data', labelKey: 'settings.household.data' },
 ];

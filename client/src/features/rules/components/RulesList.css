@@ -1,0 +1,127 @@
+.rules-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.rule-card {
+  display: flex;
+  border: 1px solid var(--color-medium);
+  border-radius: 12px;
+  background: var(--color-dark);
+  overflow: hidden;
+}
+
+.rule-card-handle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 4px 0 var(--spacing-xs);
+}
+
+.rules-list-drag-handle {
+  display: flex;
+  color: var(--color-lightest);
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.rules-list-item:hover .rules-list-drag-handle,
+.rules-list-item:hover .move-buttons,
+.rules-list-item:focus-within .move-buttons {
+  opacity: 1;
+}
+
+.rule-card-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.rule-card-body:hover,
+.rule-card-body:focus-visible {
+  background: color-mix(in srgb, var(--color-medium) 40%, transparent);
+  outline: none;
+}
+
+.rule-card-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-s);
+}
+
+.rule-card-arrow {
+  display: flex;
+  align-items: center;
+  padding: 0 var(--spacing-xs);
+  border-left: 1px solid var(--color-medium);
+  border-right: 1px solid var(--color-medium);
+  background: var(--color-background);
+  color: var(--color-lightest);
+}
+
+.rule-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 14px;
+}
+
+.rule-word {
+  color: var(--color-lightest);
+}
+
+.rule-word--strong {
+  color: var(--color-white);
+  font-weight: 600;
+}
+
+.rule-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--color-medium);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.rules-list-applied {
+  margin: 6px 0 0 var(--spacing-xs);
+  color: var(--color-lightest);
+  font-size: 13px;
+  font-style: italic;
+}
+
+@media (max-width: 700px) {
+  .rule-card-body {
+    grid-template-columns: 1fr;
+  }
+
+  .rule-card-arrow {
+    justify-content: center;
+    padding: 4px;
+    border: none;
+    border-top: 1px solid var(--color-medium);
+    border-bottom: 1px solid var(--color-medium);
+  }
+}
