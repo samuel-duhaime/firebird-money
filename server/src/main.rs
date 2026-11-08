@@ -116,6 +116,7 @@ async fn main() -> std::io::Result<()> {
             .configure(features::accounts::configure)
             .configure(features::settings::configure)
             .configure(features::tags::configure)
+            .configure(features::rules::configure)
             .configure(features::users::configure)
             .configure(features::members::configure)
     })

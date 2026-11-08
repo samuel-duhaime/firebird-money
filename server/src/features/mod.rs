@@ -6,6 +6,7 @@ pub mod households;
 pub mod institutions;
 pub mod members;
 pub mod merchants;
+pub mod rules;
 pub mod settings;
 pub mod tags;
 pub mod transactions;

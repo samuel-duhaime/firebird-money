@@ -206,7 +206,7 @@ pub struct ImportResult {
 }
 
 /// Optional query params for `GET /transactions`. Absent fields mean "no filter".
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 pub struct TransactionFilter {
     pub date: Option<NaiveDate>,
     pub merchant_id: Option<i32>,
@@ -270,8 +270,8 @@ impl TransactionFilter {
     }
 }
 
-/// Comparison applied by `TransactionFilter::amount`.
-#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
+/// Comparison applied by `TransactionFilter::amount` (and by a rule's amount condition).
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum AmountOp {
     GreaterThan,
@@ -324,6 +324,16 @@ impl ReviewAssignee {
         match self {
             ReviewAssignee::Anyone => None,
             ReviewAssignee::Member(id) => Some(id),
+        }
+    }
+}
+
+/// Written back the way the API takes it: `"anyone"` or the member's id (rules store it this way).
+impl Serialize for ReviewAssignee {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            ReviewAssignee::Anyone => serializer.serialize_str("anyone"),
+            ReviewAssignee::Member(id) => serializer.serialize_i32(*id),
         }
     }
 }

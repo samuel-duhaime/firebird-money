@@ -53,6 +53,21 @@ impl Owner {
             Owner::Member(id) => Some(id),
         }
     }
+
+    /// The owner an `owner_user_id` stands for.
+    pub fn from_user_id(user_id: Option<i32>) -> Self {
+        user_id.map_or(Owner::Shared, Owner::Member)
+    }
+}
+
+/// Written back the way the API takes it: `"shared"` or the member's id (rules store it this way).
+impl Serialize for Owner {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Owner::Shared => serializer.serialize_str("shared"),
+            Owner::Member(id) => serializer.serialize_i32(*id),
+        }
+    }
 }
 
 #[derive(Deserialize)]
