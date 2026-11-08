@@ -683,11 +683,14 @@ export const RuleModal = ({ rule, initialDraft, onClose }: RuleModalProps) => {
             type="button"
             className="modal-button modal-button--primary rule-modal-save"
             onClick={handleSave}
-            // Applying to existing transactions waits for the preview of the draft as it is now.
+            // Applying to existing transactions waits for a successful preview of the draft as it
+            // is now.
             disabled={
               saveRule.isPending ||
               (applyToExisting &&
-                (previewState === 'loading' || previewState === 'stale'))
+                (previewState === 'loading' ||
+                  previewState === 'stale' ||
+                  previewState === 'error'))
             }
           >
             {t('settings.rules.modal.save')}
