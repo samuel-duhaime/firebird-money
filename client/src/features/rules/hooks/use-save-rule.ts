@@ -16,6 +16,8 @@ export const useSaveRule = () => {
         queryClient.invalidateQueries({ queryKey: ['transactions'] });
         queryClient.invalidateQueries({ queryKey: ['merchants'] });
         queryClient.invalidateQueries({ queryKey: ['tags'] });
+        // Category settings show how many transactions each category has.
+        queryClient.invalidateQueries({ queryKey: ['categories'] });
       }
     },
   });
