@@ -238,6 +238,10 @@ export const fr: typeof en = {
         summary_other:
           '{{count}} transactions correspondent, {{changed}} changeraient.',
         limited: 'Les {{count}} plus récentes sont affichées.',
+        incomplete:
+          'Termine les conditions que tu as activées pour voir l’aperçu.',
+        failed: 'Impossible de charger l’aperçu.',
+        retry: 'Réessayer',
       },
       modal: {
         newTitle: 'Nouvelle règle',

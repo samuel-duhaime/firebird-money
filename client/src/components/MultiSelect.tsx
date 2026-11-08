@@ -48,11 +48,13 @@ export const MultiSelect = <V extends string | number>({
   const [search, setSearch] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
 
+  const isShown = isOpen && position !== null;
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isShown) return;
     setSearch('');
+    // The popover (and its search) only mounts once it has a position.
     searchRef.current?.focus();
-  }, [isOpen]);
+  }, [isShown]);
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -83,6 +85,8 @@ export const MultiSelect = <V extends string | number>({
         className={`multi-select-trigger ${triggerClassName ?? ''}`}
         onClick={() => setIsOpen((open) => !open)}
         onKeyDown={(event) => {
+          // A chip's remove button handles its own Enter and Space.
+          if (event.target !== event.currentTarget) return;
           if (
             event.key === 'Enter' ||
             event.key === ' ' ||

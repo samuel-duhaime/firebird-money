@@ -143,13 +143,13 @@ export const RulesFiltersButton = ({
         </span>
       </CheckboxRow>
     );
-    const groups: { name: string; options: MultiSelectOption<Value>[] }[] = [];
+    // Runs of options under the same group, in order; options without a group get a run of
+    // their own, shown without a heading.
+    const runs: { group?: string; options: MultiSelectOption<Value>[] }[] = [];
     for (const option of visible) {
-      const last = groups[groups.length - 1];
-      if (option.group && last?.name === option.group)
-        last.options.push(option);
-      else if (option.group)
-        groups.push({ name: option.group, options: [option] });
+      const last = runs[runs.length - 1];
+      if (last && last.group === option.group) last.options.push(option);
+      else runs.push({ group: option.group, options: [option] });
     }
     const allValues = visible.map((option) => option.value);
 
@@ -164,23 +164,22 @@ export const RulesFiltersButton = ({
             <span>{t('transactions.filters.selectAll')}</span>
           </CheckboxRow>
         )}
-        {groups.length > 0
-          ? groups.map((group) => {
-              const values = group.options.map((option) => option.value);
-              return (
-                <div key={group.name} className="filters-popover-group">
-                  <CheckboxRow
-                    variant="group"
-                    {...groupState(values, selected)}
-                    onChange={(checked) => toggle(section, values, checked)}
-                  >
-                    <span>{group.name}</span>
-                  </CheckboxRow>
-                  {group.options.map(row)}
-                </div>
-              );
-            })
-          : visible.map(row)}
+        {runs.map((run, index) => {
+          if (!run.group) return run.options.map(row);
+          const values = run.options.map((option) => option.value);
+          return (
+            <div key={index} className="filters-popover-group">
+              <CheckboxRow
+                variant="group"
+                {...groupState(values, selected)}
+                onChange={(checked) => toggle(section, values, checked)}
+              >
+                <span>{run.group}</span>
+              </CheckboxRow>
+              {run.options.map(row)}
+            </div>
+          );
+        })}
       </>
     );
   };

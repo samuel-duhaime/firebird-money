@@ -240,10 +240,14 @@ test.describe('Household > Rules settings', () => {
     const rules = authedPage.locator('.rules-list-item');
     await expect(rules.nth(0)).toContainText('first');
 
+    const saved = authedPage.waitForResponse(
+      (response) => response.url().endsWith('/rules/reorder') && response.ok(),
+    );
     await authedPage.getByRole('button', { name: 'Move rule 1 down' }).click();
     await expect(rules.nth(0)).toContainText('second');
     await expect(rules.nth(1)).toContainText('first');
 
+    await saved;
     await authedPage.reload();
     await expect(rules.nth(0)).toContainText('second');
     await expect(rules.nth(1)).toContainText('first');

@@ -85,19 +85,19 @@ export const ruleSuggestionToast = (
 ) => {
   const draft = suggestedDraft(before, updated, patch);
   if (!draft) return;
-  toast.success(
-    i18n.t('toast.ruleSuggestion', { value: newValue(updated, patch, draft) }),
-    {
-      description: i18n.t('toast.ruleSuggestionDescription'),
-      // Long enough to read it and decide.
-      duration: 10000,
-      action: {
-        label: i18n.t('toast.ruleSuggestionAction'),
-        onClick: () => {
-          suggestRule(draft);
-          openRules();
-        },
+  // Nothing to name, e.g. the added tags aren't in the response (another edit removed them).
+  const value = newValue(updated, patch, draft);
+  if (value === '') return;
+  toast.success(i18n.t('toast.ruleSuggestion', { value }), {
+    description: i18n.t('toast.ruleSuggestionDescription'),
+    // Long enough to read it and decide.
+    duration: 10000,
+    action: {
+      label: i18n.t('toast.ruleSuggestionAction'),
+      onClick: () => {
+        suggestRule(draft);
+        openRules();
       },
     },
-  );
+  });
 };

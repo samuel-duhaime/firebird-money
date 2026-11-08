@@ -8,6 +8,7 @@ import { RulesList } from '../features/rules/components/RulesList';
 import { useRules } from '../features/rules/hooks/use-rules';
 import {
   clearSuggestedRule,
+  onSuggestedRule,
   suggestedRule,
 } from '../features/rules/utils/suggested-rule';
 import type { RuleDraft } from '../features/rules/utils/draft';
@@ -28,6 +29,16 @@ const RulesPage = () => {
     return draft ? { draft } : null;
   });
   useEffect(clearSuggestedRule, []);
+  useEffect(
+    () =>
+      onSuggestedRule(() => {
+        const draft = suggestedRule();
+        if (!draft) return;
+        setModal({ draft });
+        clearSuggestedRule();
+      }),
+    [],
+  );
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<RuleFilters>(NO_RULE_FILTERS);
 

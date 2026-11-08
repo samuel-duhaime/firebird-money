@@ -621,6 +621,18 @@ async fn import_transactions(
             StatusCode::BAD_REQUEST,
             "import-account-not-found",
         ),
+        Err(e) if is_foreign_key_violation_on(&e, OWNER_FKEY) => error_response(
+            &l10n,
+            &locale,
+            StatusCode::BAD_REQUEST,
+            "account-owner-not-found",
+        ),
+        Err(e) if is_foreign_key_violation_on(&e, REVIEW_ASSIGNEE_FKEY) => error_response(
+            &l10n,
+            &locale,
+            StatusCode::BAD_REQUEST,
+            "review-assignee-not-found",
+        ),
         Err(e) if is_foreign_key_violation(&e) => error_response(
             &l10n,
             &locale,

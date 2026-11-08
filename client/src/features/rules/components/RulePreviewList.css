@@ -16,6 +16,18 @@
   flex: 1;
 }
 
+.rule-preview-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-s);
+}
+
+.rule-preview--stale {
+  opacity: 0.5;
+  transition: opacity 0.15s ease;
+}
+
 .rule-preview-list,
 .rule-preview-rows {
   list-style: none;

@@ -4,7 +4,8 @@
 use std::collections::HashSet;
 
 use super::model::{
-    AmountCondition, Rule, RuleActions, RuleConditions, RuleTarget, TextCondition, TextOperator,
+    AmountCondition, ReviewAction, Rule, RuleActions, RuleConditions, RuleTarget, TextCondition,
+    TextOperator,
 };
 use crate::features::accounts::Owner;
 use crate::features::transactions::model::{AmountOp, Transaction};
@@ -164,7 +165,7 @@ pub fn prune_actions(rules: &mut [Rule], known: &KnownIds) {
         }
         actions.review = actions
             .review
-            .filter(|review| known_member(review.assignee.and_then(|assignee| assignee.user_id())));
+            .filter(|review| known_member(review_member(review)));
     }
 }
 
@@ -196,9 +197,18 @@ pub fn references_known(
             .owner
             .is_none_or(|owner| member_known(owner.user_id()))
         && all_in(&actions.tag_ids, &known.tag_ids)
-        && actions.review.is_none_or(|review| {
-            member_known(review.assignee.and_then(|assignee| assignee.user_id()))
-        })
+        && actions
+            .review
+            .is_none_or(|review| member_known(review_member(&review)))
+}
+
+/// The member a review action sends transactions to. Marking reviewed sends them to no one, so its
+/// assignee (if any was stored) doesn't count.
+fn review_member(review: &ReviewAction) -> Option<i32> {
+    if review.reviewed {
+        return None;
+    }
+    review.assignee.and_then(|assignee| assignee.user_id())
 }
 
 #[cfg(test)]
@@ -386,5 +396,41 @@ mod tests {
         assert_eq!(actions.category_id, None);
         assert_eq!(actions.owner, None);
         assert_eq!(actions.tag_ids, Some(vec![2]));
+    }
+
+    #[test]
+    fn prune_keeps_mark_reviewed_when_its_stored_assignee_left() {
+        let review = |reviewed| ReviewAction {
+            reviewed,
+            assignee: Some(ReviewAssignee::Member(8)),
+        };
+        let mut rules = [
+            rule(
+                RuleConditions::default(),
+                RuleActions {
+                    review: Some(review(true)),
+                    ..RuleActions::default()
+                },
+            ),
+            rule(
+                RuleConditions::default(),
+                RuleActions {
+                    review: Some(review(false)),
+                    ..RuleActions::default()
+                },
+            ),
+        ];
+        let known = KnownIds {
+            member_ids: [7].into(),
+            ..KnownIds::default()
+        };
+        assert!(references_known(
+            &RuleConditions::default(),
+            &rules[0].actions.0,
+            &known
+        ));
+        prune_actions(&mut rules, &known);
+        assert_eq!(rules[0].actions.0.review, Some(review(true)));
+        assert_eq!(rules[1].actions.0.review, None);
     }
 }

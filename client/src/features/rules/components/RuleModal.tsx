@@ -27,6 +27,7 @@ import {
 import type { ReviewChoice, RuleDraft } from '../utils/draft';
 import type { AmountOperator, Rule, TextOperator } from '../utils/types';
 import { RulePreviewList } from './RulePreviewList';
+import type { PreviewState } from './RulePreviewList';
 import '../../transactions/components/AddTransactionModal.css';
 import '../../transactions/components/EditTransactionModal.css';
 import './RuleModal.css';
@@ -98,11 +99,29 @@ export const RuleModal = ({ rule, initialDraft, onClose }: RuleModalProps) => {
   const actions = draftActions(draft);
   // Typing in a text or amount field shouldn't ask the server on every keystroke.
   const debounced = useDebouncedValue({ conditions, actions }, 300);
-  const { data: preview, isFetching } = useRulePreview(
-    debounced.conditions,
-    debounced.actions,
-  );
-  const matchCount = conditions ? (preview?.match_count ?? 0) : 0;
+  const {
+    data: preview,
+    isFetching,
+    isError,
+    refetch,
+  } = useRulePreview(debounced.conditions, debounced.actions);
+  // Whether the preview shown is the one for the draft as it is now: not while the debounce or the
+  // request for the latest edit is still pending.
+  const isCurrent =
+    !isFetching &&
+    JSON.stringify(debounced) === JSON.stringify({ conditions, actions });
+  const previewState: PreviewState = !conditions
+    ? 'none'
+    : hasIncompleteCondition(draft)
+      ? 'incomplete'
+      : isError && !isFetching
+        ? 'error'
+        : !preview
+          ? 'loading'
+          : isCurrent
+            ? 'ready'
+            : 'stale';
+  const matchCount = preview?.match_count ?? 0;
 
   useEffect(() => {
     dialogRef.current?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)?.focus();
@@ -124,7 +143,8 @@ export const RuleModal = ({ rule, initialDraft, onClose }: RuleModalProps) => {
         (popover) =>
           Array.from(popover.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)),
       ),
-    ];
+      // A disabled control (e.g. Save while saving) can't take focus, so it can't end the trap.
+    ].filter((element) => !element.matches(':disabled'));
     if (focusable.length === 0) return;
     const first = focusable[0];
     const last = focusable[focusable.length - 1];
@@ -260,7 +280,9 @@ export const RuleModal = ({ rule, initialDraft, onClose }: RuleModalProps) => {
             onClick={() => setTab('preview')}
           >
             {t('settings.rules.modal.previewTab')}
-            <span className="rule-modal-tab-count">{matchCount}</span>
+            {previewState === 'ready' && (
+              <span className="rule-modal-tab-count">{matchCount}</span>
+            )}
           </button>
         </div>
 
@@ -590,8 +612,9 @@ export const RuleModal = ({ rule, initialDraft, onClose }: RuleModalProps) => {
           </div>
         ) : (
           <RulePreviewList
-            preview={conditions ? preview : undefined}
-            isFetching={isFetching}
+            state={previewState}
+            preview={preview}
+            onRetry={() => refetch()}
             locale={i18n.language}
           />
         )}
@@ -606,9 +629,18 @@ export const RuleModal = ({ rule, initialDraft, onClose }: RuleModalProps) => {
             {t('settings.rules.modal.applyToExisting')}
           </label>
           <span className="rule-modal-match-count">
-            {conditions
-              ? t('settings.rules.modal.matchCount', { count: matchCount })
-              : t('settings.rules.modal.noMatchYet')}
+            {
+              {
+                none: t('settings.rules.modal.noMatchYet'),
+                incomplete: t('settings.rules.preview.incomplete'),
+                error: t('settings.rules.preview.failed'),
+                loading: t('settings.rules.preview.loading'),
+                stale: t('settings.rules.preview.loading'),
+                ready: t('settings.rules.modal.matchCount', {
+                  count: matchCount,
+                }),
+              }[previewState]
+            }
           </span>
         </div>
 
@@ -651,7 +683,12 @@ export const RuleModal = ({ rule, initialDraft, onClose }: RuleModalProps) => {
             type="button"
             className="modal-button modal-button--primary rule-modal-save"
             onClick={handleSave}
-            disabled={saveRule.isPending}
+            // Applying to existing transactions waits for the preview of the draft as it is now.
+            disabled={
+              saveRule.isPending ||
+              (applyToExisting &&
+                (previewState === 'loading' || previewState === 'stale'))
+            }
           >
             {t('settings.rules.modal.save')}
           </button>

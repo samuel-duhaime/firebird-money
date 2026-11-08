@@ -58,6 +58,11 @@ export const useDragReorder = <T>(
 
   const handleDragStart =
     (index: number) => (event: DragEvent<HTMLSpanElement>) => {
+      // Moving again before the last move is saved would compare against the old order.
+      if (isSavingRef.current) {
+        event.preventDefault();
+        return;
+      }
       draggedIndexRef.current = index;
       isDraggingRef.current = true;
       event.dataTransfer.effectAllowed = 'move';
@@ -87,19 +92,21 @@ export const useDragReorder = <T>(
     event.stopPropagation();
   };
 
-  const handleDragEnd = () => {
+  const handleDragEnd = (event: DragEvent<HTMLElement>) => {
     isDraggingRef.current = false;
     draggedIndexRef.current = null;
-    // `dragend` also fires for a canceled drag (e.g. Escape) and for a drag that lands back on
-    // its starting position — `commit` itself no-ops when that leaves the order unchanged.
-    commit(items);
+    // `dragend` also fires for a canceled drag (Escape, or a release outside the list), with no
+    // drop effect: put the order back instead of saving it. A drag that lands back on its starting
+    // position is a no-op in `commit`.
+    if (event.dataTransfer.dropEffect === 'none') setItems(sourceItems);
+    else commit(items);
   };
 
   /** Moves the item at `index` one slot toward the start (`-1`) or end (`1`) and saves
    * immediately — a no-op past either end. */
   const move = (index: number, direction: -1 | 1) => {
     const target = index + direction;
-    if (target < 0 || target >= items.length) return;
+    if (isSavingRef.current || target < 0 || target >= items.length) return;
     const next = [...items];
     const [moved] = next.splice(index, 1);
     next.splice(target, 0, moved);

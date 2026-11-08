@@ -9,32 +9,58 @@ import type { RulePreview } from '../utils/api';
 import { TagDot } from './TagDot';
 import './RulePreviewList.css';
 
+/** Where the preview of the rule being edited stands: no condition yet, a switched-on condition
+ * still incomplete, the request failed, the first one still loading, an earlier draft's results
+ * while the latest edit loads (`stale`), or up to date. */
+export type PreviewState =
+  'none' | 'incomplete' | 'error' | 'loading' | 'stale' | 'ready';
+
 type RulePreviewListProps = {
-  /** `undefined` while the rule has no condition yet, or the first preview is loading. */
+  state: PreviewState;
   preview: RulePreview | undefined;
-  isFetching: boolean;
+  onRetry: () => void;
   locale: string;
 };
 
 /** The transactions a rule matches, grouped by date, each showing what the rule would make it —
  * read-only: what changes is highlighted, what it replaces is struck through. */
 export const RulePreviewList = ({
+  state,
   preview,
-  isFetching,
+  onRetry,
   locale,
 }: RulePreviewListProps) => {
   const { t } = useTranslation();
   const lookups = useRuleLookups();
 
-  if (!preview) {
+  if (state === 'error') {
+    return (
+      <div className="rule-preview-status rule-preview-error">
+        <span>{t('settings.rules.preview.failed')}</span>
+        <button
+          type="button"
+          className="modal-button rule-preview-retry"
+          onClick={onRetry}
+        >
+          {t('settings.rules.preview.retry')}
+        </button>
+      </div>
+    );
+  }
+  if (state !== 'ready' && state !== 'stale') {
     return (
       <p className="rule-preview-status">
-        {isFetching
-          ? t('settings.rules.preview.loading')
-          : t('settings.rules.preview.noCondition')}
+        {
+          {
+            none: t('settings.rules.preview.noCondition'),
+            incomplete: t('settings.rules.preview.incomplete'),
+            loading: t('settings.rules.preview.loading'),
+          }[state]
+        }
       </p>
     );
   }
+  if (!preview) return null;
   if (preview.transactions.length === 0) {
     return (
       <p className="rule-preview-status">{t('settings.rules.preview.empty')}</p>
@@ -49,7 +75,12 @@ export const RulePreviewList = ({
   }
 
   return (
-    <div className="rule-preview">
+    <div
+      className={
+        state === 'stale' ? 'rule-preview rule-preview--stale' : 'rule-preview'
+      }
+      aria-busy={state === 'stale'}
+    >
       <p className="rule-preview-summary">
         {t('settings.rules.preview.summary', {
           count: preview.match_count,
@@ -140,7 +171,13 @@ export const RulePreviewList = ({
                         <span className="rule-preview-pill rule-preview-new">
                           {after.reviewed
                             ? t('settings.rules.review.reviewed')
-                            : t('settings.rules.review.needsReview')}
+                            : after.review_assignee_user_id === null
+                              ? t('settings.rules.review.needsReviewAnyone')
+                              : t('settings.rules.review.needsReviewBy', {
+                                  name: lookups.ownerName(
+                                    after.review_assignee_user_id,
+                                  ),
+                                })}
                         </span>
                       )}
                     </span>

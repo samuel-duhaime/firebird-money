@@ -35,7 +35,7 @@ type CategoryGroupCardProps = {
   onRowDragOver: (event: DragEvent<HTMLLIElement>) => void;
   onRowDrop: (event: DragEvent<HTMLLIElement>) => void;
   onHandleDragStart: (event: DragEvent<HTMLSpanElement>) => void;
-  onHandleDragEnd: () => void;
+  onHandleDragEnd: (event: DragEvent<HTMLSpanElement>) => void;
   /** Keyboard/button equivalent of dragging this group within its section — the mouse-only drag
    * handle above has no keyboard or screen-reader path otherwise. */
   onMoveUp: () => void;
@@ -65,8 +65,9 @@ export const CategoryGroupCard = ({
   const deleteCategoryGroupMutation = useDeleteCategoryGroup();
   const reorderCategoriesMutation = useReorderCategories();
   const [confirmingDeleteGroup, setConfirmingDeleteGroup] = useState(false);
-  const [confirmingDeleteCategoryId, setConfirmingDeleteCategoryId] =
-    useState<number | null>(null);
+  const [confirmingDeleteCategoryId, setConfirmingDeleteCategoryId] = useState<
+    number | null
+  >(null);
 
   const {
     items,
@@ -244,9 +245,7 @@ export const CategoryGroupCard = ({
                 <span className="category-group-confirm-text">
                   {t('settings.categories.deleteCategoryConfirm', {
                     name:
-                      language === 'fr'
-                        ? category.name_fr
-                        : category.name_en,
+                      language === 'fr' ? category.name_fr : category.name_en,
                   })}
                 </span>
                 <button

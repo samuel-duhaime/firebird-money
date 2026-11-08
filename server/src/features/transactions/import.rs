@@ -728,7 +728,8 @@ pub fn apply_rules(
             continue;
         }
 
-        line.rule_applied = true;
+        // The badge marks a line a rule actually changed, not one it matched and left as it was.
+        line.rule_applied = after != before;
         if after.merchant_id != before.merchant_id {
             line.merchant_id = after.merchant_id;
             line.new_merchant_name = None;

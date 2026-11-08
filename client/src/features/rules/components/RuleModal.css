@@ -249,4 +249,13 @@
     border-left: none;
     border-top: 1px solid var(--color-medium);
   }
+
+  /* The comparison gets its own line, so the text and its buttons fit beside each other. */
+  .rule-text-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .rule-text-row > :first-child {
+    grid-column: 1 / -1;
+  }
 }

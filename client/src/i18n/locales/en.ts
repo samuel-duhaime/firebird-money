@@ -235,6 +235,9 @@ export const en = {
         summary_other:
           '{{count}} matching transactions, {{changed}} would change.',
         limited: 'Showing the {{count}} most recent.',
+        incomplete: 'Finish the conditions you turned on to see the preview.',
+        failed: "Couldn't load the preview.",
+        retry: 'Try again',
       },
       modal: {
         newTitle: 'New rule',
