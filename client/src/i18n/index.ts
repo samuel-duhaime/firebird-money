@@ -10,7 +10,9 @@ export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
 // in, the language saved in the user's settings wins — see `useSyncLanguage`.
 const LANGUAGE_STORAGE_KEY = 'firebird-language';
 
-export const isSupportedLanguage = (value: string | null): value is SupportedLanguage =>
+export const isSupportedLanguage = (
+  value: string | null,
+): value is SupportedLanguage =>
   SUPPORTED_LANGUAGES.includes(value as SupportedLanguage);
 
 const getInitialLanguage = (): SupportedLanguage => {
