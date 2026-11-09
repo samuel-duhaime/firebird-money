@@ -1,0 +1,261 @@
+.rule-modal {
+  display: flex;
+  flex-direction: column;
+  width: 1100px;
+  max-width: 100%;
+  height: min(760px, calc(100dvh - 2rem));
+  background: var(--color-dark);
+  color: var(--color-white);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+}
+
+.rule-modal-tabs {
+  display: flex;
+  gap: var(--spacing-s);
+  padding: 0 22px;
+  border-bottom: 1px solid var(--color-medium);
+}
+
+.rule-modal-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 2px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--color-lightest);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.rule-modal-tab:hover {
+  color: var(--color-white);
+}
+
+.rule-modal-tab--active {
+  border-bottom-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.rule-modal-tab-count {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--color-medium);
+  color: var(--color-white);
+  font-size: 12px;
+}
+
+.rule-modal-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  flex: 1;
+  min-height: 0;
+}
+
+.rule-modal-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-s) 22px;
+  overflow-y: auto;
+}
+
+.rule-modal-column + .rule-modal-column {
+  border-left: 1px solid var(--color-medium);
+}
+
+.rule-modal-column-title {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.rule-section {
+  border-radius: 8px;
+  background: var(--color-background);
+}
+
+.rule-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-s);
+  padding: 10px 14px;
+}
+
+.rule-section-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.rule-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding: 12px 14px 14px;
+  border-top: 1px solid var(--color-medium);
+}
+
+.rule-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 11px 14px;
+  border: 1px solid var(--color-medium);
+  border-radius: 8px;
+  background: var(--color-background);
+  color: var(--color-white);
+  font: inherit;
+  font-size: 15px;
+  outline: none;
+}
+
+.rule-input:focus {
+  border-color: var(--color-primary);
+}
+
+.rule-input::placeholder {
+  color: var(--color-lightest);
+}
+
+.rule-input--amount {
+  padding-left: 28px;
+}
+
+.rule-text-row {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) 2fr auto;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.rule-text-row-buttons {
+  display: flex;
+  gap: 2px;
+  min-width: 44px;
+}
+
+.rule-icon-button {
+  padding: 4px;
+  border: none;
+  background: none;
+  color: var(--color-lightest);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.rule-icon-button:hover,
+.rule-icon-button:focus-visible {
+  color: var(--color-white);
+}
+
+.rule-or,
+.rule-and {
+  margin: 0;
+  color: var(--color-lightest);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.rule-or {
+  margin-bottom: var(--spacing-xs);
+}
+
+.rule-amount-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.rule-amount-row > .select {
+  flex: 1 1 160px;
+}
+
+.rule-amount-row > .amount-input-wrapper {
+  flex: 1 1 120px;
+}
+
+.rule-modal-apply {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-s);
+  padding: 12px 22px;
+  border-top: 1px solid var(--color-medium);
+  background: var(--color-background);
+}
+
+.rule-modal-apply-label {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.rule-modal-apply-label input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-primary);
+}
+
+.rule-modal-match-count {
+  color: var(--color-lightest);
+  font-size: 13px;
+}
+
+.rule-modal-footer {
+  align-items: center;
+}
+
+.rule-modal-error {
+  flex: 1;
+  margin: 0;
+}
+
+.rule-modal-delete-confirm {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.rule-modal-save {
+  margin-left: auto;
+}
+
+@media (max-width: 800px) {
+  .rule-modal {
+    height: calc(100dvh - 2rem);
+  }
+
+  .rule-modal-columns {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
+
+  .rule-modal-column {
+    overflow-y: visible;
+  }
+
+  .rule-modal-column + .rule-modal-column {
+    border-left: none;
+    border-top: 1px solid var(--color-medium);
+  }
+
+  /* The comparison gets its own line, so the text and its buttons fit beside each other. */
+  .rule-text-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .rule-text-row > :first-child {
+    grid-column: 1 / -1;
+  }
+}

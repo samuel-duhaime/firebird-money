@@ -197,7 +197,7 @@ pub enum DeleteOutcome {
     HasOtherMembers,
 }
 
-/// Deletes `id` and everything in it (transactions, accounts, institutions, merchants, tags,
+/// Deletes `id` and everything in it (rules, transactions, accounts, institutions, merchants, tags,
 /// categories, and category groups), when `user_id` is its only member, who's left with no
 /// household. All in one transaction, which holds the household's lock so nobody joins halfway.
 pub async fn delete_with_data(
@@ -220,6 +220,7 @@ pub async fn delete_with_data(
 
     // In foreign-key order. `transaction_tags` goes with its transactions (ON DELETE CASCADE).
     for statement in [
+        "DELETE FROM rules WHERE household_id = $1",
         "DELETE FROM transactions WHERE household_id = $1",
         "DELETE FROM accounts WHERE household_id = $1",
         "DELETE FROM institutions WHERE household_id = $1",

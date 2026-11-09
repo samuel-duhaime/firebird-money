@@ -538,6 +538,11 @@
   color: var(--color-link);
 }
 
+.statement-badge--rule {
+  background: color-mix(in srgb, var(--color-primary) 16%, transparent);
+  color: var(--color-primary);
+}
+
 .statement-badge--below {
   display: inline-block;
   margin-top: 6px;

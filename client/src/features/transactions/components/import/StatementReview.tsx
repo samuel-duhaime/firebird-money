@@ -357,6 +357,14 @@ export const StatementReview = ({
                             {t('transactions.import.review.newMerchant')}
                           </span>
                         )}
+                        {line.rule_applied && (
+                          <span
+                            className="statement-badge statement-badge--rule"
+                            title={t('transactions.import.review.ruleHint')}
+                          >
+                            {t('transactions.import.review.rule')}
+                          </span>
+                        )}
                       </span>
                       <span className="statement-merchant-raw">
                         {line.original_statement}

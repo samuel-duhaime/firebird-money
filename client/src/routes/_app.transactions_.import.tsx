@@ -33,6 +33,12 @@ const toImportTransaction = (line: ReviewLine): ImportTransaction => ({
     ? { account_id: line.account_id }
     : { new_account: line.new_account! }),
   tag_ids: line.tag_ids,
+  // What a rule set, if any.
+  ...(line.owner !== null && { owner: line.owner }),
+  ...(line.reviewed !== null && { reviewed: line.reviewed }),
+  ...(line.review_assignee !== null && {
+    review_assignee: line.review_assignee,
+  }),
 });
 
 // `transactions_` un-nests this page from `/transactions`: it's a page of its own, not a modal

@@ -229,6 +229,18 @@ New households are seeded with starter groups and categories automatically.
 
 A tag is a free-form label attached to transactions (see `tag_ids` on [`/transactions`](#api)), independent of category or account. Names are unique per household, not globally. New households are seeded with starter tags automatically.
 
+`/rules`:
+
+- `GET /rules` — list the caller's household's rules, in the order they run.
+- `GET /rules/{id}` — fetch a single rule.
+- `POST /rules` — create a rule (`conditions`, `actions`, and `apply_to_existing` to also apply it to the existing transactions it matches). Appended at the bottom.
+- `PATCH /rules/{id}` — replace a rule's `conditions` and/or `actions` (same body as create).
+- `PATCH /rules/reorder` — set the order the household's rules run in (`rule_ids`).
+- `POST /rules/preview` — the transactions a rule (`conditions`, `actions`) matches and what it would change them to. Stores nothing.
+- `DELETE /rules/{id}` — delete a rule. Transactions it already changed stay as they are.
+
+A rule applies its actions (rename merchant, category, owner, add tags, review status) to a transaction that matches all its conditions (original statement, merchant, amount, category, owner, account). Rules run by themselves on every statement import, from top to bottom: each one sees the transaction as the rules above left it, and the lower one wins when two set the same field. They also run on existing transactions when saved with "Update existing transactions", but never on a transaction added or edited by hand.
+
 `/households`:
 
 - `GET /households/{id}` — fetch a single household.
@@ -267,7 +279,7 @@ Settings are per-user, not per-household: which optional columns show on the tra
 
 ## Data schema
 
-Every table in the Postgres schema (see `server/migrations/`) and how they relate. `Rule` is still design-stage — not a real table yet — so it isn't pictured.
+Every table in the Postgres schema (see `server/migrations/`) and how they relate.
 
 **People & access:**
 
@@ -299,6 +311,7 @@ erDiagram
     USERS ||--o{ ACCOUNTS : owns
     USERS ||--o{ TRANSACTIONS : "owns, reviews"
     HOUSEHOLDS ||--o{ TAGS : has
+    HOUSEHOLDS ||--o{ RULES : has
     TRANSACTIONS ||--o{ TRANSACTION_TAGS : has
     TAGS ||--o{ TRANSACTION_TAGS : has
 ```

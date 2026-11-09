@@ -146,3 +146,6 @@ export const reorderCategoriesFailedToast = () =>
 
 export const reorderCategoryGroupsFailedToast = () =>
   toast.error(i18n.t('toast.reorderCategoryGroupsFailed'));
+
+export const reorderRulesFailedToast = () =>
+  toast.error(i18n.t('toast.reorderRulesFailed'));

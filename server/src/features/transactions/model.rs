@@ -128,6 +128,14 @@ pub struct StatementTransaction {
     /// the user accepts the line with it. Only set when `account_id` is `None`.
     pub new_account: Option<SuggestedAccount>,
     pub tag_ids: Vec<i32>,
+    /// The owner a rule gave it, or `None` for its account's owner.
+    pub owner: Option<Owner>,
+    /// `Some(false)` when a rule sends it for review (to `review_assignee`, Anyone when `None`);
+    /// `None` keeps the usual: imported lines start out reviewed.
+    pub reviewed: Option<bool>,
+    pub review_assignee: Option<ReviewAssignee>,
+    /// Whether one of the household's rules matched it (and applied its actions).
+    pub rule_applied: bool,
     /// An existing transaction with the same date, amount, and account (when known) — most likely
     /// this same line, imported or typed in before.
     pub duplicate_of_transaction_id: Option<i64>,
@@ -187,6 +195,12 @@ pub struct ImportTransaction {
     /// Ids outside the caller's own household are silently dropped, same as `NewTransaction`.
     #[serde(default)]
     pub tag_ids: Vec<i32>,
+    /// Defaults to the account's owner when absent.
+    pub owner: Option<Owner>,
+    /// Defaults to `true`. When `false`, it waits for a review by `review_assignee` (Anyone when
+    /// absent).
+    pub reviewed: Option<bool>,
+    pub review_assignee: Option<ReviewAssignee>,
 }
 
 /// Body for `POST /transactions/import`.
@@ -206,7 +220,7 @@ pub struct ImportResult {
 }
 
 /// Optional query params for `GET /transactions`. Absent fields mean "no filter".
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 pub struct TransactionFilter {
     pub date: Option<NaiveDate>,
     pub merchant_id: Option<i32>,
@@ -270,8 +284,8 @@ impl TransactionFilter {
     }
 }
 
-/// Comparison applied by `TransactionFilter::amount`.
-#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
+/// Comparison applied by `TransactionFilter::amount` (and by a rule's amount condition).
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum AmountOp {
     GreaterThan,
@@ -324,6 +338,16 @@ impl ReviewAssignee {
         match self {
             ReviewAssignee::Anyone => None,
             ReviewAssignee::Member(id) => Some(id),
+        }
+    }
+}
+
+/// Written back the way the API takes it: `"anyone"` or the member's id (rules store it this way).
+impl Serialize for ReviewAssignee {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            ReviewAssignee::Anyone => serializer.serialize_str("anyone"),
+            ReviewAssignee::Member(id) => serializer.serialize_i32(*id),
         }
     }
 }

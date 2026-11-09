@@ -378,11 +378,18 @@ pub async fn create_imported(
             (None, None) => return Err(sqlx::Error::RowNotFound),
         };
 
+        let reviewed = line.reviewed.unwrap_or(true);
+        let review_assignee = match reviewed {
+            true => None,
+            false => line.review_assignee,
+        };
+        lock_review_assignee(&mut tx, household_id, review_assignee).await?;
         let (transaction_id,): (i64,) = sqlx::query_as(&format!(
             "INSERT INTO transactions
                 (household_id, user_id, date, original_statement, merchant_id, amount,
-                 category_id, account_id, reviewed, source, owner_user_id)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, 'import', ({ACCOUNT_OWNER}))
+                 category_id, account_id, reviewed, review_assignee_user_id, source, owner_user_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'import',
+                     CASE WHEN $11 THEN $12 ELSE ({ACCOUNT_OWNER}) END)
              RETURNING id"
         ))
         .bind(household_id)
@@ -393,6 +400,10 @@ pub async fn create_imported(
         .bind(line.amount)
         .bind(line.category_id)
         .bind(account_id)
+        .bind(reviewed)
+        .bind(review_assignee.and_then(|assignee| assignee.user_id()))
+        .bind(line.owner.is_some())
+        .bind(line.owner.and_then(|owner| owner.user_id()))
         .fetch_one(&mut *tx)
         .await?;
 

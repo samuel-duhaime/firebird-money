@@ -1,0 +1,130 @@
+.multi-select-trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  min-height: 20px;
+  cursor: pointer;
+}
+
+.multi-select-trigger:focus-visible {
+  border-color: var(--color-primary);
+  outline: none;
+}
+
+.multi-select-placeholder {
+  flex: 1;
+  color: var(--color-lightest);
+}
+
+.multi-select-chips {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.multi-select-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 4px 2px 8px;
+  border-radius: 999px;
+  background: var(--color-medium);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.multi-select-chip-remove {
+  display: flex;
+  align-items: center;
+  padding: 2px 4px;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--color-lightest);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.multi-select-chip-remove:hover,
+.multi-select-chip-remove:focus-visible {
+  color: var(--color-white);
+}
+
+.multi-select-chevron {
+  flex: none;
+  color: var(--color-lightest);
+  font-size: 12px;
+}
+
+.multi-select-popover {
+  width: 280px;
+  max-height: 360px;
+  padding: var(--spacing-xs);
+  gap: var(--spacing-xs);
+}
+
+.multi-select-search {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 12px;
+  border: 1px solid var(--color-medium);
+  border-radius: 8px;
+  background: var(--color-background);
+  color: var(--color-white);
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+}
+
+.multi-select-search:focus {
+  border-color: var(--color-primary);
+}
+
+.multi-select-options {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+
+.multi-select-group {
+  margin: var(--spacing-xs) 0 2px;
+  padding: 0 var(--spacing-xs);
+  color: var(--color-lightest);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.multi-select-option {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 6px var(--spacing-xs);
+  border-radius: var(--spacing-xs);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.multi-select-option:hover {
+  background: var(--color-medium);
+}
+
+.multi-select-option input {
+  accent-color: var(--color-primary);
+}
+
+.multi-select-option-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multi-select-empty {
+  margin: var(--spacing-xs);
+  color: var(--color-lightest);
+  font-size: 14px;
+}

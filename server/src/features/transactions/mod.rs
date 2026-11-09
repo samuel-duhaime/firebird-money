@@ -1,8 +1,8 @@
 mod download;
 mod handlers;
 mod import;
-mod model;
-mod repository;
+pub mod model;
+pub mod repository;
 #[cfg(test)]
 mod tests;
 
