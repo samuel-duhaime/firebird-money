@@ -98,6 +98,30 @@ jobs:
           workspaces: server
       - run: cargo test --all-features
 
+  client-lint:
+    name: client lint (prettier, oxlint, tsc)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci
+      # --check fails the job instead of rewriting files; `npm run format` is the local fix.
+      - run: npx prettier --check .
+      - run: npm run lint
+      # The TanStack Router plugin writes src/routeTree.gen.ts (gitignored) during a Vite build, and
+      # tsc needs it, so the build runs first. It also checks that the app builds.
+      - run: npx vite build
+      - run: npx tsc -b
+
   e2e:
     name: client e2e (playwright)
     runs-on: ubuntu-latest

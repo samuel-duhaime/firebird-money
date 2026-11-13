@@ -12,7 +12,11 @@ export const LanguageSwitcher = ({ onChange }: LanguageSwitcherProps) => {
   const { t, i18n } = useTranslation();
 
   return (
-    <div className="language-switcher" role="group" aria-label={t('leftMenu.language')}>
+    <div
+      className="language-switcher"
+      role="group"
+      aria-label={t('leftMenu.language')}
+    >
       {SUPPORTED_LANGUAGES.map((language) => (
         <button
           key={language}

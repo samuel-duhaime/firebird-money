@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { DragEvent } from 'react';
 
-type ReorderMutationLike = {
+type ReorderMutationLike<Id> = {
   mutate: (
-    ids: number[],
+    ids: Id[],
     options?: { onError?: () => void; onSettled?: () => void },
   ) => void;
 };
@@ -11,17 +11,17 @@ type ReorderMutationLike = {
 /** Drives a reorder of `sourceItems` by drag-and-drop or, for anyone who can't or doesn't want to
  * drag (keyboard and screen-reader users in particular — a mouse-only drag handle leaves them with
  * no way to reorder at all), by the `moveUp`/`moveDown` pair. Generic over what's being reordered
- * (tags, category groups, or the categories inside one group).
+ * (tags, category groups, the categories inside one group, or dashboard widgets).
  *
  * A local copy the gesture reorders live, independent of `sourceItems` until the change lands and
  * the server confirms it — kept in sync with `sourceItems` the rest of the time (e.g. after a
  * create/delete elsewhere), but never while a drag or a save is in flight, so neither a refetch
  * landing mid-drag nor one landing while the mutation is still pending clobbers it back to the old
  * order. */
-export const useDragReorder = <T>(
+export const useDragReorder = <T, Id extends number | string = number>(
   sourceItems: T[],
-  getId: (item: T) => number,
-  mutation: ReorderMutationLike,
+  getId: (item: T) => Id,
+  mutation: ReorderMutationLike<Id>,
   onError: () => void,
 ) => {
   const [items, setItems] = useState<T[]>(sourceItems);

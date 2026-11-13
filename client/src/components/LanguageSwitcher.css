@@ -12,7 +12,9 @@
   border-radius: 6px;
   background: transparent;
   color: var(--color-lightest);
-  font: 700 13px/1.5 Quicksand, sans-serif;
+  font:
+    700 13px/1.5 Quicksand,
+    sans-serif;
   text-transform: uppercase;
   cursor: pointer;
 }

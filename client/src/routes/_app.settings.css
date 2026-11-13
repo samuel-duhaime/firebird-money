@@ -6,7 +6,7 @@
 .settings-nav {
   width: 220px;
   flex-shrink: 0;
-  /* No top padding: `.app-main` already pads this layout's top edge by `--spacing-l`, the same
+  /* No top padding: `.app-main` already pads this layout's top edge by `--spacing-s`, the same
    * offset every other page's content sits at (e.g. Dashboard) — adding more here would push this
    * heading lower than theirs. */
   padding: 0 var(--spacing-m) var(--spacing-l);

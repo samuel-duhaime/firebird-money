@@ -6,8 +6,13 @@ export const useBulkUpdateTransactions = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ ids, patch }: { ids: number[]; patch: BulkTransactionPatch }) =>
-      bulkUpdateTransactions(ids, patch),
+    mutationFn: ({
+      ids,
+      patch,
+    }: {
+      ids: number[];
+      patch: BulkTransactionPatch;
+    }) => bulkUpdateTransactions(ids, patch),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       // See use-update-transaction.ts — a merchant's transaction_count/recommended_category_id
