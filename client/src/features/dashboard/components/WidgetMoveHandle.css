@@ -1,0 +1,23 @@
+/* Sits in the left padding of its widget's header (which must be `position: relative`), so the
+ * title stays where it is. Hidden until the widget is hovered or has focus, like the household
+ * pages' grips. */
+.widget-move-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  color: var(--color-lightest);
+  font-size: 12px;
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.dashboard-widget:hover .widget-move-handle,
+.dashboard-widget:focus-within .widget-move-handle {
+  opacity: 1;
+}

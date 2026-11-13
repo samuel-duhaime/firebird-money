@@ -1,0 +1,66 @@
+/* The card sits among others on the dashboard, so its header scrolls with it rather than sticking
+ * like the Transactions page's toolbar. Relative, for the move grip in its left padding, so the
+ * toolbar's sticky `top` offset has to go too: on a relative box it would shift the header up,
+ * leaving a gap above the list. */
+.recent-transactions-header {
+  position: relative;
+  top: auto;
+}
+
+.recent-transactions-heading {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-xs);
+  min-width: 0;
+}
+
+.recent-transactions-title {
+  margin: 0;
+  font-size: 15px;
+}
+
+.recent-transactions-link {
+  color: var(--color-white);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.recent-transactions-link:hover,
+.recent-transactions-link:focus-visible {
+  color: var(--color-link);
+}
+
+.recent-transactions-link:focus-visible {
+  outline: 2px solid var(--color-white);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.recent-transactions-subtitle {
+  color: var(--color-lightest);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* Half the dashboard is narrower than the Transactions page's 600px minimum row, and the card only
+ * shows three columns, so its rows fit the card instead of scrolling sideways, with tighter gaps. */
+.recent-transactions-card .transactions-row {
+  min-width: 0;
+  gap: var(--spacing-xs);
+}
+
+/* The "view these transactions" arrow shows over the cell's right edge on hover, rather than
+ * keeping its width reserved beside every cell, which this narrow card can't spare. */
+.recent-transactions-card .transactions-row-cell-group {
+  position: relative;
+}
+
+.recent-transactions-card
+  .transactions-row-cell-group
+  .view-transactions-arrow {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--color-dark);
+}
