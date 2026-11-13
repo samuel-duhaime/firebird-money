@@ -117,6 +117,9 @@ jobs:
       # --check fails the job instead of rewriting files; `npm run format` is the local fix.
       - run: npx prettier --check .
       - run: npm run lint
+      # The TanStack Router plugin writes src/routeTree.gen.ts (gitignored) during a Vite build, and
+      # tsc needs it, so the build runs first. It also checks that the app builds.
+      - run: npx vite build
       - run: npx tsc -b
 
   e2e:
