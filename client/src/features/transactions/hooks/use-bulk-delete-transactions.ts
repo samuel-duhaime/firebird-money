@@ -11,7 +11,10 @@ export const useBulkDeleteTransactions = () => {
       // ['transactions'] alone would also match these exact detail queries and refetch them,
       // hitting a 404 for records just deleted.
       for (const id of ids) {
-        queryClient.removeQueries({ queryKey: ['transactions', id], exact: true });
+        queryClient.removeQueries({
+          queryKey: ['transactions', id],
+          exact: true,
+        });
       }
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       // See use-update-transaction.ts — a merchant's transaction_count/recommended_category_id

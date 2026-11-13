@@ -83,7 +83,9 @@ const DateField = ({
         <button
           type="button"
           className="date-range-popover-calendar-button"
-          aria-label={t('transactions.dateRange.pickA', { label: label.toLowerCase() })}
+          aria-label={t('transactions.dateRange.pickA', {
+            label: label.toLowerCase(),
+          })}
           onClick={openPicker}
         >
           <FontAwesomeIcon icon={faCalendarDays} />
@@ -209,7 +211,9 @@ export const DateRangeButton = () => {
           >
             <div className="date-range-popover-columns">
               <div className="date-range-popover-presets">
-                <h4 className="date-range-popover-title">{t('transactions.dateRange.title')}</h4>
+                <h4 className="date-range-popover-title">
+                  {t('transactions.dateRange.title')}
+                </h4>
                 <div className="date-range-popover-preset-list">
                   {DATE_RANGE_PRESETS.map((preset, index) => (
                     <button

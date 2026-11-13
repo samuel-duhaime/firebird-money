@@ -14,9 +14,7 @@ test.describe('Household > Categories settings', () => {
       .click();
 
     await expect(authedPage).toHaveURL('/settings/categories');
-    await expect(authedPage.locator('.top-menu-title')).toHaveText(
-      'Settings',
-    );
+    await expect(authedPage.locator('.top-menu-title')).toHaveText('Settings');
     await expect(
       authedPage.getByRole('link', { name: 'Categories', exact: true }),
     ).toHaveClass(/settings-nav-link--active/);
@@ -105,12 +103,8 @@ test.describe('Household > Categories settings', () => {
     const editDialog = authedPage.getByRole('dialog', {
       name: 'Edit category',
     });
-    await expect(editDialog.getByLabel('Name (English)')).toHaveValue(
-      'Prime',
-    );
-    await expect(editDialog.getByLabel('Name (French)')).toHaveValue(
-      'Prime',
-    );
+    await expect(editDialog.getByLabel('Name (English)')).toHaveValue('Prime');
+    await expect(editDialog.getByLabel('Name (French)')).toHaveValue('Prime');
   });
 
   test('leaving both names blank shows an inline error, not a toast', async ({
@@ -201,9 +195,7 @@ test.describe('Household > Categories settings', () => {
     await expect(
       firstRow.getByRole('button', { name: 'Move Paychecks up' }),
     ).toBeDisabled();
-    await firstRow
-      .getByRole('button', { name: 'Move Paychecks down' })
-      .click();
+    await firstRow.getByRole('button', { name: 'Move Paychecks down' }).click();
 
     await expect(nameLocator.first()).not.toHaveText('Paychecks');
     await expect(nameLocator.nth(1)).toHaveText('Paychecks');
@@ -252,7 +244,7 @@ test.describe('Household > Categories settings', () => {
     ).toHaveText(afterMove);
   });
 
-  test('a transaction count links to that category\'s transactions', async ({
+  test("a transaction count links to that category's transactions", async ({
     authedPage,
     context,
     workerInfra,

@@ -10,7 +10,10 @@ export const useDeleteTransaction = () => {
       // Removed first: invalidating ['transactions'] alone would also match this exact detail
       // query (still active — the edit panel unmounts after this callback) and refetch it,
       // hitting a 404 for the record just deleted.
-      queryClient.removeQueries({ queryKey: ['transactions', id], exact: true });
+      queryClient.removeQueries({
+        queryKey: ['transactions', id],
+        exact: true,
+      });
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       // See use-update-transaction.ts — a merchant's transaction_count/recommended_category_id
       // are computed from the household's transactions.

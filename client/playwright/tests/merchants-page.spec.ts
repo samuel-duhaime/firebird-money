@@ -80,7 +80,11 @@ test.describe('Household > Merchants settings', () => {
     context,
     workerInfra,
   }) => {
-    await createMerchant(context.request, workerInfra.apiOrigin, 'Corner Bakery');
+    await createMerchant(
+      context.request,
+      workerInfra.apiOrigin,
+      'Corner Bakery',
+    );
     await authedPage.goto('/settings/merchants');
     await authedPage
       .getByRole('button', { name: 'New merchant', exact: true })
@@ -114,7 +118,11 @@ test.describe('Household > Merchants settings', () => {
     context,
     workerInfra,
   }) => {
-    await createMerchant(context.request, workerInfra.apiOrigin, 'Corner Bakery');
+    await createMerchant(
+      context.request,
+      workerInfra.apiOrigin,
+      'Corner Bakery',
+    );
     await authedPage.goto('/settings/merchants');
     const row = authedPage.locator('li.merchants-list-row', {
       hasText: 'Corner Bakery',
@@ -140,7 +148,11 @@ test.describe('Household > Merchants settings', () => {
     context,
     workerInfra,
   }) => {
-    await createMerchant(context.request, workerInfra.apiOrigin, 'Corner Bakery');
+    await createMerchant(
+      context.request,
+      workerInfra.apiOrigin,
+      'Corner Bakery',
+    );
     await authedPage.goto('/settings/merchants');
     const row = authedPage.locator('li.merchants-list-row', {
       hasText: 'Corner Bakery',
@@ -160,7 +172,11 @@ test.describe('Household > Merchants settings', () => {
     context,
     workerInfra,
   }) => {
-    await createMerchant(context.request, workerInfra.apiOrigin, 'Corner Bakery');
+    await createMerchant(
+      context.request,
+      workerInfra.apiOrigin,
+      'Corner Bakery',
+    );
     await authedPage.goto('/settings/merchants');
     const row = authedPage.locator('li.merchants-list-row', {
       hasText: 'Corner Bakery',
@@ -183,7 +199,11 @@ test.describe('Household > Merchants settings', () => {
     context,
     workerInfra,
   }) => {
-    await createMerchant(context.request, workerInfra.apiOrigin, 'Corner Bakery');
+    await createMerchant(
+      context.request,
+      workerInfra.apiOrigin,
+      'Corner Bakery',
+    );
     await authedPage.goto('/settings/merchants');
     const row = authedPage.locator('li.merchants-list-row', {
       hasText: 'Corner Bakery',
@@ -202,7 +222,11 @@ test.describe('Household > Merchants settings', () => {
     // Created explicitly, then matched again by name below — seedTransaction always resolves a
     // merchant from raw text, and "Corner Bakery" doesn't collide with any common merchant, so
     // the transaction ends up pointing at this exact row rather than creating a second one.
-    await createMerchant(context.request, workerInfra.apiOrigin, 'Corner Bakery');
+    await createMerchant(
+      context.request,
+      workerInfra.apiOrigin,
+      'Corner Bakery',
+    );
     const categoryId = await getCategoryId(
       context.request,
       workerInfra.apiOrigin,
@@ -259,12 +283,12 @@ test.describe('Household > Merchants settings', () => {
       .getByRole('combobox', { name: 'Sort' })
       .selectOption('alphabetical');
 
-    await expect(
-      authedPage.locator('.merchants-list-name').first(),
-    ).toHaveText('#1 Bakery');
+    await expect(authedPage.locator('.merchants-list-name').first()).toHaveText(
+      '#1 Bakery',
+    );
   });
 
-  test('a transaction count links to that merchant\'s transactions', async ({
+  test("a transaction count links to that merchant's transactions", async ({
     authedPage,
     context,
     workerInfra,
