@@ -1,19 +1,27 @@
+use sqlx::types::Json;
 use sqlx::PgPool;
 
-use super::model::{Settings, SettingsPatch};
+use super::model::{normalize_dashboard_widgets, Settings, SettingsPatch};
 
 const SELECT_COLUMNS: &str = "user_id, show_category_column, show_tags_column, show_account_column,
-    show_owner_column, language";
+    show_owner_column, language, dashboard_widgets";
+
+/// Fills in the widgets the saved list doesn't mention, see `normalize_dashboard_widgets`.
+fn normalized(mut settings: Settings) -> Settings {
+    settings.dashboard_widgets = Json(normalize_dashboard_widgets(&settings.dashboard_widgets));
+    settings
+}
 
 /// Fetches the user's settings row, or `None` if they've never saved any — callers fall back to
 /// `Settings::defaults` in that case.
 pub async fn get(pool: &PgPool, user_id: i32) -> Result<Option<Settings>, sqlx::Error> {
-    sqlx::query_as::<_, Settings>(&format!(
+    Ok(sqlx::query_as::<_, Settings>(&format!(
         "SELECT {SELECT_COLUMNS} FROM settings WHERE user_id = $1"
     ))
     .bind(user_id)
     .fetch_optional(pool)
-    .await
+    .await?
+    .map(normalized))
 }
 
 /// Applies a partial update, creating the row (at defaults) on the user's first write. Fields left
@@ -23,18 +31,23 @@ pub async fn update(
     user_id: i32,
     patch: &SettingsPatch,
 ) -> Result<Settings, sqlx::Error> {
+    let dashboard_widgets = patch
+        .dashboard_widgets
+        .as_deref()
+        .map(|widgets| Json(normalize_dashboard_widgets(widgets)));
     sqlx::query_as::<_, Settings>(&format!(
         "INSERT INTO settings
             (user_id, show_category_column, show_tags_column, show_account_column,
-             show_owner_column, language)
+             show_owner_column, language, dashboard_widgets)
          VALUES ($1, COALESCE($2, true), COALESCE($3, true), COALESCE($4, true),
-                 COALESCE($6, true), $5)
+                 COALESCE($6, true), $5, COALESCE($7, '[]'::jsonb))
          ON CONFLICT (user_id) DO UPDATE
          SET show_category_column = COALESCE($2, settings.show_category_column),
              show_tags_column = COALESCE($3, settings.show_tags_column),
              show_account_column = COALESCE($4, settings.show_account_column),
              show_owner_column = COALESCE($6, settings.show_owner_column),
-             language = COALESCE($5, settings.language)
+             language = COALESCE($5, settings.language),
+             dashboard_widgets = COALESCE($7, settings.dashboard_widgets)
          RETURNING {SELECT_COLUMNS}"
     ))
     .bind(user_id)
@@ -43,6 +56,8 @@ pub async fn update(
     .bind(patch.show_account_column)
     .bind(patch.language)
     .bind(patch.show_owner_column)
+    .bind(dashboard_widgets)
     .fetch_one(pool)
     .await
+    .map(normalized)
 }

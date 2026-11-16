@@ -10,7 +10,12 @@ import './SortButton.css';
 
 const routeApi = getRouteApi('/_app/transactions');
 
-const SORT_ORDERS: SortOrder[] = ['date', 'inverse_date', 'amount', 'inverse_amount'];
+const SORT_ORDERS: SortOrder[] = [
+  'date',
+  'inverse_date',
+  'amount',
+  'inverse_amount',
+];
 
 export const SortButton = () => {
   const { t } = useTranslation();

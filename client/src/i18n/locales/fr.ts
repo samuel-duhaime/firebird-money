@@ -453,10 +453,25 @@ export const fr: typeof en = {
     },
   },
   dashboard: {
-    loading: 'Chargement des catégories…',
-    error: 'Échec du chargement des catégories.',
-    loaded_one: '{{count}} catégorie chargée depuis l’API.',
-    loaded_other: '{{count}} catégories chargées depuis l’API.',
+    move: 'Glisse pour déplacer {{name}}',
+    empty:
+      'Tous les widgets sont cachés. Utilise Personnaliser pour en afficher de nouveau.',
+    widgets: {
+      transactions: 'Transactions',
+    },
+    customize: {
+      button: 'Personnaliser',
+      title: 'Personnaliser le tableau de bord',
+      description: 'Choisis les widgets à voir sur ton tableau de bord',
+      close: 'Fermer',
+      show: 'Afficher {{name}}',
+      moveUp: 'Monter {{name}}',
+      moveDown: 'Descendre {{name}}',
+    },
+    transactions: {
+      title: 'Transactions',
+      subtitle: 'Les plus récentes',
+    },
   },
   transactions: {
     topMenu: {

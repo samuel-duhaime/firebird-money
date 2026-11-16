@@ -15,7 +15,7 @@ import { useUpdateSettings } from '../../settings/hooks/use-update-settings';
 import { TransactionsToolbar } from './TransactionsToolbar';
 import { ReviewEmptyState } from './ReviewViewButton';
 import { useBulkUpdateTransactions } from '../hooks/use-bulk-update-transactions';
-import { useCurrentUser } from '../../auth/hooks/use-current-user';
+import { useReviewCounts } from '../hooks/use-review-counts';
 import { toNeedsReview, toReviewView } from '../utils/filters';
 import type { ReviewView } from '../utils/filters';
 import { CategoryPicker } from './CategoryPicker';
@@ -73,7 +73,7 @@ const dailyTotal = (transactions: Transaction[]): number =>
  * (`CategoryPicker`, `MerchantPicker`, `Select`) that commit on pick instead. */
 type EditableField = 'amount';
 
-const TransactionRow = ({
+export const TransactionRow = ({
   transaction,
   language,
   locale,
@@ -82,6 +82,8 @@ const TransactionRow = ({
   onToggleSelect,
   columnVisibility,
   showReviewButton,
+  onOpen,
+  gridTemplateColumns,
 }: {
   transaction: Transaction;
   language: string;
@@ -92,6 +94,10 @@ const TransactionRow = ({
   columnVisibility: ColumnVisibility;
   /** A round "Mark reviewed" button before the merchant, for the review views. */
   showReviewButton: boolean;
+  /** What the chevron does. Defaults to opening the transaction over the Transactions page. */
+  onOpen?: (id: number) => void;
+  /** Replaces the row's columns, for a narrower list than the Transactions page's. */
+  gridTemplateColumns?: string;
 }) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -254,9 +260,11 @@ const TransactionRow = ({
     <li
       className="transactions-row"
       style={{
-        gridTemplateColumns: rowGridTemplateColumns(columnVisibility, {
-          selectable: showReviewButton,
-        }),
+        gridTemplateColumns:
+          gridTemplateColumns ??
+          rowGridTemplateColumns(columnVisibility, {
+            selectable: showReviewButton,
+          }),
       }}
     >
       {showReviewButton && (
@@ -391,11 +399,13 @@ const TransactionRow = ({
         className="transactions-row-chevron-button"
         aria-label={t('transactions.edit.openTransaction')}
         onClick={() =>
-          navigate({
-            to: '/transactions/$transactionId',
-            params: { transactionId: String(transaction.id) },
-            search: (prev) => prev,
-          })
+          onOpen
+            ? onOpen(transaction.id)
+            : navigate({
+                to: '/transactions/$transactionId',
+                params: { transactionId: String(transaction.id) },
+                search: (prev) => prev,
+              })
         }
       >
         <FontAwesomeIcon
@@ -424,22 +434,11 @@ export const TransactionsList = () => {
       search: (prev) => ({ ...prev, needs_review: toNeedsReview(view) }),
       replace: true,
     });
-  // The dropdown's counts are the whole household's, whatever else narrows the list.
-  const { data: currentUser } = useCurrentUser();
   const {
-    data: needsReview,
+    counts: reviewCounts,
     isPending: isNeedsReviewPending,
     isError: isNeedsReviewError,
-  } = useTransactions({ needs_review: 'all' });
-  const reviewCounts = {
-    needs_review: needsReview?.length ?? 0,
-    mine:
-      needsReview?.filter(
-        (transaction) =>
-          transaction.review_assignee_user_id === null ||
-          transaction.review_assignee_user_id === currentUser?.user.id,
-      ).length ?? 0,
-  };
+  } = useReviewCounts();
   const bulkUpdateMutation = useBulkUpdateTransactions();
   const markAllReviewed = () =>
     bulkUpdateMutation.mutate(

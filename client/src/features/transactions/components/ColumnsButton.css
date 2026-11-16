@@ -19,7 +19,9 @@
   padding: var(--spacing-xs) var(--spacing-s);
   border-radius: var(--spacing-xs);
   color: var(--color-white);
-  font: 400 15px/1.5 Quicksand, sans-serif;
+  font:
+    400 15px/1.5 Quicksand,
+    sans-serif;
   cursor: pointer;
 }
 

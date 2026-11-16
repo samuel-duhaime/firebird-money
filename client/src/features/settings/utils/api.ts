@@ -1,6 +1,6 @@
 import { apiFetch } from '../../../lib/api-client';
 import type { SupportedLanguage } from '../../../i18n';
-import type { Settings } from './types';
+import type { DashboardWidget, Settings } from './types';
 
 export const getSettings = (): Promise<Settings> =>
   apiFetch<Settings>('/settings');
@@ -12,6 +12,8 @@ export interface SettingsPatch {
   show_account_column?: boolean;
   show_owner_column?: boolean;
   language?: SupportedLanguage;
+  /** The whole list, in its new order. */
+  dashboard_widgets?: DashboardWidget[];
 }
 
 export const updateSettings = (patch: SettingsPatch): Promise<Settings> =>

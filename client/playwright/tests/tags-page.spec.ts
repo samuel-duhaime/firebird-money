@@ -190,7 +190,7 @@ test.describe('Household > Tags settings', () => {
     ).toBeDisabled();
   });
 
-  test('a transaction count links to that tag\'s transactions', async ({
+  test("a transaction count links to that tag's transactions", async ({
     authedPage,
     context,
     workerInfra,

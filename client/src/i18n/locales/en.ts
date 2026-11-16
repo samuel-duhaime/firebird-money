@@ -450,10 +450,24 @@ export const en = {
     },
   },
   dashboard: {
-    loading: 'Loading categories…',
-    error: 'Failed to load categories.',
-    loaded_one: '{{count}} category loaded from the API.',
-    loaded_other: '{{count}} categories loaded from the API.',
+    move: 'Drag to move {{name}}',
+    empty: 'Every widget is hidden. Use Customize to show some again.',
+    widgets: {
+      transactions: 'Transactions',
+    },
+    customize: {
+      button: 'Customize',
+      title: 'Customize dashboard',
+      description: 'Select the widgets you want to see on your dashboard',
+      close: 'Close',
+      show: 'Show {{name}}',
+      moveUp: 'Move {{name}} up',
+      moveDown: 'Move {{name}} down',
+    },
+    transactions: {
+      title: 'Transactions',
+      subtitle: 'Most recent',
+    },
   },
   transactions: {
     topMenu: {

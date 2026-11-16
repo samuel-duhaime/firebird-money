@@ -33,7 +33,9 @@
 
 .landing-mark-text {
   margin: 0;
-  font: 700 24px/normal Nunito, sans-serif;
+  font:
+    700 24px/normal Nunito,
+    sans-serif;
   color: var(--color-white);
 }
 
@@ -73,7 +75,9 @@
   border-radius: 999px;
   background: var(--color-primary);
   color: var(--color-white);
-  font: 700 16px/1 Quicksand, sans-serif;
+  font:
+    700 16px/1 Quicksand,
+    sans-serif;
   cursor: pointer;
   transition: opacity 0.15s ease;
 }

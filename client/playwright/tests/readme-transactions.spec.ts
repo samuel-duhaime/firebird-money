@@ -80,54 +80,54 @@ const DEMO_TRANSACTIONS: {
   },
 ];
 
-test('transactions page, for the README', { tag: '@screenshot' }, async ({
-  authedPage,
-  context,
-  workerInfra,
-}) => {
-  for (const {
-    date,
-    merchant,
-    amount,
-    category,
-    account,
-    tags,
-  } of DEMO_TRANSACTIONS) {
-    const categoryId = await getCategoryId(
-      context.request,
-      workerInfra.apiOrigin,
-      category,
-    );
-    const tagIds = tags
-      ? await Promise.all(
-          tags.map((tag) =>
-            getTagId(context.request, workerInfra.apiOrigin, tag),
-          ),
-        )
-      : undefined;
-    await seedTransaction(context.request, workerInfra.apiOrigin, {
+test(
+  'transactions page, for the README',
+  { tag: '@screenshot' },
+  async ({ authedPage, context, workerInfra }) => {
+    for (const {
       date,
       merchant,
       amount,
-      categoryId,
+      category,
       account,
-      tagIds,
+      tags,
+    } of DEMO_TRANSACTIONS) {
+      const categoryId = await getCategoryId(
+        context.request,
+        workerInfra.apiOrigin,
+        category,
+      );
+      const tagIds = tags
+        ? await Promise.all(
+            tags.map((tag) =>
+              getTagId(context.request, workerInfra.apiOrigin, tag),
+            ),
+          )
+        : undefined;
+      await seedTransaction(context.request, workerInfra.apiOrigin, {
+        date,
+        merchant,
+        amount,
+        categoryId,
+        account,
+        tagIds,
+      });
+    }
+
+    await authedPage.goto('/transactions');
+    await expect(
+      authedPage.locator('li.transactions-row', {
+        hasText: 'Riverside Market',
+      }),
+    ).toBeVisible();
+
+    // Dev-only overlays (React Query/Router devtools toggle, the empty toast container) render as
+    // siblings of `.app-layout` under `#root` — real users never see them, so hide them for the
+    // screenshot rather than shipping a screenshot of the dev server's chrome.
+    await authedPage.addStyleTag({
+      content: '#root > *:not(.app-layout) { display: none !important; }',
     });
-  }
 
-  await authedPage.goto('/transactions');
-  await expect(
-    authedPage.locator('li.transactions-row', {
-      hasText: 'Riverside Market',
-    }),
-  ).toBeVisible();
-
-  // Dev-only overlays (React Query/Router devtools toggle, the empty toast container) render as
-  // siblings of `.app-layout` under `#root` — real users never see them, so hide them for the
-  // screenshot rather than shipping a screenshot of the dev server's chrome.
-  await authedPage.addStyleTag({
-    content: '#root > *:not(.app-layout) { display: none !important; }',
-  });
-
-  await authedPage.screenshot({ path: screenshotPath });
-});
+    await authedPage.screenshot({ path: screenshotPath });
+  },
+);

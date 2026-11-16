@@ -70,7 +70,11 @@ test.describe('add transaction with tags', () => {
     context,
     workerInfra,
   }) => {
-    await createMerchant(context.request, workerInfra.apiOrigin, 'Corner Store');
+    await createMerchant(
+      context.request,
+      workerInfra.apiOrigin,
+      'Corner Store',
+    );
     await authedPage.goto('/transactions');
     await authedPage.getByRole('button', { name: 'Add', exact: true }).click();
 
@@ -114,7 +118,11 @@ test.describe('add transaction with tags', () => {
     context,
     workerInfra,
   }) => {
-    await createMerchant(context.request, workerInfra.apiOrigin, 'No Tags Store');
+    await createMerchant(
+      context.request,
+      workerInfra.apiOrigin,
+      'No Tags Store',
+    );
     await authedPage.goto('/transactions');
     await authedPage.getByRole('button', { name: 'Add', exact: true }).click();
 

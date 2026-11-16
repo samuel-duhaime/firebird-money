@@ -205,3 +205,100 @@ async fn update_settings_only_affects_the_caller(pool: PgPool) {
     let jane_settings: serde_json::Value = test::call_and_read_body_json(&app, get_req).await;
     assert_eq!(jane_settings["show_account_column"], true);
 }
+
+// --- Dashboard widgets ---
+
+#[sqlx::test]
+async fn get_settings_shows_every_dashboard_widget_by_default(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in(&app, "sam@example.com").await;
+
+    let req = test::TestRequest::get()
+        .uri("/settings")
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    let body: serde_json::Value = test::call_and_read_body_json(&app, req).await;
+
+    assert_eq!(
+        body["dashboard_widgets"],
+        serde_json::json!([{ "id": "transactions", "visible": true }])
+    );
+}
+
+#[sqlx::test]
+async fn update_settings_persists_the_dashboard_widgets(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in(&app, "sam@example.com").await;
+    let hidden = serde_json::json!([{ "id": "transactions", "visible": false }]);
+
+    let patch_req = test::TestRequest::patch()
+        .uri("/settings")
+        .insert_header(("Cookie", cookie.clone()))
+        .set_json(serde_json::json!({ "dashboard_widgets": hidden }))
+        .to_request();
+    let patch_body: serde_json::Value = test::call_and_read_body_json(&app, patch_req).await;
+    assert_eq!(patch_body["dashboard_widgets"], hidden);
+
+    // A later column change leaves the widgets alone.
+    let column_req = test::TestRequest::patch()
+        .uri("/settings")
+        .insert_header(("Cookie", cookie.clone()))
+        .set_json(serde_json::json!({ "show_tags_column": false }))
+        .to_request();
+    assert_eq!(test::call_service(&app, column_req).await.status(), 200);
+
+    let get_req = test::TestRequest::get()
+        .uri("/settings")
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    let get_body: serde_json::Value = test::call_and_read_body_json(&app, get_req).await;
+    assert_eq!(get_body["dashboard_widgets"], hidden);
+}
+
+#[sqlx::test]
+async fn update_settings_fills_in_left_out_and_repeated_dashboard_widgets(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in(&app, "sam@example.com").await;
+
+    let empty_req = test::TestRequest::patch()
+        .uri("/settings")
+        .insert_header(("Cookie", cookie.clone()))
+        .set_json(serde_json::json!({ "dashboard_widgets": [] }))
+        .to_request();
+    let empty_body: serde_json::Value = test::call_and_read_body_json(&app, empty_req).await;
+    assert_eq!(
+        empty_body["dashboard_widgets"],
+        serde_json::json!([{ "id": "transactions", "visible": true }])
+    );
+
+    let repeated_req = test::TestRequest::patch()
+        .uri("/settings")
+        .insert_header(("Cookie", cookie))
+        .set_json(serde_json::json!({ "dashboard_widgets": [
+            { "id": "transactions", "visible": false },
+            { "id": "transactions", "visible": true },
+        ] }))
+        .to_request();
+    let repeated_body: serde_json::Value = test::call_and_read_body_json(&app, repeated_req).await;
+    assert_eq!(
+        repeated_body["dashboard_widgets"],
+        serde_json::json!([{ "id": "transactions", "visible": false }])
+    );
+}
+
+#[sqlx::test]
+async fn update_settings_rejects_an_unknown_dashboard_widget(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in(&app, "sam@example.com").await;
+
+    let req = test::TestRequest::patch()
+        .uri("/settings")
+        .insert_header(("Cookie", cookie))
+        .set_json(serde_json::json!({
+            "dashboard_widgets": [{ "id": "crystal_ball", "visible": true }]
+        }))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 400);
+}

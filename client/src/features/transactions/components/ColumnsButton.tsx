@@ -3,7 +3,10 @@ import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faTableColumns } from '@fortawesome/free-solid-svg-icons';
 import { useAnchoredPopover } from '../../../lib/use-anchored-popover';
-import type { ColumnVisibility, OptionalColumn } from '../utils/column-visibility';
+import type {
+  ColumnVisibility,
+  OptionalColumn,
+} from '../utils/column-visibility';
 import { OPTIONAL_COLUMNS } from '../utils/column-visibility';
 import '../../../components/Popover.css';
 import './ColumnsButton.css';
@@ -18,7 +21,9 @@ export const ColumnsButton = ({ visibility, onToggle }: ColumnsButtonProps) => {
   const { isOpen, setIsOpen, position, triggerRef, popoverRef } =
     useAnchoredPopover<HTMLButtonElement>();
 
-  const visibleCount = OPTIONAL_COLUMNS.filter((column) => visibility[column]).length;
+  const visibleCount = OPTIONAL_COLUMNS.filter(
+    (column) => visibility[column],
+  ).length;
 
   return (
     <>

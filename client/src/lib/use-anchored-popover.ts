@@ -33,7 +33,8 @@ export const useAnchoredPopover = <
 
     const updatePosition = () => {
       const rect = triggerRef.current?.getBoundingClientRect();
-      if (rect) setPosition({ top: rect.bottom + TRIGGER_GAP, left: rect.left });
+      if (rect)
+        setPosition({ top: rect.bottom + TRIGGER_GAP, left: rect.left });
     };
     updatePosition();
 
@@ -58,7 +59,8 @@ export const useAnchoredPopover = <
     const fitsBelow =
       triggerRect.bottom + TRIGGER_GAP + popoverRect.height + VIEWPORT_MARGIN <=
       window.innerHeight;
-    const fitsAbove = triggerRect.top - TRIGGER_GAP - popoverRect.height - VIEWPORT_MARGIN >= 0;
+    const fitsAbove =
+      triggerRect.top - TRIGGER_GAP - popoverRect.height - VIEWPORT_MARGIN >= 0;
     const preferredTop =
       !fitsBelow && fitsAbove
         ? triggerRect.top - TRIGGER_GAP - popoverRect.height
@@ -70,7 +72,8 @@ export const useAnchoredPopover = <
     const left = Math.max(VIEWPORT_MARGIN, Math.min(position.left, maxLeft));
     const top = Math.max(VIEWPORT_MARGIN, Math.min(preferredTop, maxTop));
 
-    if (left !== position.left || top !== position.top) setPosition({ left, top });
+    if (left !== position.left || top !== position.top)
+      setPosition({ left, top });
   }, [position]);
 
   useEffect(() => {
@@ -78,12 +81,19 @@ export const useAnchoredPopover = <
 
     const handlePointerDown = (event: MouseEvent) => {
       const target = event.target as Node;
-      if (triggerRef.current?.contains(target) || popoverRef.current?.contains(target)) return;
+      if (
+        triggerRef.current?.contains(target) ||
+        popoverRef.current?.contains(target)
+      )
+        return;
       // Without this, clicking a non-focusable area lets the browser's own end-of-click focus
       // resolution clear focus to <body> after this handler's re-focus-the-trigger effect has
       // already run, silently undoing it. Skipped for a focusable target so the browser can still
       // move focus there normally — e.g. the user clicking straight into another input.
-      if (!(target instanceof Element) || !target.closest(OUTSIDE_FOCUSABLE_SELECTOR)) {
+      if (
+        !(target instanceof Element) ||
+        !target.closest(OUTSIDE_FOCUSABLE_SELECTOR)
+      ) {
         event.preventDefault();
       }
       setIsOpen(false);

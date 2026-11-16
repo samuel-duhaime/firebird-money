@@ -13,9 +13,10 @@
 .app-main {
   flex: 1;
   min-width: 0;
-  /* If this top padding changes, also check TransactionsToolbar.css — its sticky toolbar cancels
-   * this exact value out to sit flush against this element's true top edge once scrolled. */
-  padding: var(--spacing-l) var(--spacing-l) var(--spacing-l) 0;
+  /* The top padding matches `.left-menu`'s, so every page's content starts level with the first
+   * menu link. If it changes, also check TransactionsToolbar.css — its sticky toolbar cancels this
+   * exact value out to sit flush against this element's true top edge once scrolled. */
+  padding: var(--spacing-s) var(--spacing-l) var(--spacing-l) 0;
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--color-medium) transparent;

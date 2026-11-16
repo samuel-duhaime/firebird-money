@@ -109,11 +109,15 @@
  * falls back to the input's own (white) `color`. `.date-input--empty` is toggled in JS based on
  * whether a date is actually picked, so the empty state can be dimmed like every other
  * placeholder here while a picked date still reads white. */
-.modal-body input[type='date'].date-input--empty::-webkit-datetime-edit-fields-wrapper,
+.modal-body
+  input[type='date'].date-input--empty::-webkit-datetime-edit-fields-wrapper,
 .modal-body input[type='date'].date-input--empty::-webkit-datetime-edit-text,
-.modal-body input[type='date'].date-input--empty::-webkit-datetime-edit-month-field,
-.modal-body input[type='date'].date-input--empty::-webkit-datetime-edit-day-field,
-.modal-body input[type='date'].date-input--empty::-webkit-datetime-edit-year-field {
+.modal-body
+  input[type='date'].date-input--empty::-webkit-datetime-edit-month-field,
+.modal-body
+  input[type='date'].date-input--empty::-webkit-datetime-edit-day-field,
+.modal-body
+  input[type='date'].date-input--empty::-webkit-datetime-edit-year-field {
   color: var(--color-lightest);
 }
 

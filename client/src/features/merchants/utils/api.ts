@@ -1,7 +1,9 @@
 import { apiFetch } from '../../../lib/api-client';
 import type { Merchant, MerchantSortOrder } from './types';
 
-export const fetchMerchants = (order?: MerchantSortOrder): Promise<Merchant[]> =>
+export const fetchMerchants = (
+  order?: MerchantSortOrder,
+): Promise<Merchant[]> =>
   apiFetch<Merchant[]>(order ? `/merchants?order=${order}` : '/merchants');
 
 export interface NewMerchant {
@@ -20,7 +22,10 @@ export interface MerchantPatch {
   name?: string;
 }
 
-export const updateMerchant = (id: number, patch: MerchantPatch): Promise<Merchant> =>
+export const updateMerchant = (
+  id: number,
+  patch: MerchantPatch,
+): Promise<Merchant> =>
   apiFetch<Merchant>(`/merchants/${id}`, {
     method: 'PATCH',
     body: JSON.stringify(patch),

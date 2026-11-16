@@ -12,15 +12,11 @@ import './_app.settings.css';
 
 type CategoryModalState = Category | { groupId: number } | null;
 type CategoryGroupModalState =
-  | CategoryGroup
-  | { type: CategoryGroup['type'] }
-  | null;
+  CategoryGroup | { type: CategoryGroup['type'] } | null;
 
 const CategoriesPage = () => {
   const { t } = useTranslation();
-  const [categoryModal, setCategoryModal] = useState<CategoryModalState>(
-    null,
-  );
+  const [categoryModal, setCategoryModal] = useState<CategoryModalState>(null);
   const [groupModal, setGroupModal] = useState<CategoryGroupModalState>(null);
 
   return (

@@ -1,9 +1,9 @@
 .transactions-toolbar {
   position: sticky;
   /* `.app-main`'s own top padding would otherwise sit above the stuck toolbar as a permanent,
-   * uncovered gap that scrolled rows show through. Sticking `spacing-l` (that padding's size)
+   * uncovered gap that scrolled rows show through. Sticking `spacing-s` (that padding's size)
    * higher than the default `top: 0` pulls the toolbar flush over that gap instead. */
-  top: calc(-1 * var(--spacing-l));
+  top: calc(-1 * var(--spacing-s));
   z-index: 1;
   display: flex;
   flex-wrap: wrap;
@@ -31,7 +31,9 @@
   border-radius: var(--spacing-xs);
   background: var(--color-medium);
   color: var(--color-white);
-  font: 700 15px/normal Quicksand, sans-serif;
+  font:
+    700 15px/normal Quicksand,
+    sans-serif;
   cursor: pointer;
   transition: filter 0.15s ease;
 }
@@ -75,7 +77,9 @@
    * padding here on top of the toolbar's own would push it further right than that. */
   padding: var(--spacing-xs) 0;
   color: var(--color-white);
-  font: 700 15px/normal Quicksand, sans-serif;
+  font:
+    700 15px/normal Quicksand,
+    sans-serif;
   cursor: pointer;
 }
 
