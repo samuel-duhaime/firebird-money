@@ -1935,6 +1935,37 @@ async fn download_transactions_filename_reflects_date_range(pool: PgPool) {
 }
 
 #[sqlx::test]
+async fn download_transactions_is_written_in_the_requested_language(pool: PgPool) {
+    let app = test::init_service(app_with(pool)).await;
+    let cookie = sign_in_with_household(&app, "sam@example.com").await;
+    let category_id = create_other_category(&app, &cookie).await;
+    create_via_api(&app, &cookie, category_id, "2024-01-15", "IGA", "56.78").await;
+
+    let req = test::TestRequest::get()
+        .uri("/transactions/download?format=csv&language=fr-CA&start_date=2024-01-01&order=amount")
+        .insert_header(("Cookie", cookie))
+        .to_request();
+    let resp = test::call_service(&app, req).await;
+
+    assert_eq!(resp.status(), 200);
+    assert_eq!(
+        resp.headers().get("content-disposition").unwrap(),
+        "attachment; filename=\"transactions_du_2024-01-01_montant-le-plus-eleve.csv\""
+    );
+    let body = test::read_body(resp).await;
+    let csv = String::from_utf8(body.to_vec()).unwrap();
+    let mut lines = csv.lines();
+    assert_eq!(
+        lines.next().unwrap(),
+        "Date,Marchand,Catégorie,Étiquettes,Compte,Propriétaire,Montant"
+    );
+    assert_eq!(
+        lines.next().unwrap(),
+        "2024-01-15,IGA,Autre,,Test Account,Partagé,56.78"
+    );
+}
+
+#[sqlx::test]
 async fn download_transactions_respects_date_range_filter(pool: PgPool) {
     let app = test::init_service(app_with(pool)).await;
     let cookie = sign_in_with_household(&app, "sam@example.com").await;

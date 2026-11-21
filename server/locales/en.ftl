@@ -84,3 +84,20 @@ import-merchant-not-found = One of the merchants doesn’t exist
 import-account-not-found = One of the accounts doesn’t exist
 import-category-not-found = One of the categories doesn’t exist
 internal-db-error = Internal server error
+
+# Downloaded transactions (CSV / Excel). Filename words stay plain ASCII, lowercase, with dashes.
+download-header-date = Date
+download-header-merchant = Merchant
+download-header-category = Category
+download-header-tags = Tags
+download-header-account = Account
+download-header-owner = Owner
+download-header-amount = Amount
+download-owner-shared = Shared
+download-filename-transactions = transactions
+download-filename-from = from
+download-filename-to = to
+download-filename-until = until
+download-filename-oldest-first = oldest-first
+download-filename-highest-amount = highest-amount
+download-filename-lowest-amount = lowest-amount

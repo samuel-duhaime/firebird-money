@@ -84,3 +84,20 @@ import-merchant-not-found = Un des marchands n’existe pas
 import-account-not-found = Un des comptes n’existe pas
 import-category-not-found = Une des catégories n’existe pas
 internal-db-error = Erreur interne du serveur
+
+# Transactions téléchargées (CSV / Excel). Les mots du nom de fichier restent en ASCII, en minuscules, avec des tirets.
+download-header-date = Date
+download-header-merchant = Marchand
+download-header-category = Catégorie
+download-header-tags = Étiquettes
+download-header-account = Compte
+download-header-owner = Propriétaire
+download-header-amount = Montant
+download-owner-shared = Partagé
+download-filename-transactions = transactions
+download-filename-from = du
+download-filename-to = au
+download-filename-until = jusqu-au
+download-filename-oldest-first = plus-anciennes-d-abord
+download-filename-highest-amount = montant-le-plus-eleve
+download-filename-lowest-amount = montant-le-plus-bas

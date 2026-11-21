@@ -3,13 +3,64 @@
 use std::collections::HashMap;
 
 use rust_xlsxwriter::{Workbook, XlsxError};
+use unic_langid::LanguageIdentifier;
 
 use super::model::{SortOrder, Transaction, TransactionFilter};
 use crate::features::members::model::Member;
+use crate::shared::l10n::L10n;
 
-const HEADERS: [&str; 7] = [
-    "Date", "Merchant", "Category", "Tags", "Account", "Owner", "Amount",
+/// Fluent ids of the header row, in column order.
+const HEADER_IDS: [&str; 7] = [
+    "download-header-date",
+    "download-header-merchant",
+    "download-header-category",
+    "download-header-tags",
+    "download-header-account",
+    "download-header-owner",
+    "download-header-amount",
 ];
+
+/// The words a downloaded file is written in: the language the person is using the app in, so its
+/// headers, category names, "Shared" and filename read like the page they downloaded it from.
+pub struct Labels {
+    french: bool,
+    headers: [String; 7],
+    shared: String,
+    transactions: String,
+    from: String,
+    to: String,
+    until: String,
+    oldest_first: String,
+    highest_amount: String,
+    lowest_amount: String,
+}
+
+impl Labels {
+    pub fn new(l10n: &L10n, locale: &LanguageIdentifier) -> Self {
+        let text = |id: &str| l10n.format_message(locale, id, None);
+        Self {
+            french: locale.language == "fr",
+            headers: HEADER_IDS.map(text),
+            shared: text("download-owner-shared"),
+            transactions: text("download-filename-transactions"),
+            from: text("download-filename-from"),
+            to: text("download-filename-to"),
+            until: text("download-filename-until"),
+            oldest_first: text("download-filename-oldest-first"),
+            highest_amount: text("download-filename-highest-amount"),
+            lowest_amount: text("download-filename-lowest-amount"),
+        }
+    }
+
+    /// The category's name in this language, as the app shows it.
+    fn category<'a>(&self, transaction: &'a Transaction) -> &'a str {
+        if self.french {
+            &transaction.category_name_fr
+        } else {
+            &transaction.category_name_en
+        }
+    }
+}
 
 /// What the Owner column says for each member: their full name, else their email, as the app
 /// shows them.
@@ -34,11 +85,12 @@ impl OwnerNames {
         )
     }
 
-    /// "Shared" for no owner. An owner no longer in the household can't happen (removing a member
-    /// makes their transactions Shared), but is left blank rather than failing the download.
-    fn cell(&self, owner_user_id: Option<i32>) -> String {
+    /// "Shared" (in `labels`' language) for no owner. An owner no longer in the household can't
+    /// happen (removing a member makes their transactions Shared), but is left blank rather than
+    /// failing the download.
+    fn cell(&self, owner_user_id: Option<i32>, labels: &Labels) -> String {
         match owner_user_id {
-            None => "Shared".to_string(),
+            None => labels.shared.clone(),
             Some(id) => self.0.get(&id).cloned().unwrap_or_default(),
         }
     }
@@ -56,25 +108,25 @@ fn tags_cell(transaction: &Transaction) -> String {
 
 /// Builds a filename like `transactions_highest-amount.csv` from the filters that were actually
 /// applied, so the downloaded file's name reflects what's inside it.
-pub fn filename(filter: &TransactionFilter, extension: &str) -> String {
-    let mut parts = vec!["transactions".to_string()];
+pub fn filename(filter: &TransactionFilter, extension: &str, labels: &Labels) -> String {
+    let mut parts = vec![labels.transactions.clone()];
 
     if let Some(date) = filter.date {
         parts.push(date.to_string());
     }
     match (filter.start_date, filter.end_date) {
-        (Some(start), Some(end)) => parts.push(format!("{start}_to_{end}")),
-        (Some(start), None) => parts.push(format!("from_{start}")),
-        (None, Some(end)) => parts.push(format!("until_{end}")),
+        (Some(start), Some(end)) => parts.push(format!("{start}_{}_{end}", labels.to)),
+        (Some(start), None) => parts.push(format!("{}_{start}", labels.from)),
+        (None, Some(end)) => parts.push(format!("{}_{end}", labels.until)),
         (None, None) => {}
     }
     if let Some(search) = &filter.search {
         parts.push(slugify(search));
     }
     match filter.order {
-        Some(SortOrder::InverseDate) => parts.push("oldest-first".to_string()),
-        Some(SortOrder::Amount) => parts.push("highest-amount".to_string()),
-        Some(SortOrder::InverseAmount) => parts.push("lowest-amount".to_string()),
+        Some(SortOrder::InverseDate) => parts.push(labels.oldest_first.clone()),
+        Some(SortOrder::Amount) => parts.push(labels.highest_amount.clone()),
+        Some(SortOrder::InverseAmount) => parts.push(labels.lowest_amount.clone()),
         Some(SortOrder::Date) | None => {}
     }
 
@@ -113,18 +165,22 @@ fn escape_formula(value: &str) -> String {
 }
 
 /// Renders transactions as CSV bytes, with a header row.
-pub fn to_csv(transactions: &[Transaction], owners: &OwnerNames) -> Result<Vec<u8>, csv::Error> {
+pub fn to_csv(
+    transactions: &[Transaction],
+    owners: &OwnerNames,
+    labels: &Labels,
+) -> Result<Vec<u8>, csv::Error> {
     let mut writer = csv::Writer::from_writer(Vec::new());
 
-    writer.write_record(HEADERS)?;
+    writer.write_record(&labels.headers)?;
     for transaction in transactions {
         writer.write_record([
             transaction.date.to_string(),
             escape_formula(&transaction.merchant_name),
-            escape_formula(&transaction.category_name_en),
+            escape_formula(labels.category(transaction)),
             escape_formula(&tags_cell(transaction)),
             escape_formula(&transaction.account_name),
-            escape_formula(&owners.cell(transaction.owner_user_id)),
+            escape_formula(&owners.cell(transaction.owner_user_id, labels)),
             transaction.amount.to_string(),
         ])?;
     }
@@ -133,21 +189,25 @@ pub fn to_csv(transactions: &[Transaction], owners: &OwnerNames) -> Result<Vec<u
 }
 
 /// Renders transactions as `.xlsx` bytes, with a header row.
-pub fn to_xlsx(transactions: &[Transaction], owners: &OwnerNames) -> Result<Vec<u8>, XlsxError> {
+pub fn to_xlsx(
+    transactions: &[Transaction],
+    owners: &OwnerNames,
+    labels: &Labels,
+) -> Result<Vec<u8>, XlsxError> {
     let mut workbook = Workbook::new();
     let worksheet = workbook.add_worksheet();
 
-    for (col, header) in HEADERS.iter().enumerate() {
-        worksheet.write(0, col as u16, *header)?;
+    for (col, header) in labels.headers.iter().enumerate() {
+        worksheet.write(0, col as u16, header)?;
     }
     for (index, transaction) in transactions.iter().enumerate() {
         let row = index as u32 + 1;
         worksheet.write(row, 0, transaction.date.to_string())?;
         worksheet.write(row, 1, &transaction.merchant_name)?;
-        worksheet.write(row, 2, &transaction.category_name_en)?;
+        worksheet.write(row, 2, labels.category(transaction))?;
         worksheet.write(row, 3, tags_cell(transaction))?;
         worksheet.write(row, 4, &transaction.account_name)?;
-        worksheet.write(row, 5, owners.cell(transaction.owner_user_id))?;
+        worksheet.write(row, 5, owners.cell(transaction.owner_user_id, labels))?;
         worksheet.write(row, 6, transaction.amount)?;
     }
 
