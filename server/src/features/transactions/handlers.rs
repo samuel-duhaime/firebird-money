@@ -71,10 +71,12 @@ enum DownloadFormat {
 }
 
 /// Query params for `GET /transactions/download`, parsed independently from `TransactionFilter`
-/// since both are read from the same query string.
+/// since both are read from the same query string. `language` is the app's current language, which
+/// the file is written in; absent or unsupported falls back to `DEFAULT_LANGUAGE`.
 #[derive(Deserialize)]
 struct DownloadFormatQuery {
     format: DownloadFormat,
+    language: Option<String>,
 }
 
 /// `POST /transactions` — create a transaction.
@@ -172,7 +174,7 @@ async fn list_transactions(
 
 /// `GET /transactions/download` — download the same (filtered/sorted) transactions as
 /// `GET /transactions`, rendered as a CSV or Excel file. Accepts the same filter and `order` query
-/// params, plus `format` (`csv` or `xlsx`).
+/// params, plus `format` (`csv` or `xlsx`) and `language` (`en` or `fr`).
 async fn download_transactions(
     filter: web::Query<TransactionFilter>,
     format: web::Query<DownloadFormatQuery>,
@@ -180,7 +182,7 @@ async fn download_transactions(
     pool: web::Data<PgPool>,
     l10n: web::Data<L10n>,
 ) -> impl Responder {
-    let locale = l10n.locale();
+    let locale = l10n.locale_or_default(format.language.as_deref());
     let household_id = match current_user.require_household_id(&l10n, &locale) {
         Ok(id) => id,
         Err(response) => return response,
@@ -201,11 +203,12 @@ async fn download_transactions(
             return internal_error_response(&l10n, &locale);
         }
     };
+    let labels = download::Labels::new(&l10n, &locale);
 
     match format.format {
-        DownloadFormat::Csv => match download::to_csv(&transactions, &owners) {
+        DownloadFormat::Csv => match download::to_csv(&transactions, &owners, &labels) {
             Ok(bytes) => {
-                let filename = download::filename(&filter, "csv");
+                let filename = download::filename(&filter, "csv", &labels);
                 HttpResponse::Ok()
                     .content_type("text/csv; charset=utf-8")
                     .insert_header((
@@ -219,9 +222,9 @@ async fn download_transactions(
                 internal_error_response(&l10n, &locale)
             }
         },
-        DownloadFormat::Xlsx => match download::to_xlsx(&transactions, &owners) {
+        DownloadFormat::Xlsx => match download::to_xlsx(&transactions, &owners, &labels) {
             Ok(bytes) => {
-                let filename = download::filename(&filter, "xlsx");
+                let filename = download::filename(&filter, "xlsx", &labels);
                 HttpResponse::Ok()
                     .content_type(
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
